@@ -1,4 +1,4 @@
-import { ipcMain, dialog, BrowserWindow } from 'electron'
+import { ipcMain, dialog, BrowserWindow, app } from 'electron'
 import * as fs from 'fs'
 import * as path from 'path'
 import { vaultStore, documentStore, imageStore } from './store'
@@ -88,6 +88,113 @@ export function setupIpcHandlers(mainWindow: BrowserWindow) {
       const base64Data = imageData.replace(/^data:image\/\w+;base64,/, '')
       fs.writeFileSync(result.filePath, base64Data, 'base64')
       return true
+    }
+    return false
+  })
+
+  // ========== PDF 导出 ==========
+  ipcMain.handle('file:exportPDF', async (_, title: string, htmlContent: string) => {
+    const result = await dialog.showSaveDialog(mainWindow, {
+      defaultPath: `${title || '文档'}.pdf`,
+      filters: [
+        { name: 'PDF', extensions: ['pdf'] }
+      ]
+    })
+
+    if (!result.canceled && result.filePath) {
+      // 创建隐藏窗口用于渲染 PDF
+      const pdfWindow = new BrowserWindow({
+        width: 800,
+        height: 600,
+        show: false,
+        webPreferences: {
+          nodeIntegration: false,
+          contextIsolation: true,
+        }
+      })
+
+      // 构建完整的 HTML 页面
+      const fullHtml = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      padding: 40px;
+      line-height: 1.6;
+      color: #333;
+    }
+    h1 { font-size: 28px; margin-bottom: 20px; }
+    h2 { font-size: 22px; margin-top: 24px; }
+    h3 { font-size: 18px; margin-top: 20px; }
+    p { margin: 12px 0; }
+    ul, ol { padding-left: 24px; }
+    li { margin: 6px 0; }
+    blockquote {
+      border-left: 4px solid #ddd;
+      padding-left: 16px;
+      margin: 16px 0;
+      color: #666;
+    }
+    code {
+      background: #f4f4f4;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: 'Consolas', monospace;
+    }
+    pre {
+      background: #f4f4f4;
+      padding: 16px;
+      border-radius: 8px;
+      overflow-x: auto;
+    }
+    img {
+      max-width: 100%;
+      height: auto;
+    }
+    hr {
+      border: none;
+      border-top: 1px solid #ddd;
+      margin: 24px 0;
+    }
+  </style>
+</head>
+<body>
+  <h1>${title || '无标题'}</h1>
+  ${htmlContent}
+</body>
+</html>`
+
+      // 写入临时文件
+      const tempPath = path.join(app.getPath('temp'), `localkb-pdf-${Date.now()}.html`)
+      fs.writeFileSync(tempPath, fullHtml, 'utf-8')
+
+      try {
+        await pdfWindow.loadFile(tempPath)
+        
+        // 等待内容加载完成
+        await new Promise(resolve => setTimeout(resolve, 500))
+
+        const pdfData = await pdfWindow.webContents.printToPDF({
+          printBackground: true,
+          margins: {
+            top: 0.5,
+            bottom: 0.5,
+            left: 0.5,
+            right: 0.5,
+          },
+        })
+
+        fs.writeFileSync(result.filePath, pdfData)
+        return true
+      } finally {
+        pdfWindow.close()
+        // 清理临时文件
+        try {
+          fs.unlinkSync(tempPath)
+        } catch {}
+      }
     }
     return false
   })

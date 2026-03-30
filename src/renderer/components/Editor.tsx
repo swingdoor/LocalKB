@@ -238,20 +238,50 @@ function Editor({ document, vaultId, onUpdate }: EditorProps) {
     setEditingCanvas({ id: canvasId, data: excalidrawData, isEditing: true })
   }
 
+  // 导出 PDF
+  const handleExportPDF = async () => {
+    if (!editor) {
+      console.error('Editor not ready')
+      return
+    }
+    try {
+      const htmlContent = editor.getHTML()
+      console.log('Exporting PDF:', title, htmlContent.substring(0, 100))
+      const result = await window.electronAPI.file.exportPDF(title, htmlContent)
+      console.log('Export result:', result)
+    } catch (err) {
+      console.error('Export PDF error:', err)
+    }
+  }
+
   return (
     <div className="h-full flex flex-col bg-white">
       {/* 文档标题 */}
       <div className="px-8 pt-8 pb-4">
-        <input
-          type="text"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          className="w-full text-3xl font-bold text-text bg-transparent border-none outline-none placeholder-gray-300"
-          placeholder="无标题"
-        />
-        <div className="mt-2 text-xs text-gray-400 flex items-center gap-4">
-          <span>创建于 {formatTime(document.createdAt)}</span>
-          <span>上次保存 {formatTime(document.updatedAt)}</span>
+        <div className="flex items-start justify-between">
+          <div className="flex-1">
+            <input
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              className="w-full text-3xl font-bold text-text bg-transparent border-none outline-none placeholder-gray-300"
+              placeholder="无标题"
+            />
+            <div className="mt-2 text-xs text-gray-400 flex items-center gap-4">
+              <span>创建于 {formatTime(document.createdAt)}</span>
+              <span>上次保存 {formatTime(document.updatedAt)}</span>
+            </div>
+          </div>
+          <button
+            onClick={handleExportPDF}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 hover:text-primary hover:bg-gray-100 rounded-lg transition-colors"
+            title="导出PDF"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            <span>导出PDF</span>
+          </button>
         </div>
       </div>
       

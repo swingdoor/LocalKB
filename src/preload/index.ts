@@ -72,6 +72,8 @@ const electronAPI = {
       ipcRenderer.invoke('file:readImage', imagePath) as Promise<string | null>,
     downloadImage: (imageData: string, defaultName: string) => 
       ipcRenderer.invoke('file:downloadImage', imageData, defaultName) as Promise<boolean>,
+    exportPDF: (title: string, htmlContent: string) =>
+      ipcRenderer.invoke('file:exportPDF', title, htmlContent) as Promise<boolean>,
   },
 }
 
