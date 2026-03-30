@@ -1,7 +1,7 @@
 import { ipcMain, dialog, BrowserWindow, app } from 'electron'
 import * as fs from 'fs'
 import * as path from 'path'
-import { vaultStore, documentStore, imageStore } from './store'
+import { vaultStore, documentStore, imageStore, settingsStore, AISettings } from './store'
 
 export function setupIpcHandlers(mainWindow: BrowserWindow) {
   // ========== Vault 操作 ==========
@@ -197,5 +197,60 @@ export function setupIpcHandlers(mainWindow: BrowserWindow) {
       }
     }
     return false
+  })
+
+  // ========== 设置操作 ==========
+  ipcMain.handle('settings:getAI', async () => {
+    return settingsStore.getAISettings()
+  })
+
+  ipcMain.handle('settings:saveAI', async (_, settings: Partial<AISettings>) => {
+    return settingsStore.saveAISettings(settings)
+  })
+
+  // ========== AI 润色 ==========
+  ipcMain.handle('ai:polish', async (_, text: string) => {
+    const settings = settingsStore.getAISettings()
+    
+    if (!settings.apiKey) {
+      throw new Error('请先配置 API Key')
+    }
+
+    try {
+      const response = await fetch(`${settings.baseUrl}/v1/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${settings.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: settings.model,
+          messages: [
+            {
+              role: 'user',
+              content: settings.polishPrompt + text,
+            },
+          ],
+          stream: false,
+        }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({})) as any
+        throw new Error(errorData.error?.message || `API 请求失败: ${response.status}`)
+      }
+
+      const data = await response.json() as any
+      const polishedText = data.choices?.[0]?.message?.content
+
+      if (!polishedText) {
+        throw new Error('AI 返回结果为空')
+      }
+
+      return { success: true, text: polishedText.trim() }
+    } catch (error: any) {
+      console.error('AI polish error:', error)
+      return { success: false, error: error.message || '润色失败，请检查网络和配置' }
+    }
   })
 }

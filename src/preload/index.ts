@@ -22,6 +22,19 @@ export interface ImageFile {
   data: string
 }
 
+export interface AISettings {
+  apiKey: string
+  baseUrl: string
+  model: string
+  polishPrompt: string
+}
+
+export interface PolishResult {
+  success: boolean
+  text?: string
+  error?: string
+}
+
 // 暴露给渲染进程的 API
 const electronAPI = {
   // 窗口控制
@@ -74,6 +87,18 @@ const electronAPI = {
       ipcRenderer.invoke('file:downloadImage', imageData, defaultName) as Promise<boolean>,
     exportPDF: (title: string, htmlContent: string) =>
       ipcRenderer.invoke('file:exportPDF', title, htmlContent) as Promise<boolean>,
+  },
+
+  // 设置操作
+  settings: {
+    getAI: () => ipcRenderer.invoke('settings:getAI') as Promise<AISettings>,
+    saveAI: (settings: Partial<AISettings>) => 
+      ipcRenderer.invoke('settings:saveAI', settings) as Promise<AISettings>,
+  },
+
+  // AI 功能
+  ai: {
+    polish: (text: string) => ipcRenderer.invoke('ai:polish', text) as Promise<PolishResult>,
   },
 }
 

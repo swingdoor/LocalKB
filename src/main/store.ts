@@ -273,6 +273,67 @@ function extractTextFromContent(node: any): string {
   return text.trim()
 }
 
+// AI 设置接口
+export interface AISettings {
+  apiKey: string
+  baseUrl: string
+  model: string
+  polishPrompt: string
+}
+
+// 默认设置
+const defaultAISettings: AISettings = {
+  apiKey: '',
+  baseUrl: 'https://api.deepseek.com',
+  model: 'deepseek-chat',
+  polishPrompt: '请对以下文本进行润色，使其更加流畅、专业，同时保持原意不变。只返回润色后的文本，不要添加任何解释或说明：\n\n',
+}
+
+// 设置存储
+export const settingsStore = {
+  // 获取设置文件路径
+  getSettingsPath(): string {
+    return path.join(getDataPath(), 'settings.json')
+  },
+
+  // 获取 AI 设置
+  getAISettings(): AISettings {
+    const settingsPath = this.getSettingsPath()
+    ensureDir(getDataPath())
+    
+    if (fs.existsSync(settingsPath)) {
+      try {
+        const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'))
+        return { ...defaultAISettings, ...settings.ai }
+      } catch (e) {
+        console.error('Failed to read settings:', e)
+      }
+    }
+    return { ...defaultAISettings }
+  },
+
+  // 保存 AI 设置
+  saveAISettings(settings: Partial<AISettings>): AISettings {
+    const settingsPath = this.getSettingsPath()
+    ensureDir(getDataPath())
+    
+    let allSettings: any = {}
+    if (fs.existsSync(settingsPath)) {
+      try {
+        allSettings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'))
+      } catch (e) {
+        console.error('Failed to read settings:', e)
+      }
+    }
+    
+    const newAISettings = { ...defaultAISettings, ...allSettings.ai, ...settings }
+    allSettings.ai = newAISettings
+    
+    fs.writeFileSync(settingsPath, JSON.stringify(allSettings, null, 2), 'utf-8')
+    return newAISettings
+  },
+}
+
 // 图片存储
 export const imageStore = {
   // 保存图片

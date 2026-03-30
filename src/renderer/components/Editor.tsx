@@ -10,6 +10,7 @@ import ResizableImage from '../extensions/ResizableImage'
 import CommandMenu from './CommandMenu'
 import EditorBubbleMenu from './BubbleMenu'
 import DrawingEditorModal from './DrawingEditorModal'
+import PolishConfirmModal from './PolishConfirmModal'
 import type { Document } from '../App'
 
 interface EditorProps {
@@ -24,6 +25,20 @@ function Editor({ document, vaultId, onUpdate }: EditorProps) {
   const [commandMenuPos, setCommandMenuPos] = useState({ x: 0, y: 0 })
   const [searchQuery, setSearchQuery] = useState('')
   const [editingCanvas, setEditingCanvas] = useState<{ id: string; data: string; isEditing?: boolean } | null>(null)
+  
+  // 润色相关状态
+  const [showPolishModal, setShowPolishModal] = useState(false)
+  const [polishState, setPolishState] = useState<{
+    originalText: string
+    polishedText: string
+    isLoading: boolean
+    error?: string
+    selectionRange?: { from: number; to: number }
+  }>({
+    originalText: '',
+    polishedText: '',
+    isLoading: false,
+  })
 
   // 格式化时间
   const formatTime = (dateStr: string) => {
@@ -263,6 +278,78 @@ function Editor({ document, vaultId, onUpdate }: EditorProps) {
     }
   }
 
+  // 处理润色请求
+  const handlePolish = async (text: string) => {
+    if (!editor) return
+    
+    // 保存选区范围
+    const { from, to } = editor.state.selection
+    
+    setPolishState({
+      originalText: text,
+      polishedText: '',
+      isLoading: true,
+      selectionRange: { from, to },
+    })
+    setShowPolishModal(true)
+
+    try {
+      const result = await window.electronAPI.ai.polish(text)
+      
+      if (result.success && result.text) {
+        setPolishState(prev => ({
+          ...prev,
+          polishedText: result.text!,
+          isLoading: false,
+        }))
+      } else {
+        setPolishState(prev => ({
+          ...prev,
+          isLoading: false,
+          error: result.error || '润色失败',
+        }))
+      }
+    } catch (err: any) {
+      setPolishState(prev => ({
+        ...prev,
+        isLoading: false,
+        error: err.message || '润色请求失败',
+      }))
+    }
+  }
+
+  // 确认替换润色结果
+  const handlePolishConfirm = () => {
+    if (!editor || !polishState.selectionRange || !polishState.polishedText) return
+    
+    const { from, to } = polishState.selectionRange
+    
+    editor
+      .chain()
+      .focus()
+      .setTextSelection({ from, to })
+      .deleteSelection()
+      .insertContent(polishState.polishedText)
+      .run()
+    
+    setShowPolishModal(false)
+    setPolishState({
+      originalText: '',
+      polishedText: '',
+      isLoading: false,
+    })
+  }
+
+  // 取消润色
+  const handlePolishCancel = () => {
+    setShowPolishModal(false)
+    setPolishState({
+      originalText: '',
+      polishedText: '',
+      isLoading: false,
+    })
+  }
+
   return (
     <div className="h-full flex flex-col bg-white">
       {/* 文档标题 */}
@@ -302,6 +389,8 @@ function Editor({ document, vaultId, onUpdate }: EditorProps) {
               editor={editor} 
               vaultId={vaultId} 
               onEditCanvas={handleEditCanvas}
+              onPolish={handlePolish}
+              hidden={showPolishModal}
             />
             <EditorContent editor={editor} className="prose max-w-none" />
           </>
@@ -327,6 +416,18 @@ function Editor({ document, vaultId, onUpdate }: EditorProps) {
           onClose={() => setEditingCanvas(null)}
         />
       )}
+
+      {/* 润色确认模态框 */}
+      <PolishConfirmModal
+        isOpen={showPolishModal}
+        originalText={polishState.originalText}
+        polishedText={polishState.polishedText}
+        isLoading={polishState.isLoading}
+        error={polishState.error}
+        onConfirm={handlePolishConfirm}
+        onCancel={handlePolishCancel}
+        onOpenSettings={handlePolishCancel}
+      />
     </div>
   )
 }

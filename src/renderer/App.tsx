@@ -4,6 +4,7 @@ import Sidebar from './components/Sidebar'
 import Editor from './components/Editor'
 import ExcalidrawCanvas from './components/ExcalidrawCanvas'
 import SearchModal from './components/SearchModal'
+import SettingsModal from './components/SettingsModal'
 
 export interface Document {
   id: string
@@ -26,6 +27,7 @@ function App() {
   const [documents, setDocuments] = useState<Document[]>([])
   const [currentDocument, setCurrentDocument] = useState<Document | null>(null)
   const [isSearchOpen, setIsSearchOpen] = useState(false)
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false)
 
   // 加载 Vaults
   const loadVaults = useCallback(async () => {
@@ -165,6 +167,7 @@ function App() {
           onSelectDocument={handleSelectDocument}
           onDeleteDocument={handleDeleteDocument}
           onOpenSearch={() => setIsSearchOpen(true)}
+          onOpenSettings={() => setIsSettingsOpen(true)}
         />
         <main className="flex-1 overflow-hidden">
           {currentDocument ? (
@@ -208,6 +211,12 @@ function App() {
           onClose={() => setIsSearchOpen(false)}
         />
       )}
+
+      {/* AI 设置模态框 */}
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+      />
     </div>
   )
 }
