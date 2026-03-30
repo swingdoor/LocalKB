@@ -90,8 +90,24 @@ body {
   padding-left: 1.5rem;
 }
 
+.ProseMirror ul {
+  list-style-type: disc;
+}
+
+.ProseMirror ol {
+  list-style-type: decimal;
+}
+
 .ProseMirror li {
   margin-top: 0.25em;
+}
+
+.ProseMirror li > ul {
+  list-style-type: circle;
+}
+
+.ProseMirror li > ul > li > ul {
+  list-style-type: square;
 }
 
 /* 任务列表样式 */

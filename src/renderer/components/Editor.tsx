@@ -108,6 +108,27 @@ function Editor({ document, vaultId, onUpdate }: EditorProps) {
     },
     editorProps: {
       handleKeyDown: (view, event) => {
+        // Tab 键处理：在行首插入缩进
+        if (event.key === 'Tab' && !event.shiftKey) {
+          event.preventDefault()
+          const { state, dispatch } = view
+          const { $from } = state.selection
+          
+          // 获取当前行开始位置
+          const lineStart = $from.start()
+          const posInLine = $from.pos - lineStart
+          
+          // 如果在行首或行首附近（前2个字符内），插入2个全角空格的缩进
+          if (posInLine <= 2) {
+            const tr = state.tr.insertText('　　', $from.pos) // 2个全角空格
+            dispatch(tr)
+          } else {
+            // 否则插入普通Tab（2个空格）
+            const tr = state.tr.insertText('  ', $from.pos)
+            dispatch(tr)
+          }
+          return true
+        }
         // 检测 \ 键 或 Alt 键呼出命令菜单
         if (event.key === '\\' || event.key === 'Alt') {
           event.preventDefault()
