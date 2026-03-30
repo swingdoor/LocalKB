@@ -334,6 +334,41 @@ export const settingsStore = {
     fs.writeFileSync(settingsPath, JSON.stringify(allSettings, null, 2), 'utf-8')
     return newAISettings
   },
+
+  // 获取主题设置
+  getTheme(): string {
+    const settingsPath = this.getSettingsPath()
+    ensureDir(getDataPath())
+    
+    if (fs.existsSync(settingsPath)) {
+      try {
+        const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'))
+        return settings.theme || 'white'
+      } catch (e) {
+        console.error('Failed to read settings:', e)
+      }
+    }
+    return 'white'
+  },
+
+  // 保存主题设置
+  saveTheme(theme: string): string {
+    const settingsPath = this.getSettingsPath()
+    ensureDir(getDataPath())
+    
+    let allSettings: any = {}
+    if (fs.existsSync(settingsPath)) {
+      try {
+        allSettings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'))
+      } catch (e) {
+        console.error('Failed to read settings:', e)
+      }
+    }
+    
+    allSettings.theme = theme
+    fs.writeFileSync(settingsPath, JSON.stringify(allSettings, null, 2), 'utf-8')
+    return theme
+  },
 }
 
 // 图片存储

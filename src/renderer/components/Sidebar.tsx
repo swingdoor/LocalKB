@@ -6,6 +6,7 @@ interface SidebarProps {
   currentVault: Vault | null
   documents: Document[]
   currentDocument: Document | null
+  theme: string
   onCreateVault: (name: string) => void
   onDeleteVault: (vaultId: string) => void
   onSwitchVault: (vault: Vault) => void
@@ -14,13 +15,21 @@ interface SidebarProps {
   onDeleteDocument: (docId: string) => void
   onOpenSearch: () => void
   onOpenSettings: () => void
+  onThemeChange: (theme: string) => void
 }
+
+const themes = [
+  { id: 'white', label: '白色', color: '#FFFFFF', border: '#E2E8F0' },
+  { id: 'warm', label: '暖黄', color: '#FEF3C7', border: '#FCD34D' },
+  { id: 'green', label: '浅绿', color: '#DCFCE7', border: '#86EFAC' },
+]
 
 function Sidebar({
   vaults,
   currentVault,
   documents,
   currentDocument,
+  theme,
   onCreateVault,
   onDeleteVault,
   onSwitchVault,
@@ -29,6 +38,7 @@ function Sidebar({
   onDeleteDocument,
   onOpenSearch,
   onOpenSettings,
+  onThemeChange,
 }: SidebarProps) {
   const [isVaultDropdownOpen, setIsVaultDropdownOpen] = useState(false)
   const [isCreatingVault, setIsCreatingVault] = useState(false)
@@ -231,7 +241,26 @@ function Sidebar({
       </div>
 
       {/* 底部设置按钮 */}
-      <div className="p-3 border-t border-border">
+      <div className="p-3 border-t border-border space-y-2">
+        {/* 主题切换 */}
+        <div className="flex items-center justify-between px-3 py-2">
+          <span className="text-sm text-gray-600">主题</span>
+          <div className="flex gap-2">
+            {themes.map(t => (
+              <button
+                key={t.id}
+                onClick={() => onThemeChange(t.id)}
+                className={`w-6 h-6 rounded-full border-2 transition-transform hover:scale-110 ${
+                  theme === t.id ? 'ring-2 ring-primary ring-offset-1' : ''
+                }`}
+                style={{ backgroundColor: t.color, borderColor: t.border }}
+                title={t.label}
+              />
+            ))}
+          </div>
+        </div>
+        
+        {/* AI设置按钮 */}
         <button
           onClick={onOpenSettings}
           className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"

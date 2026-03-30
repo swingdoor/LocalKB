@@ -28,6 +28,24 @@ function App() {
   const [currentDocument, setCurrentDocument] = useState<Document | null>(null)
   const [isSearchOpen, setIsSearchOpen] = useState(false)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  const [theme, setTheme] = useState('white')
+
+  // 加载主题
+  useEffect(() => {
+    const loadTheme = async () => {
+      const savedTheme = await window.electronAPI.settings.getTheme()
+      setTheme(savedTheme)
+      document.documentElement.setAttribute('data-theme', savedTheme === 'white' ? '' : savedTheme)
+    }
+    loadTheme()
+  }, [])
+
+  // 切换主题
+  const handleThemeChange = async (newTheme: string) => {
+    setTheme(newTheme)
+    await window.electronAPI.settings.saveTheme(newTheme)
+    document.documentElement.setAttribute('data-theme', newTheme === 'white' ? '' : newTheme)
+  }
 
   // 加载 Vaults
   const loadVaults = useCallback(async () => {
@@ -160,6 +178,7 @@ function App() {
           currentVault={currentVault}
           documents={documents}
           currentDocument={currentDocument}
+          theme={theme}
           onCreateVault={handleCreateVault}
           onDeleteVault={handleDeleteVault}
           onSwitchVault={handleSwitchVault}
@@ -168,6 +187,7 @@ function App() {
           onDeleteDocument={handleDeleteDocument}
           onOpenSearch={() => setIsSearchOpen(true)}
           onOpenSettings={() => setIsSettingsOpen(true)}
+          onThemeChange={handleThemeChange}
         />
         <main className="flex-1 overflow-hidden">
           {currentDocument ? (

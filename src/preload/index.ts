@@ -95,6 +95,8 @@ const electronAPI = {
     getAI: () => ipcRenderer.invoke('settings:getAI') as Promise<AISettings>,
     saveAI: (settings: Partial<AISettings>) => 
       ipcRenderer.invoke('settings:saveAI', settings) as Promise<AISettings>,
+    getTheme: () => ipcRenderer.invoke('settings:getTheme') as Promise<string>,
+    saveTheme: (theme: string) => ipcRenderer.invoke('settings:saveTheme', theme) as Promise<string>,
   },
 
   // AI 功能

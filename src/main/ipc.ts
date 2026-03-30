@@ -208,6 +208,14 @@ export function setupIpcHandlers(mainWindow: BrowserWindow) {
     return settingsStore.saveAISettings(settings)
   })
 
+  ipcMain.handle('settings:getTheme', async () => {
+    return settingsStore.getTheme()
+  })
+
+  ipcMain.handle('settings:saveTheme', async (_, theme: string) => {
+    return settingsStore.saveTheme(theme)
+  })
+
   // ========== AI 润色 ==========
   ipcMain.handle('ai:polish', async (_, text: string) => {
     const settings = settingsStore.getAISettings()
