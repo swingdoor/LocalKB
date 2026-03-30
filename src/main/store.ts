@@ -1,0 +1,303 @@
+import * as fs from 'fs'
+import * as path from 'path'
+import { app } from 'electron'
+import { v4 as uuidv4 } from 'uuid'
+
+// 数据存储路径
+const getDataPath = () => {
+  return path.join(app.getPath('userData'), 'data')
+}
+
+const getVaultsPath = () => {
+  return path.join(getDataPath(), 'vaults')
+}
+
+// 确保目录存在
+const ensureDir = (dirPath: string) => {
+  if (!fs.existsSync(dirPath)) {
+    fs.mkdirSync(dirPath, { recursive: true })
+  }
+}
+
+// 类型定义
+export interface Document {
+  id: string
+  title: string
+  content: string
+  type: 'document' | 'drawing'
+  createdAt: string
+  updatedAt: string
+}
+
+export interface Vault {
+  id: string
+  name: string
+  createdAt: string
+}
+
+export interface VaultMeta {
+  vault: Vault
+  documents: string[] // 文档 ID 列表
+}
+
+// Vault 操作
+export const vaultStore = {
+  // 获取所有 Vault
+  list(): Vault[] {
+    const vaultsPath = getVaultsPath()
+    ensureDir(vaultsPath)
+    
+    const vaultDirs = fs.readdirSync(vaultsPath, { withFileTypes: true })
+      .filter(dirent => dirent.isDirectory())
+    
+    const vaults: Vault[] = []
+    for (const dir of vaultDirs) {
+      const metaPath = path.join(vaultsPath, dir.name, 'meta.json')
+      if (fs.existsSync(metaPath)) {
+        try {
+          const meta: VaultMeta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'))
+          vaults.push(meta.vault)
+        } catch (e) {
+          console.error('Failed to read vault meta:', e)
+        }
+      }
+    }
+    
+    return vaults.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+  },
+
+  // 创建 Vault
+  create(name: string): Vault {
+    const vaultsPath = getVaultsPath()
+    const id = uuidv4()
+    const vault: Vault = {
+      id,
+      name,
+      createdAt: new Date().toISOString(),
+    }
+    
+    const vaultPath = path.join(vaultsPath, id)
+    ensureDir(vaultPath)
+    ensureDir(path.join(vaultPath, 'documents'))
+    
+    const meta: VaultMeta = {
+      vault,
+      documents: [],
+    }
+    
+    fs.writeFileSync(
+      path.join(vaultPath, 'meta.json'),
+      JSON.stringify(meta, null, 2),
+      'utf-8'
+    )
+    
+    return vault
+  },
+
+  // 删除 Vault
+  delete(vaultId: string): boolean {
+    const vaultPath = path.join(getVaultsPath(), vaultId)
+    if (fs.existsSync(vaultPath)) {
+      fs.rmSync(vaultPath, { recursive: true, force: true })
+      return true
+    }
+    return false
+  },
+
+  // 重命名 Vault
+  rename(vaultId: string, newName: string): Vault | null {
+    const vaultPath = path.join(getVaultsPath(), vaultId)
+    const metaPath = path.join(vaultPath, 'meta.json')
+    
+    if (fs.existsSync(metaPath)) {
+      const meta: VaultMeta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'))
+      meta.vault.name = newName
+      fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2), 'utf-8')
+      return meta.vault
+    }
+    return null
+  },
+}
+
+// Document 操作
+export const documentStore = {
+  // 获取 Vault 下所有文档
+  list(vaultId: string): Document[] {
+    const documentsPath = path.join(getVaultsPath(), vaultId, 'documents')
+    ensureDir(documentsPath)
+    
+    const files = fs.readdirSync(documentsPath)
+      .filter(f => f.endsWith('.json'))
+    
+    const documents: Document[] = []
+    for (const file of files) {
+      try {
+        const doc: Document = JSON.parse(
+          fs.readFileSync(path.join(documentsPath, file), 'utf-8')
+        )
+        documents.push(doc)
+      } catch (e) {
+        console.error('Failed to read document:', e)
+      }
+    }
+    
+    return documents.sort((a, b) => 
+      new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+    )
+  },
+
+  // 获取单个文档
+  get(vaultId: string, docId: string): Document | null {
+    const docPath = path.join(getVaultsPath(), vaultId, 'documents', `${docId}.json`)
+    if (fs.existsSync(docPath)) {
+      return JSON.parse(fs.readFileSync(docPath, 'utf-8'))
+    }
+    return null
+  },
+
+  // 创建文档
+  create(vaultId: string, title: string, type: 'document' | 'drawing' = 'document'): Document {
+    const documentsPath = path.join(getVaultsPath(), vaultId, 'documents')
+    ensureDir(documentsPath)
+    
+    const id = uuidv4()
+    const now = new Date().toISOString()
+    
+    const doc: Document = {
+      id,
+      title,
+      content: type === 'document' ? JSON.stringify({
+        type: 'doc',
+        content: [{ type: 'paragraph' }]
+      }) : JSON.stringify({
+        elements: [],
+        appState: {},
+        files: {}
+      }),
+      type,
+      createdAt: now,
+      updatedAt: now,
+    }
+    
+    fs.writeFileSync(
+      path.join(documentsPath, `${id}.json`),
+      JSON.stringify(doc, null, 2),
+      'utf-8'
+    )
+    
+    // 更新 Vault meta
+    const metaPath = path.join(getVaultsPath(), vaultId, 'meta.json')
+    if (fs.existsSync(metaPath)) {
+      const meta: VaultMeta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'))
+      meta.documents.push(id)
+      fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2), 'utf-8')
+    }
+    
+    return doc
+  },
+
+  // 更新文档
+  update(vaultId: string, docId: string, data: Partial<Pick<Document, 'title' | 'content'>>): Document | null {
+    const docPath = path.join(getVaultsPath(), vaultId, 'documents', `${docId}.json`)
+    
+    if (fs.existsSync(docPath)) {
+      const doc: Document = JSON.parse(fs.readFileSync(docPath, 'utf-8'))
+      
+      if (data.title !== undefined) doc.title = data.title
+      if (data.content !== undefined) doc.content = data.content
+      doc.updatedAt = new Date().toISOString()
+      
+      fs.writeFileSync(docPath, JSON.stringify(doc, null, 2), 'utf-8')
+      return doc
+    }
+    return null
+  },
+
+  // 删除文档
+  delete(vaultId: string, docId: string): boolean {
+    const docPath = path.join(getVaultsPath(), vaultId, 'documents', `${docId}.json`)
+    
+    if (fs.existsSync(docPath)) {
+      fs.unlinkSync(docPath)
+      
+      // 更新 Vault meta
+      const metaPath = path.join(getVaultsPath(), vaultId, 'meta.json')
+      if (fs.existsSync(metaPath)) {
+        const meta: VaultMeta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'))
+        meta.documents = meta.documents.filter(id => id !== docId)
+        fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2), 'utf-8')
+      }
+      
+      return true
+    }
+    return false
+  },
+
+  // 搜索文档
+  search(vaultId: string, query: string): Document[] {
+    const documents = this.list(vaultId)
+    const lowerQuery = query.toLowerCase()
+    
+    return documents.filter(doc => {
+      // 搜索标题
+      if (doc.title.toLowerCase().includes(lowerQuery)) return true
+      
+      // 搜索内容（尝试解析 JSON 内容）
+      try {
+        const content = JSON.parse(doc.content)
+        const textContent = extractTextFromContent(content)
+        if (textContent.toLowerCase().includes(lowerQuery)) return true
+      } catch {
+        if (doc.content.toLowerCase().includes(lowerQuery)) return true
+      }
+      
+      return false
+    })
+  },
+}
+
+// 从 TipTap JSON 内容中提取文本
+function extractTextFromContent(node: any): string {
+  let text = ''
+  
+  if (node.text) {
+    text += node.text
+  }
+  
+  if (node.content && Array.isArray(node.content)) {
+    for (const child of node.content) {
+      text += extractTextFromContent(child) + ' '
+    }
+  }
+  
+  return text.trim()
+}
+
+// 图片存储
+export const imageStore = {
+  // 保存图片
+  save(vaultId: string, imageData: string, fileName: string): string {
+    const imagesPath = path.join(getVaultsPath(), vaultId, 'images')
+    ensureDir(imagesPath)
+    
+    const ext = path.extname(fileName) || '.png'
+    const id = uuidv4()
+    const imagePath = path.join(imagesPath, `${id}${ext}`)
+    
+    // 处理 base64 数据
+    const base64Data = imageData.replace(/^data:image\/\w+;base64,/, '')
+    fs.writeFileSync(imagePath, base64Data, 'base64')
+    
+    return imagePath
+  },
+
+  // 读取图片为 base64
+  read(imagePath: string): string | null {
+    if (fs.existsSync(imagePath)) {
+      const data = fs.readFileSync(imagePath)
+      const ext = path.extname(imagePath).slice(1)
+      return `data:image/${ext};base64,${data.toString('base64')}`
+    }
+    return null
+  },
+}
