@@ -55,7 +55,7 @@ function Editor({ document, vaultId, onUpdate }: EditorProps) {
     extensions: [
       StarterKit.configure({
         heading: {
-          levels: [1, 2, 3],
+          levels: [1, 2, 3, 4, 5, 6],
         },
       }),
       Link.configure({
@@ -92,8 +92,8 @@ function Editor({ document, vaultId, onUpdate }: EditorProps) {
     },
     editorProps: {
       handleKeyDown: (view, event) => {
-        // 检测 \ 键
-        if (event.key === '\\') {
+        // 检测 \ 键 或 Alt 键呼出命令菜单
+        if (event.key === '\\' || event.key === 'Alt') {
           event.preventDefault()
           const { from } = view.state.selection
           const coords = view.coordsAtPos(from)
@@ -145,6 +145,15 @@ function Editor({ document, vaultId, onUpdate }: EditorProps) {
         break
       case 'h3':
         editor.chain().focus().toggleHeading({ level: 3 }).run()
+        break
+      case 'h4':
+        editor.chain().focus().toggleHeading({ level: 4 }).run()
+        break
+      case 'h5':
+        editor.chain().focus().toggleHeading({ level: 5 }).run()
+        break
+      case 'h6':
+        editor.chain().focus().toggleHeading({ level: 6 }).run()
         break
       case 'bullet':
         editor.chain().focus().toggleBulletList().run()

@@ -64,6 +64,17 @@ function App() {
     setCurrentVault(vault)
   }
 
+  // 删除 Vault
+  const handleDeleteVault = async (vaultId: string) => {
+    await window.electronAPI.vault.delete(vaultId)
+    setVaults(prev => prev.filter(v => v.id !== vaultId))
+    // 如果删除的是当前选中的知识库，切换到其他知识库
+    if (currentVault?.id === vaultId) {
+      const remaining = vaults.filter(v => v.id !== vaultId)
+      setCurrentVault(remaining.length > 0 ? remaining[0] : null)
+    }
+  }
+
   // 切换 Vault
   const handleSwitchVault = (vault: Vault) => {
     setCurrentVault(vault)
@@ -148,6 +159,7 @@ function App() {
           documents={documents}
           currentDocument={currentDocument}
           onCreateVault={handleCreateVault}
+          onDeleteVault={handleDeleteVault}
           onSwitchVault={handleSwitchVault}
           onCreateDocument={handleCreateDocument}
           onSelectDocument={handleSelectDocument}

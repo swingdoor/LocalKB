@@ -7,6 +7,7 @@ interface SidebarProps {
   documents: Document[]
   currentDocument: Document | null
   onCreateVault: (name: string) => void
+  onDeleteVault: (vaultId: string) => void
   onSwitchVault: (vault: Vault) => void
   onCreateDocument: (type: 'document' | 'drawing') => void
   onSelectDocument: (doc: Document) => void
@@ -20,6 +21,7 @@ function Sidebar({
   documents,
   currentDocument,
   onCreateVault,
+  onDeleteVault,
   onSwitchVault,
   onCreateDocument,
   onSelectDocument,
@@ -71,18 +73,38 @@ function Sidebar({
           {isVaultDropdownOpen && (
             <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-border rounded-lg shadow-lg z-10 max-h-64 overflow-y-auto">
               {vaults.map(vault => (
-                <button
+                <div
                   key={vault.id}
-                  onClick={() => {
-                    onSwitchVault(vault)
-                    setIsVaultDropdownOpen(false)
-                  }}
-                  className={`w-full px-3 py-2 text-left text-sm hover:bg-selected transition-colors ${
-                    currentVault?.id === vault.id ? 'bg-selected text-primary font-medium' : ''
+                  className={`flex items-center group hover:bg-selected transition-colors ${
+                    currentVault?.id === vault.id ? 'bg-selected' : ''
                   }`}
                 >
-                  {vault.name}
-                </button>
+                  <button
+                    onClick={() => {
+                      onSwitchVault(vault)
+                      setIsVaultDropdownOpen(false)
+                    }}
+                    className={`flex-1 px-3 py-2 text-left text-sm ${
+                      currentVault?.id === vault.id ? 'text-primary font-medium' : ''
+                    }`}
+                  >
+                    {vault.name}
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      if (confirm(`确定删除知识库"${vault.name}"吗？此操作不可恢复。`)) {
+                        onDeleteVault(vault.id)
+                      }
+                    }}
+                    className="px-2 py-1 mr-1 text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                    title="删除知识库"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                </div>
               ))}
               
               {/* 创建新 Vault */}

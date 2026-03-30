@@ -47,6 +47,30 @@ const commands: CommandItem[] = [
     ),
   },
   {
+    id: 'h4',
+    title: '四级标题',
+    description: '段落标题',
+    icon: (
+      <span className="text-xs font-bold">H4</span>
+    ),
+  },
+  {
+    id: 'h5',
+    title: '五级标题',
+    description: '小节标题',
+    icon: (
+      <span className="text-xs font-bold">H5</span>
+    ),
+  },
+  {
+    id: 'h6',
+    title: '六级标题',
+    description: '最小标题',
+    icon: (
+      <span className="text-xs font-bold">H6</span>
+    ),
+  },
+  {
     id: 'bullet',
     title: '无序列表',
     description: '项目符号列表',
@@ -136,6 +160,7 @@ function CommandMenu({
   onClose,
 }: CommandMenuProps) {
   const [selectedIndex, setSelectedIndex] = useState(0)
+  const [showAbove, setShowAbove] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -145,6 +170,20 @@ function CommandMenu({
       cmd.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       cmd.description.toLowerCase().includes(searchQuery.toLowerCase())
   )
+
+  // 计算菜单位置（检测是否需要在上方显示）
+  useEffect(() => {
+    const menuHeight = 400 // 菜单预估最大高度
+    const windowHeight = window.innerHeight
+    const spaceBelow = windowHeight - position.y
+    
+    // 如果下方空间不足，在上方显示
+    if (spaceBelow < menuHeight && position.y > menuHeight) {
+      setShowAbove(true)
+    } else {
+      setShowAbove(false)
+    }
+  }, [position])
 
   // 键盘导航
   useEffect(() => {
@@ -206,7 +245,10 @@ function CommandMenu({
       className="command-menu"
       style={{
         left: position.x,
-        top: position.y,
+        ...(showAbove
+          ? { bottom: window.innerHeight - position.y + 10 }
+          : { top: position.y }
+        ),
       }}
     >
       {/* 搜索输入 */}
@@ -222,23 +264,21 @@ function CommandMenu({
       </div>
 
       {/* 命令列表 */}
-      <div className="py-1">
+      <div className="py-1 max-h-80 overflow-y-auto">
         {filteredCommands.length > 0 ? (
           filteredCommands.map((cmd, index) => (
             <div
               key={cmd.id}
               onClick={() => onSelect(cmd.id)}
-              className={`command-menu-item ${index === selectedIndex ? 'selected' : ''}`}
+              className={`command-menu-item-compact ${index === selectedIndex ? 'selected' : ''}`}
             >
               <div className="icon">{cmd.icon}</div>
-              <div className="content">
-                <div className="title">{cmd.title}</div>
-                <div className="description">{cmd.description}</div>
-              </div>
+              <span className="title">{cmd.title}</span>
+              <span className="description">- {cmd.description}</span>
             </div>
           ))
         ) : (
-          <div className="px-3 py-4 text-center text-sm text-gray-400">
+          <div className="px-3 py-3 text-center text-sm text-gray-400">
             未找到匹配的命令
           </div>
         )}
