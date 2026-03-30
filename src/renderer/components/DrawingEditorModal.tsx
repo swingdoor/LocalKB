@@ -63,10 +63,15 @@ function DrawingEditorModal({ canvasData, onSave, onClose }: DrawingEditorModalP
           ...appState,
           exportWithDarkMode: false,
           exportBackground: true,
-          exportPadding: 20, // 添加边距
         },
         files,
-        // 不指定 getDimensions，让 Excalidraw 自动根据内容计算尺寸
+        exportPadding: 20,
+        quality: 1,
+        getDimensions: (width, height) => ({
+          width: width * 4,
+          height: height * 4,
+          scale: 4,
+        }),
       })
       
       // 转换为 base64
