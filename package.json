@@ -1,7 +1,7 @@
 {
-  "name": "localkb",
-  "version": "0.3.0",
-  "description": "LocalKB - 本地知识库笔记软件",
+  "name": "jijian-notes",
+  "version": "0.5.0",
+  "description": "极简笔记 - 本地知识库笔记软件",
   "main": "dist/main/index.js",
   "scripts": {
     "dev": "concurrently \"npm run dev:vite\" \"npm run dev:electron\"",
@@ -55,8 +55,8 @@
     "uuid": "^9.0.0"
   },
   "build": {
-    "appId": "com.localkb.app",
-    "productName": "LocalKB",
+    "appId": "com.jijian.notes",
+    "productName": "极简笔记",
     "directories": {
       "output": "release"
     },

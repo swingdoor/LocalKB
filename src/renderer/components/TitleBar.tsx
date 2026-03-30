@@ -28,7 +28,7 @@ function TitleBar() {
     <div className="flex items-center h-9 bg-sidebar border-b border-border select-none">
       {/* 拖拽区域 */}
       <div className="flex-1 h-full flex items-center px-4" style={{ WebkitAppRegion: 'drag' } as any}>
-        <span className="text-sm font-medium text-text">LocalKB</span>
+        <span className="text-sm font-medium text-text">极简笔记</span>
       </div>
       
       {/* 窗口控制按钮 */}
