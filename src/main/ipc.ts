@@ -253,4 +253,50 @@ export function setupIpcHandlers(mainWindow: BrowserWindow) {
       return { success: false, error: error.message || '润色失败，请检查网络和配置' }
     }
   })
+
+  // ========== AI 扩写 ==========
+  ipcMain.handle('ai:expand', async (_, text: string) => {
+    const settings = settingsStore.getAISettings()
+    
+    if (!settings.apiKey) {
+      throw new Error('请先配置 API Key')
+    }
+
+    try {
+      const response = await fetch(`${settings.baseUrl}/v1/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${settings.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: settings.model,
+          messages: [
+            {
+              role: 'user',
+              content: settings.expandPrompt + text,
+            },
+          ],
+          stream: false,
+        }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({})) as any
+        throw new Error(errorData.error?.message || `API 请求失败: ${response.status}`)
+      }
+
+      const data = await response.json() as any
+      const expandedText = data.choices?.[0]?.message?.content
+
+      if (!expandedText) {
+        throw new Error('AI 返回结果为空')
+      }
+
+      return { success: true, text: expandedText.trim() }
+    } catch (error: any) {
+      console.error('AI expand error:', error)
+      return { success: false, error: error.message || '扩写失败，请检查网络和配置' }
+    }
+  })
 }

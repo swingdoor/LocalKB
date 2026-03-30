@@ -27,6 +27,7 @@ export interface AISettings {
   baseUrl: string
   model: string
   polishPrompt: string
+  expandPrompt: string
 }
 
 export interface PolishResult {
@@ -99,6 +100,7 @@ const electronAPI = {
   // AI 功能
   ai: {
     polish: (text: string) => ipcRenderer.invoke('ai:polish', text) as Promise<PolishResult>,
+    expand: (text: string) => ipcRenderer.invoke('ai:expand', text) as Promise<PolishResult>,
   },
 }
 

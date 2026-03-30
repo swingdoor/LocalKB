@@ -5,6 +5,7 @@ interface AISettings {
   baseUrl: string
   model: string
   polishPrompt: string
+  expandPrompt: string
 }
 
 interface SettingsModalProps {
@@ -18,9 +19,11 @@ function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     baseUrl: 'https://api.deepseek.com',
     model: 'deepseek-chat',
     polishPrompt: '请对以下文本进行润色，使其更加流畅、专业，同时保持原意不变。只返回润色后的文本，不要添加任何解释或说明：\n\n',
+    expandPrompt: '请对以下文本进行扩写，丰富内容细节，增加相关论述，使其更加完整充实。只返回扩写后的文本，不要添加任何解释或说明：\n\n',
   })
   const [isSaving, setIsSaving] = useState(false)
   const [showApiKey, setShowApiKey] = useState(false)
+  const [activeTab, setActiveTab] = useState<'polish' | 'expand'>('polish')
 
   useEffect(() => {
     if (isOpen) {
@@ -134,18 +137,52 @@ function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             </select>
           </div>
 
-          {/* Polish Prompt */}
+          {/* 提示词标签页 */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              润色提示词
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              提示词配置
             </label>
-            <textarea
-              value={settings.polishPrompt}
-              onChange={(e) => setSettings({ ...settings, polishPrompt: e.target.value })}
-              rows={4}
-              placeholder="输入润色时使用的提示词..."
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary focus:border-transparent resize-none"
-            />
+            {/* 标签页头部 */}
+            <div className="flex border-b border-gray-200 dark:border-gray-700 mb-3">
+              <button
+                onClick={() => setActiveTab('polish')}
+                className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                  activeTab === 'polish'
+                    ? 'border-primary text-primary'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                }`}
+              >
+                润色
+              </button>
+              <button
+                onClick={() => setActiveTab('expand')}
+                className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                  activeTab === 'expand'
+                    ? 'border-primary text-primary'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                }`}
+              >
+                扩写
+              </button>
+            </div>
+            {/* 标签页内容 */}
+            {activeTab === 'polish' ? (
+              <textarea
+                value={settings.polishPrompt}
+                onChange={(e) => setSettings({ ...settings, polishPrompt: e.target.value })}
+                rows={4}
+                placeholder="输入润色时使用的提示词..."
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary focus:border-transparent resize-none"
+              />
+            ) : (
+              <textarea
+                value={settings.expandPrompt}
+                onChange={(e) => setSettings({ ...settings, expandPrompt: e.target.value })}
+                rows={4}
+                placeholder="输入扩写时使用的提示词..."
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary focus:border-transparent resize-none"
+              />
+            )}
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
               选中的文本将追加到提示词后面发送给 AI
             </p>

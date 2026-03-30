@@ -279,6 +279,7 @@ export interface AISettings {
   baseUrl: string
   model: string
   polishPrompt: string
+  expandPrompt: string
 }
 
 // 默认设置
@@ -287,6 +288,7 @@ const defaultAISettings: AISettings = {
   baseUrl: 'https://api.deepseek.com',
   model: 'deepseek-chat',
   polishPrompt: '请对以下文本进行润色，使其更加流畅、专业，同时保持原意不变。只返回润色后的文本，不要添加任何解释或说明：\n\n',
+  expandPrompt: '请对以下文本进行扩写，丰富内容细节，增加相关论述，使其更加完整充实。只返回扩写后的文本，不要添加任何解释或说明：\n\n',
 }
 
 // 设置存储

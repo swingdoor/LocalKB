@@ -26,8 +26,9 @@ function Editor({ document, vaultId, onUpdate }: EditorProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [editingCanvas, setEditingCanvas] = useState<{ id: string; data: string; isEditing?: boolean } | null>(null)
   
-  // 润色相关状态
+  // 润色/扩写相关状态
   const [showPolishModal, setShowPolishModal] = useState(false)
+  const [aiMode, setAiMode] = useState<'polish' | 'expand'>('polish')
   const [polishState, setPolishState] = useState<{
     originalText: string
     polishedText: string
@@ -285,6 +286,7 @@ function Editor({ document, vaultId, onUpdate }: EditorProps) {
     // 保存选区范围
     const { from, to } = editor.state.selection
     
+    setAiMode('polish')
     setPolishState({
       originalText: text,
       polishedText: '',
@@ -314,6 +316,47 @@ function Editor({ document, vaultId, onUpdate }: EditorProps) {
         ...prev,
         isLoading: false,
         error: err.message || '润色请求失败',
+      }))
+    }
+  }
+
+  // 处理扩写请求
+  const handleExpand = async (text: string) => {
+    if (!editor) return
+    
+    // 保存选区范围
+    const { from, to } = editor.state.selection
+    
+    setAiMode('expand')
+    setPolishState({
+      originalText: text,
+      polishedText: '',
+      isLoading: true,
+      selectionRange: { from, to },
+    })
+    setShowPolishModal(true)
+
+    try {
+      const result = await window.electronAPI.ai.expand(text)
+      
+      if (result.success && result.text) {
+        setPolishState(prev => ({
+          ...prev,
+          polishedText: result.text!,
+          isLoading: false,
+        }))
+      } else {
+        setPolishState(prev => ({
+          ...prev,
+          isLoading: false,
+          error: result.error || '扩写失败',
+        }))
+      }
+    } catch (err: any) {
+      setPolishState(prev => ({
+        ...prev,
+        isLoading: false,
+        error: err.message || '扩写请求失败',
       }))
     }
   }
@@ -390,6 +433,7 @@ function Editor({ document, vaultId, onUpdate }: EditorProps) {
               vaultId={vaultId} 
               onEditCanvas={handleEditCanvas}
               onPolish={handlePolish}
+              onExpand={handleExpand}
               hidden={showPolishModal}
             />
             <EditorContent editor={editor} className="prose max-w-none" />
@@ -417,9 +461,10 @@ function Editor({ document, vaultId, onUpdate }: EditorProps) {
         />
       )}
 
-      {/* 润色确认模态框 */}
+      {/* 润色/扩写确认模态框 */}
       <PolishConfirmModal
         isOpen={showPolishModal}
+        mode={aiMode}
         originalText={polishState.originalText}
         polishedText={polishState.polishedText}
         isLoading={polishState.isLoading}
