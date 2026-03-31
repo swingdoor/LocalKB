@@ -8,7 +8,7 @@
 :root {
   --bg-primary: #FFFFFF;
   --bg-secondary: #F8FAFC;
-  --bg-sidebar: #F1F5F9;
+  --bg-sidebar: #F8FAFC;
   --bg-editor: #FFFFFF;
   --text-primary: #1E293B;
   --text-secondary: #64748B;
@@ -20,7 +20,7 @@
 :root:not([data-theme]) {
   --bg-primary: #FFFFFF;
   --bg-secondary: #F8FAFC;
-  --bg-sidebar: #F1F5F9;
+  --bg-sidebar: #F8FAFC;
   --bg-editor: #FFFFFF;
   --text-primary: #1E293B;
   --text-secondary: #64748B;
@@ -30,7 +30,7 @@
 /* 暖黄主题 */
 [data-theme="warm"] {
   --bg-primary: #FFFEFA;
-  --bg-secondary: #FFF9E6;
+  --bg-secondary: #FFFBEB;
   --bg-sidebar: #FFF9E6;
   --bg-editor: #FFFEFA;
   --text-primary: #78350F;
@@ -41,8 +41,8 @@
 /* 浅绿主题 */
 [data-theme="green"] {
   --bg-primary: #FAFEFB;
-  --bg-secondary: #E8F5E9;
-  --bg-sidebar: #E8F5E9;
+  --bg-secondary: #F0FDF4;
+  --bg-sidebar: #F0FDF4;
   --bg-editor: #FAFEFB;
   --text-primary: #14532D;
   --text-secondary: #166534;
