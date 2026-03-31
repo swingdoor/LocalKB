@@ -21,6 +21,9 @@ const ResizableImageComponent = ({ node, updateAttributes, selected }: any) => {
 
   const { src, alt, title, width, textAlign } = node.attrs
 
+  // 判断是否是画布（画布的 title 属性是 base64 编码的 Excalidraw 数据）
+  const isCanvas = title && title.length > 100
+
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
@@ -71,7 +74,7 @@ const ResizableImageComponent = ({ node, updateAttributes, selected }: any) => {
           ref={imgRef}
           src={src}
           alt={alt || ''}
-          title={title || ''}
+          title={isCanvas ? '' : (title || '')}
           style={{
             width: '100%',
             height: 'auto',

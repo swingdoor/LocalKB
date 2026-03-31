@@ -64,6 +64,17 @@
     "files": [
       "dist/**/*"
     ],
+    "extraResources": [
+      {
+        "from": "node_modules/@excalidraw/excalidraw/dist/prod/fonts",
+        "to": "fonts",
+        "filter": ["**/*"]
+      }
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/@excalidraw/excalidraw/**"
+    ],
     "icon": "icon.png",
     "win": {
       "target": "nsis",

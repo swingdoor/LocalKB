@@ -2,6 +2,13 @@ import React, { useState, useCallback, useEffect, useRef, lazy, Suspense } from 
 import type { Document } from '@shared/types'
 import { cleanExcalidrawData } from '../utils/canvasUtils'
 
+// 设置 Excalidraw 字体路径（打包后使用本地字体）
+const isDev = process.env.NODE_ENV === 'development' || !window.location.href.includes('file://')
+if (!isDev) {
+  // 打包后从 resources/fonts 目录加载字体
+  window.EXCALIDRAW_ASSET_PATH = '../../../resources/fonts/'
+}
+
 // 懒加载 Excalidraw
 const Excalidraw = lazy(async () => {
   const module = await import('@excalidraw/excalidraw')
