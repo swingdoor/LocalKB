@@ -11,10 +11,12 @@ import CommandMenu from './CommandMenu'
 import EditorBubbleMenu from './BubbleMenu'
 import DrawingEditorModal from './DrawingEditorModal'
 import PolishConfirmModal from './PolishConfirmModal'
+import TocPanel from './TocPanel'
 import { useCommandMenu } from '../hooks/useCommandMenu'
 import { useAIProcess } from '../hooks/useAIProcess'
 import { useCanvasEdit } from '../hooks/useCanvasEdit'
 import { useDebouncedSave } from '../hooks/useDebouncedSave'
+import { useToc } from '../hooks/useToc'
 import type { Document } from '@shared/types'
 
 interface EditorProps {
@@ -114,6 +116,9 @@ function Editor({ document, vaultId, onUpdate }: EditorProps) {
   // 画布编辑 Hook（需要 editor 实例）
   const canvasEdit = useCanvasEdit(editor)
 
+  // TOC Hook（需要在 editor 初始化后使用）
+  const { toc, isPanelVisible, togglePanel, handleNavigate } = useToc(editor)
+
   // 命令菜单 Hook（需要 editor 实例和回调）
   const commandMenu = useCommandMenu(editor, {
     onSelectImage: async () => {
@@ -183,34 +188,56 @@ function Editor({ document, vaultId, onUpdate }: EditorProps) {
               <span>上次保存 {formatTime(document.updatedAt)}</span>
             </div>
           </div>
-          <button
-            onClick={handleExportPDF}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 hover:text-primary hover:bg-gray-100 rounded-lg transition-colors"
-            title="导出PDF"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-            <span>导出PDF</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={togglePanel}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 hover:text-primary hover:bg-gray-100 rounded-lg transition-colors"
+              title={isPanelVisible ? "隐藏目录" : "显示目录"}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7" />
+              </svg>
+              <span>目录</span>
+            </button>
+            <button
+              onClick={handleExportPDF}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 hover:text-primary hover:bg-gray-100 rounded-lg transition-colors"
+              title="导出PDF"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <span>导出PDF</span>
+            </button>
+          </div>
         </div>
       </div>
 
       {/* 编辑器内容 */}
-      <div className="flex-1 overflow-y-auto px-8 pb-8">
-        {editor && (
-          <>
-            <EditorBubbleMenu
-              editor={editor}
-              vaultId={vaultId}
-              onEditCanvas={canvasEdit.handleEditCanvas}
-              onPolish={handlePolish}
-              onExpand={handleExpand}
-              hidden={aiProcess.showPolishModal || !!canvasEdit.editingCanvas}
-            />
-            <EditorContent editor={editor} className="prose max-w-none" />
-          </>
-        )}
+      <div className="flex-1 flex overflow-hidden">
+        <div className="flex-1 overflow-y-auto px-8 pb-8">
+          {editor && (
+            <>
+              <EditorBubbleMenu
+                editor={editor}
+                vaultId={vaultId}
+                onEditCanvas={canvasEdit.handleEditCanvas}
+                onPolish={handlePolish}
+                onExpand={handleExpand}
+                hidden={aiProcess.showPolishModal || !!canvasEdit.editingCanvas}
+              />
+              <EditorContent editor={editor} className="prose max-w-none" />
+            </>
+          )}
+        </div>
+
+        {/* 目录面板 */}
+        <TocPanel
+          toc={toc}
+          onNavigate={handleNavigate}
+          isVisible={isPanelVisible}
+          onToggle={togglePanel}
+        />
       </div>
 
       {/* 命令菜单 */}
