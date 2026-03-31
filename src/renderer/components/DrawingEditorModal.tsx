@@ -45,19 +45,19 @@ function DrawingEditorModal({ canvasData, onSave, onClose }: DrawingEditorModalP
     }
   }, [canvasData])
 
-  // 保存画布为图片
+  // 保存画布为图片（SVG 格式用于预览）
   const handleSave = async () => {
     try {
-      const { exportToBlob } = await import('@excalidraw/excalidraw')
+      const { exportToSvg } = await import('@excalidraw/excalidraw')
       const { elements, appState, files } = dataRef.current
-      
+
       // 如果没有元素，使用默认尺寸
       if (!elements || elements.length === 0) {
         setError('画布为空，请先添加内容')
         return
       }
-      
-      const blob = await exportToBlob({
+
+      const svg = await exportToSvg({
         elements,
         appState: {
           ...appState,
@@ -66,27 +66,21 @@ function DrawingEditorModal({ canvasData, onSave, onClose }: DrawingEditorModalP
         },
         files,
         exportPadding: 20,
-        quality: 1,
-        getDimensions: (width, height) => ({
-          width: width * 4,
-          height: height * 4,
-          scale: 4,
-        }),
       })
-      
-      // 转换为 base64
-      const reader = new FileReader()
-      reader.onloadend = () => {
-        const base64 = reader.result as string
-        // 同时保存 Excalidraw 原始数据
-        const excalidrawData = JSON.stringify({
-          elements: dataRef.current.elements,
-          appState: dataRef.current.appState,
-          files: dataRef.current.files,
-        })
-        onSave(base64, excalidrawData)
-      }
-      reader.readAsDataURL(blob)
+
+      // SVG 元素转为字符串
+      const svgString = new XMLSerializer().serializeToString(svg)
+      // 转 Base64 data URL
+      const svgBase64 = btoa(unescape(encodeURIComponent(svgString)))
+      const dataUrl = `data:image/svg+xml;base64,${svgBase64}`
+
+      // 同时保存 Excalidraw 原始数据
+      const excalidrawData = JSON.stringify({
+        elements: dataRef.current.elements,
+        appState: dataRef.current.appState,
+        files: dataRef.current.files,
+      })
+      onSave(dataUrl, excalidrawData)
     } catch (err) {
       console.error('Failed to export canvas:', err)
       setError('导出画布失败')

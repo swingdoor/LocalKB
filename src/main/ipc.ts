@@ -85,7 +85,7 @@ export function setupIpcHandlers(mainWindow: BrowserWindow) {
     })
 
     if (!result.canceled && result.filePath) {
-      const base64Data = imageData.replace(/^data:image\/\w+;base64,/, '')
+      const base64Data = imageData.replace(/^data:image\/[^;]+;base64,/, '')
       fs.writeFileSync(result.filePath, base64Data, 'base64')
       return true
     }

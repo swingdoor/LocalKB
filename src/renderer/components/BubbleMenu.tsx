@@ -34,6 +34,41 @@ function EditorBubbleMenu({ editor, vaultId, onEditCanvas, onPolish, onExpand, h
   const downloadImage = async () => {
     const { node } = editor.state.selection as any
     if (node?.type.name === 'image' && node.attrs.src) {
+      // 判断是否是画布（有 excalidraw 数据）
+      if (node.attrs.title) {
+        try {
+          // 解码 Excalidraw 数据
+          const excalidrawData = JSON.parse(decodeURIComponent(atob(node.attrs.title)))
+          const { exportToBlob } = await import('@excalidraw/excalidraw')
+          const blob = await exportToBlob({
+            elements: excalidrawData.elements,
+            appState: {
+              ...excalidrawData.appState,
+              exportBackground: true,
+            },
+            files: excalidrawData.files,
+            exportPadding: 20,
+            quality: 1,
+            mimeType: 'image/png',
+            getDimensions: (width: number, height: number) => ({
+              width: width * 4,
+              height: height * 4,
+              scale: 4,
+            }),
+          })
+          // 转为 base64 data URL
+          const reader = new FileReader()
+          reader.onloadend = async () => {
+            const base64 = reader.result as string
+            await window.electronAPI.file.downloadImage(base64, '画布.png')
+          }
+          reader.readAsDataURL(blob)
+          return
+        } catch (e) {
+          console.error('导出画布PNG失败:', e)
+        }
+      }
+      // 非画布图片，直接下载
       await window.electronAPI.file.downloadImage(node.attrs.src, 'image.png')
     }
   }
