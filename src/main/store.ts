@@ -2,6 +2,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { app } from 'electron'
 import { v4 as uuidv4 } from 'uuid'
+import type { Document, Vault, VaultMeta, AISettings } from '@shared/types'
 
 // 数据存储路径
 const getDataPath = () => {
@@ -17,27 +18,6 @@ const ensureDir = (dirPath: string) => {
   if (!fs.existsSync(dirPath)) {
     fs.mkdirSync(dirPath, { recursive: true })
   }
-}
-
-// 类型定义
-export interface Document {
-  id: string
-  title: string
-  content: string
-  type: 'document' | 'drawing'
-  createdAt: string
-  updatedAt: string
-}
-
-export interface Vault {
-  id: string
-  name: string
-  createdAt: string
-}
-
-export interface VaultMeta {
-  vault: Vault
-  documents: string[] // 文档 ID 列表
 }
 
 // Vault 操作
@@ -271,15 +251,6 @@ function extractTextFromContent(node: any): string {
   }
   
   return text.trim()
-}
-
-// AI 设置接口
-export interface AISettings {
-  apiKey: string
-  baseUrl: string
-  model: string
-  polishPrompt: string
-  expandPrompt: string
 }
 
 // 默认设置

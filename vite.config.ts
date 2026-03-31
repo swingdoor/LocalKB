@@ -15,6 +15,7 @@ export default defineConfig({
       '@': path.resolve(__dirname, 'src'),
       '@renderer': path.resolve(__dirname, 'src/renderer'),
       '@main': path.resolve(__dirname, 'src/main'),
+      '@shared': path.resolve(__dirname, 'src/shared'),
     },
   },
   define: {
@@ -22,6 +23,7 @@ export default defineConfig({
     'process.env.IS_PREACT': JSON.stringify('false'),
   },
   server: {
-    port: 5173,
+    port: 5180,
+    strictPort: true,
   },
 })

@@ -1,108 +1,74 @@
 import { contextBridge, ipcRenderer } from 'electron'
-
-// 类型定义
-export interface Document {
-  id: string
-  title: string
-  content: string
-  type: 'document' | 'drawing'
-  createdAt: string
-  updatedAt: string
-}
-
-export interface Vault {
-  id: string
-  name: string
-  createdAt: string
-}
-
-export interface ImageFile {
-  path: string
-  name: string
-  data: string
-}
-
-export interface AISettings {
-  apiKey: string
-  baseUrl: string
-  model: string
-  polishPrompt: string
-  expandPrompt: string
-}
-
-export interface PolishResult {
-  success: boolean
-  text?: string
-  error?: string
-}
+import { IPC_CHANNELS } from '@shared/ipc-channels'
+import type { Document, Vault, ImageFile, AISettings, PolishResult } from '@shared/types'
 
 // 暴露给渲染进程的 API
 const electronAPI = {
   // 窗口控制
   window: {
-    minimize: () => ipcRenderer.send('window:minimize'),
-    maximize: () => ipcRenderer.send('window:maximize'),
-    close: () => ipcRenderer.send('window:close'),
-    isMaximized: () => ipcRenderer.invoke('window:isMaximized') as Promise<boolean>,
+    minimize: () => ipcRenderer.send(IPC_CHANNELS.WINDOW.MINIMIZE),
+    maximize: () => ipcRenderer.send(IPC_CHANNELS.WINDOW.MAXIMIZE),
+    close: () => ipcRenderer.send(IPC_CHANNELS.WINDOW.CLOSE),
+    isMaximized: () => ipcRenderer.invoke(IPC_CHANNELS.WINDOW.IS_MAXIMIZED) as Promise<boolean>,
     onMaximizedChange: (callback: (isMaximized: boolean) => void) => {
-      ipcRenderer.on('window:maximized', (_, isMaximized) => callback(isMaximized))
+      ipcRenderer.on(IPC_CHANNELS.WINDOW.MAXIMIZED_CHANGE, (_, isMaximized) => callback(isMaximized))
       return () => {
-        ipcRenderer.removeAllListeners('window:maximized')
+        ipcRenderer.removeAllListeners(IPC_CHANNELS.WINDOW.MAXIMIZED_CHANGE)
       }
     },
   },
 
   // Vault 操作
   vault: {
-    list: () => ipcRenderer.invoke('vault:list') as Promise<Vault[]>,
-    create: (name: string) => ipcRenderer.invoke('vault:create', name) as Promise<Vault>,
-    delete: (vaultId: string) => ipcRenderer.invoke('vault:delete', vaultId) as Promise<boolean>,
+    list: () => ipcRenderer.invoke(IPC_CHANNELS.VAULT.LIST) as Promise<Vault[]>,
+    create: (name: string) => ipcRenderer.invoke(IPC_CHANNELS.VAULT.CREATE, name) as Promise<Vault>,
+    delete: (vaultId: string) => ipcRenderer.invoke(IPC_CHANNELS.VAULT.DELETE, vaultId) as Promise<boolean>,
     rename: (vaultId: string, newName: string) => 
-      ipcRenderer.invoke('vault:rename', vaultId, newName) as Promise<Vault | null>,
+      ipcRenderer.invoke(IPC_CHANNELS.VAULT.RENAME, vaultId, newName) as Promise<Vault | null>,
   },
 
   // Document 操作
   document: {
     list: (vaultId: string) => 
-      ipcRenderer.invoke('document:list', vaultId) as Promise<Document[]>,
+      ipcRenderer.invoke(IPC_CHANNELS.DOCUMENT.LIST, vaultId) as Promise<Document[]>,
     get: (vaultId: string, docId: string) => 
-      ipcRenderer.invoke('document:get', vaultId, docId) as Promise<Document | null>,
+      ipcRenderer.invoke(IPC_CHANNELS.DOCUMENT.GET, vaultId, docId) as Promise<Document | null>,
     create: (vaultId: string, title: string, type: 'document' | 'drawing' = 'document') => 
-      ipcRenderer.invoke('document:create', vaultId, title, type) as Promise<Document>,
+      ipcRenderer.invoke(IPC_CHANNELS.DOCUMENT.CREATE, vaultId, title, type) as Promise<Document>,
     update: (vaultId: string, docId: string, data: { title?: string; content?: string }) => 
-      ipcRenderer.invoke('document:update', vaultId, docId, data) as Promise<Document | null>,
+      ipcRenderer.invoke(IPC_CHANNELS.DOCUMENT.UPDATE, vaultId, docId, data) as Promise<Document | null>,
     delete: (vaultId: string, docId: string) => 
-      ipcRenderer.invoke('document:delete', vaultId, docId) as Promise<boolean>,
+      ipcRenderer.invoke(IPC_CHANNELS.DOCUMENT.DELETE, vaultId, docId) as Promise<boolean>,
     search: (vaultId: string, query: string) => 
-      ipcRenderer.invoke('document:search', vaultId, query) as Promise<Document[]>,
+      ipcRenderer.invoke(IPC_CHANNELS.DOCUMENT.SEARCH, vaultId, query) as Promise<Document[]>,
   },
 
   // 文件操作
   file: {
-    selectImage: () => ipcRenderer.invoke('file:selectImage') as Promise<ImageFile | null>,
+    selectImage: () => ipcRenderer.invoke(IPC_CHANNELS.FILE.SELECT_IMAGE) as Promise<ImageFile | null>,
     saveImage: (vaultId: string, imageData: string, fileName: string) => 
-      ipcRenderer.invoke('file:saveImage', vaultId, imageData, fileName) as Promise<string>,
+      ipcRenderer.invoke(IPC_CHANNELS.FILE.SAVE_IMAGE, vaultId, imageData, fileName) as Promise<string>,
     readImage: (imagePath: string) => 
-      ipcRenderer.invoke('file:readImage', imagePath) as Promise<string | null>,
+      ipcRenderer.invoke(IPC_CHANNELS.FILE.READ_IMAGE, imagePath) as Promise<string | null>,
     downloadImage: (imageData: string, defaultName: string) => 
-      ipcRenderer.invoke('file:downloadImage', imageData, defaultName) as Promise<boolean>,
+      ipcRenderer.invoke(IPC_CHANNELS.FILE.DOWNLOAD_IMAGE, imageData, defaultName) as Promise<boolean>,
     exportPDF: (title: string, htmlContent: string) =>
-      ipcRenderer.invoke('file:exportPDF', title, htmlContent) as Promise<boolean>,
+      ipcRenderer.invoke(IPC_CHANNELS.FILE.EXPORT_PDF, title, htmlContent) as Promise<boolean>,
   },
 
   // 设置操作
   settings: {
-    getAI: () => ipcRenderer.invoke('settings:getAI') as Promise<AISettings>,
+    getAI: () => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS.GET_AI) as Promise<AISettings>,
     saveAI: (settings: Partial<AISettings>) => 
-      ipcRenderer.invoke('settings:saveAI', settings) as Promise<AISettings>,
-    getTheme: () => ipcRenderer.invoke('settings:getTheme') as Promise<string>,
-    saveTheme: (theme: string) => ipcRenderer.invoke('settings:saveTheme', theme) as Promise<string>,
+      ipcRenderer.invoke(IPC_CHANNELS.SETTINGS.SAVE_AI, settings) as Promise<AISettings>,
+    getTheme: () => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS.GET_THEME) as Promise<string>,
+    saveTheme: (theme: string) => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS.SAVE_THEME, theme) as Promise<string>,
   },
 
   // AI 功能
   ai: {
-    polish: (text: string) => ipcRenderer.invoke('ai:polish', text) as Promise<PolishResult>,
-    expand: (text: string) => ipcRenderer.invoke('ai:expand', text) as Promise<PolishResult>,
+    polish: (text: string) => ipcRenderer.invoke(IPC_CHANNELS.AI.POLISH, text) as Promise<PolishResult>,
+    expand: (text: string) => ipcRenderer.invoke(IPC_CHANNELS.AI.EXPAND, text) as Promise<PolishResult>,
   },
 }
 

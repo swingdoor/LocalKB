@@ -4,15 +4,19 @@
     "module": "CommonJS",
     "lib": ["ES2020", "DOM"],
     "outDir": "dist/preload",
-    "rootDir": "src/preload",
+    "rootDir": "src",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "declaration": false,
-    "moduleResolution": "node"
+    "moduleResolution": "node",
+    "baseUrl": ".",
+    "paths": {
+      "@shared/*": ["src/shared/*"]
+    }
   },
-  "include": ["src/preload/**/*"],
+  "include": ["src/preload/**/*", "src/shared/**/*"],
   "exclude": ["node_modules"]
 }

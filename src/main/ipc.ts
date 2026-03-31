@@ -1,53 +1,107 @@
 import { ipcMain, dialog, BrowserWindow, app } from 'electron'
 import * as fs from 'fs'
 import * as path from 'path'
-import { vaultStore, documentStore, imageStore, settingsStore, AISettings } from './store'
+import { vaultStore, documentStore, imageStore, settingsStore } from './store'
+import { IPC_CHANNELS } from '@shared/ipc-channels'
+import type { AISettings, PolishResult } from '@shared/types'
+
+/**
+ * 通用 AI 调用函数
+ * 消除 polish 和 expand 的重复代码
+ */
+async function callAI(text: string, mode: 'polish' | 'expand'): Promise<PolishResult> {
+  const settings = settingsStore.getAISettings()
+  
+  if (!settings.apiKey) {
+    return { success: false, error: '请先配置 API Key' }
+  }
+
+  const prompt = mode === 'polish' ? settings.polishPrompt : settings.expandPrompt
+  const errorMsg = mode === 'polish' ? '润色失败，请检查网络和配置' : '扩写失败，请检查网络和配置'
+
+  try {
+    const response = await fetch(`${settings.baseUrl}/v1/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${settings.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: settings.model,
+        messages: [
+          {
+            role: 'user',
+            content: prompt + text,
+          },
+        ],
+        stream: false,
+      }),
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({})) as any
+      throw new Error(errorData.error?.message || `API 请求失败: ${response.status}`)
+    }
+
+    const data = await response.json() as any
+    const resultText = data.choices?.[0]?.message?.content
+
+    if (!resultText) {
+      throw new Error('AI 返回结果为空')
+    }
+
+    return { success: true, text: resultText.trim() }
+  } catch (error: any) {
+    console.error(`AI ${mode} error:`, error)
+    return { success: false, error: error.message || errorMsg }
+  }
+}
 
 export function setupIpcHandlers(mainWindow: BrowserWindow) {
   // ========== Vault 操作 ==========
-  ipcMain.handle('vault:list', async () => {
+  ipcMain.handle(IPC_CHANNELS.VAULT.LIST, async () => {
     return vaultStore.list()
   })
 
-  ipcMain.handle('vault:create', async (_, name: string) => {
+  ipcMain.handle(IPC_CHANNELS.VAULT.CREATE, async (_, name: string) => {
     return vaultStore.create(name)
   })
 
-  ipcMain.handle('vault:delete', async (_, vaultId: string) => {
+  ipcMain.handle(IPC_CHANNELS.VAULT.DELETE, async (_, vaultId: string) => {
     return vaultStore.delete(vaultId)
   })
 
-  ipcMain.handle('vault:rename', async (_, vaultId: string, newName: string) => {
+  ipcMain.handle(IPC_CHANNELS.VAULT.RENAME, async (_, vaultId: string, newName: string) => {
     return vaultStore.rename(vaultId, newName)
   })
 
   // ========== Document 操作 ==========
-  ipcMain.handle('document:list', async (_, vaultId: string) => {
+  ipcMain.handle(IPC_CHANNELS.DOCUMENT.LIST, async (_, vaultId: string) => {
     return documentStore.list(vaultId)
   })
 
-  ipcMain.handle('document:get', async (_, vaultId: string, docId: string) => {
+  ipcMain.handle(IPC_CHANNELS.DOCUMENT.GET, async (_, vaultId: string, docId: string) => {
     return documentStore.get(vaultId, docId)
   })
 
-  ipcMain.handle('document:create', async (_, vaultId: string, title: string, type: 'document' | 'drawing') => {
+  ipcMain.handle(IPC_CHANNELS.DOCUMENT.CREATE, async (_, vaultId: string, title: string, type: 'document' | 'drawing') => {
     return documentStore.create(vaultId, title, type)
   })
 
-  ipcMain.handle('document:update', async (_, vaultId: string, docId: string, data: { title?: string; content?: string }) => {
+  ipcMain.handle(IPC_CHANNELS.DOCUMENT.UPDATE, async (_, vaultId: string, docId: string, data: { title?: string; content?: string }) => {
     return documentStore.update(vaultId, docId, data)
   })
 
-  ipcMain.handle('document:delete', async (_, vaultId: string, docId: string) => {
+  ipcMain.handle(IPC_CHANNELS.DOCUMENT.DELETE, async (_, vaultId: string, docId: string) => {
     return documentStore.delete(vaultId, docId)
   })
 
-  ipcMain.handle('document:search', async (_, vaultId: string, query: string) => {
+  ipcMain.handle(IPC_CHANNELS.DOCUMENT.SEARCH, async (_, vaultId: string, query: string) => {
     return documentStore.search(vaultId, query)
   })
 
   // ========== 文件操作 ==========
-  ipcMain.handle('file:selectImage', async () => {
+  ipcMain.handle(IPC_CHANNELS.FILE.SELECT_IMAGE, async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
       properties: ['openFile'],
       filters: [
@@ -68,15 +122,15 @@ export function setupIpcHandlers(mainWindow: BrowserWindow) {
     return null
   })
 
-  ipcMain.handle('file:saveImage', async (_, vaultId: string, imageData: string, fileName: string) => {
+  ipcMain.handle(IPC_CHANNELS.FILE.SAVE_IMAGE, async (_, vaultId: string, imageData: string, fileName: string) => {
     return imageStore.save(vaultId, imageData, fileName)
   })
 
-  ipcMain.handle('file:readImage', async (_, imagePath: string) => {
+  ipcMain.handle(IPC_CHANNELS.FILE.READ_IMAGE, async (_, imagePath: string) => {
     return imageStore.read(imagePath)
   })
 
-  ipcMain.handle('file:downloadImage', async (_, imageData: string, defaultName: string) => {
+  ipcMain.handle(IPC_CHANNELS.FILE.DOWNLOAD_IMAGE, async (_, imageData: string, defaultName: string) => {
     const result = await dialog.showSaveDialog(mainWindow, {
       defaultPath: defaultName,
       filters: [
@@ -93,7 +147,7 @@ export function setupIpcHandlers(mainWindow: BrowserWindow) {
   })
 
   // ========== PDF 导出 ==========
-  ipcMain.handle('file:exportPDF', async (_, title: string, htmlContent: string) => {
+  ipcMain.handle(IPC_CHANNELS.FILE.EXPORT_PDF, async (_, title: string, htmlContent: string) => {
     const result = await dialog.showSaveDialog(mainWindow, {
       defaultPath: `${title || '文档'}.pdf`,
       filters: [
@@ -200,111 +254,24 @@ export function setupIpcHandlers(mainWindow: BrowserWindow) {
   })
 
   // ========== 设置操作 ==========
-  ipcMain.handle('settings:getAI', async () => {
+  ipcMain.handle(IPC_CHANNELS.SETTINGS.GET_AI, async () => {
     return settingsStore.getAISettings()
   })
 
-  ipcMain.handle('settings:saveAI', async (_, settings: Partial<AISettings>) => {
+  ipcMain.handle(IPC_CHANNELS.SETTINGS.SAVE_AI, async (_, settings: Partial<AISettings>) => {
     return settingsStore.saveAISettings(settings)
   })
 
-  ipcMain.handle('settings:getTheme', async () => {
+  ipcMain.handle(IPC_CHANNELS.SETTINGS.GET_THEME, async () => {
     return settingsStore.getTheme()
   })
 
-  ipcMain.handle('settings:saveTheme', async (_, theme: string) => {
+  ipcMain.handle(IPC_CHANNELS.SETTINGS.SAVE_THEME, async (_, theme: string) => {
     return settingsStore.saveTheme(theme)
   })
 
-  // ========== AI 润色 ==========
-  ipcMain.handle('ai:polish', async (_, text: string) => {
-    const settings = settingsStore.getAISettings()
-    
-    if (!settings.apiKey) {
-      throw new Error('请先配置 API Key')
-    }
+  // ========== AI 润色与扩写 ==========
+  ipcMain.handle(IPC_CHANNELS.AI.POLISH, async (_, text: string) => callAI(text, 'polish'))
 
-    try {
-      const response = await fetch(`${settings.baseUrl}/v1/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${settings.apiKey}`,
-        },
-        body: JSON.stringify({
-          model: settings.model,
-          messages: [
-            {
-              role: 'user',
-              content: settings.polishPrompt + text,
-            },
-          ],
-          stream: false,
-        }),
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({})) as any
-        throw new Error(errorData.error?.message || `API 请求失败: ${response.status}`)
-      }
-
-      const data = await response.json() as any
-      const polishedText = data.choices?.[0]?.message?.content
-
-      if (!polishedText) {
-        throw new Error('AI 返回结果为空')
-      }
-
-      return { success: true, text: polishedText.trim() }
-    } catch (error: any) {
-      console.error('AI polish error:', error)
-      return { success: false, error: error.message || '润色失败，请检查网络和配置' }
-    }
-  })
-
-  // ========== AI 扩写 ==========
-  ipcMain.handle('ai:expand', async (_, text: string) => {
-    const settings = settingsStore.getAISettings()
-    
-    if (!settings.apiKey) {
-      throw new Error('请先配置 API Key')
-    }
-
-    try {
-      const response = await fetch(`${settings.baseUrl}/v1/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${settings.apiKey}`,
-        },
-        body: JSON.stringify({
-          model: settings.model,
-          messages: [
-            {
-              role: 'user',
-              content: settings.expandPrompt + text,
-            },
-          ],
-          stream: false,
-        }),
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({})) as any
-        throw new Error(errorData.error?.message || `API 请求失败: ${response.status}`)
-      }
-
-      const data = await response.json() as any
-      const expandedText = data.choices?.[0]?.message?.content
-
-      if (!expandedText) {
-        throw new Error('AI 返回结果为空')
-      }
-
-      return { success: true, text: expandedText.trim() }
-    } catch (error: any) {
-      console.error('AI expand error:', error)
-      return { success: false, error: error.message || '扩写失败，请检查网络和配置' }
-    }
-  })
+  ipcMain.handle(IPC_CHANNELS.AI.EXPAND, async (_, text: string) => callAI(text, 'expand'))
 }
