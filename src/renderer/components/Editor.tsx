@@ -171,7 +171,7 @@ function Editor({ document, vaultId, onUpdate }: EditorProps) {
   }, [editor, aiProcess])
 
   return (
-    <div className="h-full flex flex-col bg-white">
+    <div className="h-full flex flex-col">
       {/* 文档标题 */}
       <div className="px-8 pt-8 pb-4">
         <div className="flex items-start justify-between">
@@ -180,10 +180,11 @@ function Editor({ document, vaultId, onUpdate }: EditorProps) {
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="w-full text-3xl font-bold text-text bg-transparent border-none outline-none placeholder-gray-300"
+              className="w-full text-3xl font-bold bg-transparent border-none outline-none"
+              style={{ color: 'var(--text-primary)' }}
               placeholder="无标题"
             />
-            <div className="mt-2 text-xs text-gray-400 flex items-center gap-4">
+            <div className="mt-2 text-xs flex items-center gap-4" style={{ color: 'var(--text-secondary)' }}>
               <span>创建于 {formatTime(document.createdAt)}</span>
               <span>上次保存 {formatTime(document.updatedAt)}</span>
             </div>
@@ -191,7 +192,8 @@ function Editor({ document, vaultId, onUpdate }: EditorProps) {
           <div className="flex items-center gap-2">
             <button
               onClick={togglePanel}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 hover:text-primary hover:bg-gray-100 rounded-lg transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition-colors"
+              style={{ color: 'var(--text-secondary)' }}
               title={isPanelVisible ? "隐藏目录" : "显示目录"}
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -201,7 +203,8 @@ function Editor({ document, vaultId, onUpdate }: EditorProps) {
             </button>
             <button
               onClick={handleExportPDF}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 hover:text-primary hover:bg-gray-100 rounded-lg transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition-colors"
+              style={{ color: 'var(--text-secondary)' }}
               title="导出PDF"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -215,7 +218,7 @@ function Editor({ document, vaultId, onUpdate }: EditorProps) {
 
       {/* 编辑器内容 */}
       <div className="flex-1 flex overflow-hidden">
-        <div className="flex-1 overflow-y-auto px-8 pb-8">
+        <div className="flex-1 overflow-y-auto px-8 pb-8" style={{ backgroundColor: 'var(--bg-editor)' }}>
           {editor && (
             <>
               <EditorBubbleMenu

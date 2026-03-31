@@ -14,6 +14,7 @@ function App() {
     currentDocument,
     isSearchOpen,
     isSettingsOpen,
+    theme,
     loadVaults,
     loadTheme,
     selectDocument,
@@ -52,11 +53,14 @@ function App() {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-background">
+    <div 
+      className="flex flex-col h-screen" 
+      style={{ backgroundColor: 'var(--bg-primary)' }}
+    >
       <TitleBar />
       <div className="flex flex-1 overflow-hidden">
         <Sidebar />
-        <main className="flex-1 overflow-hidden">
+        <main className="flex-1 overflow-hidden" style={{ backgroundColor: 'var(--bg-primary)' }}>
           {currentDocument ? (
             currentDocument.type === 'drawing' ? (
               <ExcalidrawCanvas

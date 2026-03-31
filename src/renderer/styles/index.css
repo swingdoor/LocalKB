@@ -15,26 +15,38 @@
   --border-color: #E2E8F0;
 }
 
+/* 白色主题 */
+:root[data-theme=""],
+:root:not([data-theme]) {
+  --bg-primary: #FFFFFF;
+  --bg-secondary: #F8FAFC;
+  --bg-sidebar: #F1F5F9;
+  --bg-editor: #FFFFFF;
+  --text-primary: #1E293B;
+  --text-secondary: #64748B;
+  --border-color: #E2E8F0;
+}
+
 /* 暖黄主题 */
 [data-theme="warm"] {
-  --bg-primary: #FFFBEB;
-  --bg-secondary: #FEF3C7;
-  --bg-sidebar: #FDE68A;
-  --bg-editor: #FFFEF5;
+  --bg-primary: #FFFEFA;
+  --bg-secondary: #FFF9E6;
+  --bg-sidebar: #FFF9E6;
+  --bg-editor: #FFFEFA;
   --text-primary: #78350F;
   --text-secondary: #92400E;
-  --border-color: #FCD34D;
+  --border-color: #FFF3D6;
 }
 
 /* 浅绿主题 */
 [data-theme="green"] {
-  --bg-primary: #F0FDF4;
-  --bg-secondary: #DCFCE7;
-  --bg-sidebar: #BBF7D0;
-  --bg-editor: #F7FEF9;
+  --bg-primary: #FAFEFB;
+  --bg-secondary: #E8F5E9;
+  --bg-sidebar: #E8F5E9;
+  --bg-editor: #FAFEFB;
   --text-primary: #14532D;
   --text-secondary: #166534;
-  --border-color: #86EFAC;
+  --border-color: #E0F2E3;
 }
 
 /* 全局样式 */

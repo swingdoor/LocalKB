@@ -4,8 +4,8 @@ import type { Document } from '@shared/types'
 
 const themes = [
   { id: 'white', label: '白色', color: '#FFFFFF', border: '#E2E8F0' },
-  { id: 'warm', label: '暖黄', color: '#FEF3C7', border: '#FCD34D' },
-  { id: 'green', label: '浅绿', color: '#DCFCE7', border: '#86EFAC' },
+  { id: 'warm', label: '暖黄', color: '#FCD34D', border: '#F59E0B' },
+  { id: 'green', label: '浅绿', color: '#86EFAC', border: '#16A34A' },
 ]
 
 function Sidebar() {
@@ -53,13 +53,14 @@ function Sidebar() {
   }
 
   return (
-    <aside className="w-60 h-full bg-sidebar border-r border-border flex flex-col">
+    <aside className="w-60 h-full border-r flex flex-col" style={{ backgroundColor: 'var(--bg-sidebar)', borderColor: 'var(--border-color)' }}>
       {/* Vault 选择器 */}
-      <div className="p-3 border-b border-border">
+      <div className="p-3 border-b" style={{ borderColor: 'var(--border-color)' }}>
         <div className="relative">
           <button
             onClick={() => setIsVaultDropdownOpen(!isVaultDropdownOpen)}
-            className="w-full flex items-center justify-between px-3 py-2 text-sm bg-white border border-border rounded-lg hover:bg-gray-50 transition-colors"
+            className="w-full flex items-center justify-between px-3 py-2 text-sm rounded-lg transition-colors"
+            style={{ backgroundColor: 'var(--bg-primary)', borderColor: 'var(--border-color)', borderWidth: '1px' }}
           >
             <span className="truncate font-medium">
               {currentVault?.name || '选择知识库'}
@@ -71,7 +72,9 @@ function Sidebar() {
           
           {/* Vault 下拉菜单 */}
           {isVaultDropdownOpen && (
-            <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-border rounded-lg shadow-lg z-10 max-h-64 overflow-y-auto">
+            <div className="absolute top-full left-0 right-0 mt-1 rounded-lg shadow-lg z-10 max-h-64 overflow-y-auto"
+              style={{ backgroundColor: 'var(--bg-editor)', borderColor: 'var(--border-color)', borderWidth: '1px' }}
+            >
               {vaults.map(vault => (
                 <div
                   key={vault.id}
@@ -155,13 +158,14 @@ function Sidebar() {
         {/* 搜索按钮 */}
         <button
           onClick={() => setSearchOpen(true)}
-          className="w-full mt-2 flex items-center gap-2 px-3 py-2 text-sm text-gray-500 bg-white border border-border rounded-lg hover:bg-gray-50 transition-colors"
+          className="w-full mt-2 flex items-center gap-2 px-3 py-2 text-sm rounded-lg transition-colors"
+          style={{ backgroundColor: 'var(--bg-editor)', color: 'var(--text-secondary)', borderColor: 'var(--border-color)', borderWidth: '1px' }}
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
           </svg>
           <span>搜索...</span>
-          <span className="ml-auto text-xs text-gray-400">Ctrl+K</span>
+          <span className="ml-auto text-xs" style={{ color: 'var(--text-secondary)' }}>Ctrl+K</span>
         </button>
       </div>
       

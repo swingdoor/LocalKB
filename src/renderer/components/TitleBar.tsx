@@ -25,10 +25,10 @@ function TitleBar() {
   }
 
   return (
-    <div className="flex items-center h-9 bg-sidebar border-b border-border select-none">
+    <div className="flex items-center h-9 border-b select-none" style={{ backgroundColor: 'var(--bg-sidebar)', borderColor: 'var(--border-color)' }}>
       {/* 拖拽区域 */}
       <div className="flex-1 h-full flex items-center px-4" style={{ WebkitAppRegion: 'drag' } as any}>
-        <span className="text-sm font-medium text-text">极简笔记</span>
+        <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>极简笔记</span>
       </div>
       
       {/* 窗口控制按钮 */}
@@ -36,7 +36,8 @@ function TitleBar() {
         {/* 最小化 */}
         <button
           onClick={handleMinimize}
-          className="w-12 h-full flex items-center justify-center hover:bg-gray-200 transition-colors"
+          className="w-12 h-full flex items-center justify-center transition-colors"
+          style={{ color: 'var(--text-primary)' }}
           title="最小化"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -47,7 +48,8 @@ function TitleBar() {
         {/* 最大化/还原 */}
         <button
           onClick={handleMaximize}
-          className="w-12 h-full flex items-center justify-center hover:bg-gray-200 transition-colors"
+          className="w-12 h-full flex items-center justify-center transition-colors"
+          style={{ color: 'var(--text-primary)' }}
           title={isMaximized ? '还原' : '最大化'}
         >
           {isMaximized ? (
@@ -64,7 +66,8 @@ function TitleBar() {
         {/* 关闭 */}
         <button
           onClick={handleClose}
-          className="w-12 h-full flex items-center justify-center hover:bg-red-500 hover:text-white transition-colors"
+          className="w-12 h-full flex items-center justify-center transition-colors"
+          style={{ color: 'var(--text-primary)' }}
           title="关闭"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

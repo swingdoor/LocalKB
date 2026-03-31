@@ -52,8 +52,11 @@ function TocNodeRow({
   return (
     <div className="select-none">
       <div
-        className="flex items-center gap-1 py-1 px-2 rounded cursor-pointer hover:bg-gray-100 group transition-colors text-sm"
-        style={{ paddingLeft: `${indentPx + 8}px` }}
+        className="flex items-center gap-1 py-1 px-2 rounded cursor-pointer group transition-colors text-sm"
+        style={{ 
+          paddingLeft: `${indentPx + 8}px`,
+          backgroundColor: 'var(--bg-secondary)',
+        }}
         onClick={handleClick}
         title={node.text}
         role="treeitem"
@@ -63,7 +66,8 @@ function TocNodeRow({
         {hasChildren ? (
           <button
             onClick={handleToggle}
-            className="w-4 h-4 flex items-center justify-center text-gray-400 hover:text-gray-600 flex-shrink-0"
+            className="w-4 h-4 flex items-center justify-center flex-shrink-0"
+            style={{ color: 'var(--text-secondary)' }}
             aria-label={isExpanded ? '折叠' : '展开'}
           >
             <svg
@@ -94,8 +98,8 @@ function TocNodeRow({
         </span>
 
         {/* 标题文本 */}
-        <span className="truncate flex-1 text-gray-700 group-hover:text-gray-900">
-          {node.text || <span className="text-gray-400 italic">无标题</span>}
+        <span className="truncate flex-1 group-hover:opacity-80" style={{ color: 'var(--text-primary)' }}>
+          {node.text || <span className="italic" style={{ color: 'var(--text-secondary)' }}>无标题</span>}
         </span>
       </div>
 
@@ -187,18 +191,20 @@ function TocPanel({ toc, onNavigate, isVisible = true, onToggle }: TocPanelProps
 
   return (
     <div
-      className="flex flex-col h-full bg-white border-l border-border transition-all duration-200"
+      className="flex flex-col h-full border-l transition-all duration-200"
       style={{
         width: isVisible ? '260px' : '0px',
         minWidth: isVisible ? '260px' : '0px',
         overflow: isVisible ? 'visible' : 'hidden',
+        backgroundColor: 'var(--bg-editor)',
+        borderColor: 'var(--border-color)',
       }}
       role="navigation"
       aria-label="文档目录"
     >
       {/* 面板头部 */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-border flex-shrink-0">
-        <span className="text-sm font-medium text-gray-700">目录</span>
+      <div className="flex items-center justify-between px-3 py-2 border-b flex-shrink-0" style={{ borderColor: 'var(--border-color)' }}>
+        <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>目录</span>
         {onToggle && (
           <button
             onClick={onToggle}
