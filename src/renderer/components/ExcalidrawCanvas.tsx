@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef, lazy, Suspense } from 'react'
-import type { Document } from '../App'
+import type { Document } from '@shared/types'
+import { cleanExcalidrawData } from '../utils/canvasUtils'
 
 // 懒加载 Excalidraw
 const Excalidraw = lazy(async () => {
@@ -48,6 +49,12 @@ function ExcalidrawCanvas({ document, onUpdate }: ExcalidrawCanvasProps) {
     files: {},
   })
 
+  // 使用 ref 稳定 onUpdate 引用，避免 store 更新导致防抖失效
+  const onUpdateRef = useRef(onUpdate)
+  useEffect(() => {
+    onUpdateRef.current = onUpdate
+  }, [onUpdate])
+
   // 格式化时间
   const formatTime = (dateStr: string) => {
     const date = new Date(dateStr)
@@ -71,17 +78,19 @@ function ExcalidrawCanvas({ document, onUpdate }: ExcalidrawCanvasProps) {
         return
       }
       
+      const { activeElements, cleanedFiles } = cleanExcalidrawData(elements, files)
+      
       const blob = await exportToBlob({
-        elements,
+        elements: activeElements,
         appState: {
           ...appState,
           exportWithDarkMode: false,
           exportBackground: true,
         },
-        files,
+        files: cleanedFiles,
         exportPadding: 20,
         quality: 1,
-        getDimensions: (width, height) => ({
+        getDimensions: (width: number, height: number) => ({
           width: width * 4,
           height: height * 4,
           scale: 4,
@@ -125,8 +134,9 @@ function ExcalidrawCanvas({ document, onUpdate }: ExcalidrawCanvasProps) {
     }
     saveTimeoutRef.current = setTimeout(() => {
       const { elements, appState, files } = dataRef.current
+      const { activeElements, cleanedFiles } = cleanExcalidrawData(elements, files)
       const content = JSON.stringify({
-        elements,
+        elements: activeElements,
         appState: {
           viewBackgroundColor: appState?.viewBackgroundColor,
           currentItemFontFamily: appState?.currentItemFontFamily,
@@ -134,21 +144,21 @@ function ExcalidrawCanvas({ document, onUpdate }: ExcalidrawCanvasProps) {
           scrollX: appState?.scrollX,
           scrollY: appState?.scrollY,
         },
-        files,
+        files: cleanedFiles,
       })
-      onUpdate({ content })
+      onUpdateRef.current({ content })
     }, 1000)
-  }, [onUpdate])
+  }, [])
 
   // 标题变化时保存
   useEffect(() => {
     if (title !== document.title) {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
       saveTimeoutRef.current = setTimeout(() => {
-        onUpdate({ title })
+        onUpdateRef.current({ title })
       }, 500)
     }
-  }, [title, document.title, onUpdate])
+  }, [title, document.title])
 
   // 清理定时器
   useEffect(() => {
@@ -166,7 +176,8 @@ function ExcalidrawCanvas({ document, onUpdate }: ExcalidrawCanvasProps) {
   const initialData = getInitialData()
 
   const handleChange = useCallback((elements: readonly any[], appState: any, files: any) => {
-    dataRef.current = { elements: [...elements], appState, files }
+    const { activeElements, cleanedFiles } = cleanExcalidrawData(elements, files)
+    dataRef.current = { elements: activeElements, appState, files: cleanedFiles }
     saveContent()
   }, [saveContent])
 
@@ -235,6 +246,7 @@ function ExcalidrawCanvas({ document, onUpdate }: ExcalidrawCanvasProps) {
                   appState: {
                     ...initialData.appState,
                     collaborators: new Map(),
+                    currentItemFontFamily: initialData.appState?.currentItemFontFamily ?? 5, // 5 = Excalifont（内置 Xiaolai 小赖字体作为中文 fallback）
                   },
                   files: initialData.files,
                 }}

@@ -1,4 +1,5 @@
-import React, { useState, useCallback, useRef, lazy, Suspense } from 'react'
+import { useState, useCallback, useRef, lazy, Suspense } from 'react'
+import { cleanExcalidrawData } from '../utils/canvasUtils'
 
 // 懒加载 Excalidraw
 const Excalidraw = lazy(async () => {
@@ -51,20 +52,21 @@ function DrawingEditorModal({ canvasData, onSave, onClose }: DrawingEditorModalP
       const { exportToSvg } = await import('@excalidraw/excalidraw')
       const { elements, appState, files } = dataRef.current
 
-      // 如果没有元素，使用默认尺寸
       if (!elements || elements.length === 0) {
         setError('画布为空，请先添加内容')
         return
       }
 
+      const { activeElements, cleanedFiles } = cleanExcalidrawData(elements, files)
+
       const svg = await exportToSvg({
-        elements,
+        elements: activeElements,
         appState: {
           ...appState,
           exportWithDarkMode: false,
           exportBackground: true,
         },
-        files,
+        files: cleanedFiles,
         exportPadding: 20,
       })
 
@@ -76,9 +78,9 @@ function DrawingEditorModal({ canvasData, onSave, onClose }: DrawingEditorModalP
 
       // 同时保存 Excalidraw 原始数据
       const excalidrawData = JSON.stringify({
-        elements: dataRef.current.elements,
+        elements: activeElements,
         appState: dataRef.current.appState,
-        files: dataRef.current.files,
+        files: cleanedFiles,
       })
       onSave(dataUrl, excalidrawData)
     } catch (err) {
@@ -88,7 +90,8 @@ function DrawingEditorModal({ canvasData, onSave, onClose }: DrawingEditorModalP
   }
 
   const handleChange = useCallback((elements: readonly any[], appState: any, files: any) => {
-    dataRef.current = { elements: [...elements], appState, files }
+    const { activeElements, cleanedFiles } = cleanExcalidrawData(elements, files)
+    dataRef.current = { elements: activeElements, appState, files: cleanedFiles }
   }, [])
 
   const initialData = getInitialData()
@@ -134,6 +137,7 @@ function DrawingEditorModal({ canvasData, onSave, onClose }: DrawingEditorModalP
                 appState: {
                   ...initialData.appState,
                   collaborators: new Map(),
+                  currentItemFontFamily: initialData.appState?.currentItemFontFamily ?? 5, // 5 = Excalifont（内置 Xiaolai 小赖字体作为中文 fallback）
                 },
                 files: initialData.files,
               }}
