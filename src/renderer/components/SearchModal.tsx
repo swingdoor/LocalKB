@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react'
-import type { Document } from '../App'
+import { useState, useEffect, useRef } from 'react'
+import type { Document } from '@shared/types'
 
 interface SearchModalProps {
   vaultId: string

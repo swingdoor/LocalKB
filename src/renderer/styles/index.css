@@ -2,6 +2,8 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Excalidraw 0.18.0 中文手写字体由库本身处理（使用 Xiaolai 小赖字体作为 CJK fallback） */
+
 /* 主题变量定义 */
 :root {
   --bg-primary: #FFFFFF;

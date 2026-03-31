@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { BubbleMenu, Editor } from '@tiptap/react'
 
 interface BubbleMenuProps {
@@ -10,7 +10,7 @@ interface BubbleMenuProps {
   hidden?: boolean
 }
 
-function EditorBubbleMenu({ editor, vaultId, onEditCanvas, onPolish, onExpand, hidden = false }: BubbleMenuProps) {
+function EditorBubbleMenu({ editor, vaultId: _vaultId, onEditCanvas, onPolish, onExpand, hidden = false }: BubbleMenuProps) {
   const [linkUrl, setLinkUrl] = useState('')
   const [showLinkInput, setShowLinkInput] = useState(false)
 
@@ -107,12 +107,6 @@ function EditorBubbleMenu({ editor, vaultId, onEditCanvas, onPolish, onExpand, h
     if (node?.type.name === 'image' && node.attrs.alt?.startsWith('canvas-')) {
       onEditCanvas?.(node.attrs.alt, node.attrs.src || '')
     }
-  }
-
-  // 检查是否有选区
-  const hasSelection = () => {
-    const { from, to } = editor.state.selection
-    return from !== to || isImageSelected()
   }
 
   // 渲染链接输入

@@ -1,22 +1,6 @@
 import React, { useState } from 'react'
-import type { Vault, Document } from '../App'
-
-interface SidebarProps {
-  vaults: Vault[]
-  currentVault: Vault | null
-  documents: Document[]
-  currentDocument: Document | null
-  theme: string
-  onCreateVault: (name: string) => void
-  onDeleteVault: (vaultId: string) => void
-  onSwitchVault: (vault: Vault) => void
-  onCreateDocument: (type: 'document' | 'drawing') => void
-  onSelectDocument: (doc: Document) => void
-  onDeleteDocument: (docId: string) => void
-  onOpenSearch: () => void
-  onOpenSettings: () => void
-  onThemeChange: (theme: string) => void
-}
+import { useAppStore } from '../stores/appStore'
+import type { Document } from '@shared/types'
 
 const themes = [
   { id: 'white', label: '白色', color: '#FFFFFF', border: '#E2E8F0' },
@@ -24,22 +8,26 @@ const themes = [
   { id: 'green', label: '浅绿', color: '#DCFCE7', border: '#86EFAC' },
 ]
 
-function Sidebar({
-  vaults,
-  currentVault,
-  documents,
-  currentDocument,
-  theme,
-  onCreateVault,
-  onDeleteVault,
-  onSwitchVault,
-  onCreateDocument,
-  onSelectDocument,
-  onDeleteDocument,
-  onOpenSearch,
-  onOpenSettings,
-  onThemeChange,
-}: SidebarProps) {
+function Sidebar() {
+  // 从 store 获取状态和 actions
+  const {
+    vaults,
+    currentVault,
+    documents,
+    currentDocument,
+    theme,
+    createVault,
+    deleteVault,
+    switchVault,
+    createDocument,
+    selectDocument,
+    deleteDocument,
+    setSearchOpen,
+    setSettingsOpen,
+    setTheme,
+  } = useAppStore()
+
+  // 本地 UI 状态
   const [isVaultDropdownOpen, setIsVaultDropdownOpen] = useState(false)
   const [isCreatingVault, setIsCreatingVault] = useState(false)
   const [newVaultName, setNewVaultName] = useState('')
@@ -48,7 +36,7 @@ function Sidebar({
 
   const handleCreateVault = () => {
     if (newVaultName.trim()) {
-      onCreateVault(newVaultName.trim())
+      createVault(newVaultName.trim())
       setNewVaultName('')
       setIsCreatingVault(false)
     }
@@ -93,7 +81,7 @@ function Sidebar({
                 >
                   <button
                     onClick={() => {
-                      onSwitchVault(vault)
+                      switchVault(vault)
                       setIsVaultDropdownOpen(false)
                     }}
                     className={`flex-1 px-3 py-2 text-left text-sm ${
@@ -106,7 +94,7 @@ function Sidebar({
                     onClick={(e) => {
                       e.stopPropagation()
                       if (confirm(`确定删除知识库"${vault.name}"吗？此操作不可恢复。`)) {
-                        onDeleteVault(vault.id)
+                        deleteVault(vault.id)
                       }
                     }}
                     className="px-2 py-1 mr-1 text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
@@ -166,7 +154,7 @@ function Sidebar({
         
         {/* 搜索按钮 */}
         <button
-          onClick={onOpenSearch}
+          onClick={() => setSearchOpen(true)}
           className="w-full mt-2 flex items-center gap-2 px-3 py-2 text-sm text-gray-500 bg-white border border-border rounded-lg hover:bg-gray-50 transition-colors"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -181,7 +169,7 @@ function Sidebar({
       {currentVault && (
         <div className="p-3 flex gap-2">
           <button
-            onClick={() => onCreateDocument('document')}
+            onClick={() => createDocument(undefined, 'document')}
             className="flex-1 flex items-center justify-center gap-1 px-3 py-2 text-sm bg-primary text-white rounded-lg hover:bg-primary-700 transition-colors"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -190,7 +178,7 @@ function Sidebar({
             文档
           </button>
           <button
-            onClick={() => onCreateDocument('drawing')}
+            onClick={() => createDocument(undefined, 'drawing')}
             className="flex-1 flex items-center justify-center gap-1 px-3 py-2 text-sm border border-primary text-primary rounded-lg hover:bg-selected transition-colors"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -208,7 +196,7 @@ function Sidebar({
             {documents.map(doc => (
               <button
                 key={doc.id}
-                onClick={() => onSelectDocument(doc)}
+                onClick={() => selectDocument(doc)}
                 onContextMenu={(e) => handleContextMenu(e, doc)}
                 className={`w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg transition-colors ${
                   currentDocument?.id === doc.id
@@ -249,7 +237,7 @@ function Sidebar({
             {themes.map(t => (
               <button
                 key={t.id}
-                onClick={() => onThemeChange(t.id)}
+                onClick={() => setTheme(t.id)}
                 className={`w-6 h-6 rounded-full border-2 transition-transform hover:scale-110 ${
                   theme === t.id ? 'ring-2 ring-primary ring-offset-1' : ''
                 }`}
@@ -262,7 +250,7 @@ function Sidebar({
         
         {/* AI设置按钮 */}
         <button
-          onClick={onOpenSettings}
+          onClick={() => setSettingsOpen(true)}
           className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -286,7 +274,7 @@ function Sidebar({
           >
             <button
               onClick={() => {
-                onDeleteDocument(contextMenuDoc.id)
+                deleteDocument(contextMenuDoc.id)
                 closeContextMenu()
               }}
               className="w-full px-3 py-2 text-left text-sm text-red-500 hover:bg-red-50"
