@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import { IPC_CHANNELS } from '@shared/ipc-channels'
-import type { Document, Vault, ImageFile, AISettings, PolishResult } from '@shared/types'
+import { IPC_CHANNELS } from '../shared/ipc-channels'
+import type { Document, Vault, ImageFile, AISettings, PolishResult } from '../shared/types'
 
 // 暴露给渲染进程的 API
 const electronAPI = {
@@ -70,6 +70,11 @@ const electronAPI = {
     polish: (text: string) => ipcRenderer.invoke(IPC_CHANNELS.AI.POLISH, text) as Promise<PolishResult>,
     expand: (text: string) => ipcRenderer.invoke(IPC_CHANNELS.AI.EXPAND, text) as Promise<PolishResult>,
   },
+
+  // 应用资源路径
+  app: {
+    getAssetPath: () => ipcRenderer.invoke(IPC_CHANNELS.APP.GET_ASSET_PATH) as Promise<string>,
+  },
 }
 
 // 暴露 API 到 window 对象
@@ -79,5 +84,6 @@ contextBridge.exposeInMainWorld('electronAPI', electronAPI)
 declare global {
   interface Window {
     electronAPI: typeof electronAPI
+    EXCALIDRAW_ASSET_PATH?: string
   }
 }

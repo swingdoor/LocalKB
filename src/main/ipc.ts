@@ -2,8 +2,8 @@ import { ipcMain, dialog, BrowserWindow, app } from 'electron'
 import * as fs from 'fs'
 import * as path from 'path'
 import { vaultStore, documentStore, imageStore, settingsStore } from './store'
-import { IPC_CHANNELS } from '@shared/ipc-channels'
-import type { AISettings, PolishResult } from '@shared/types'
+import { IPC_CHANNELS } from '../shared/ipc-channels'
+import type { AISettings, PolishResult } from '../shared/types'
 
 /**
  * 通用 AI 调用函数
@@ -148,6 +148,12 @@ export function setupIpcHandlers(mainWindow: BrowserWindow) {
 
   // ========== PDF 导出 ==========
   ipcMain.handle(IPC_CHANNELS.FILE.EXPORT_PDF, async (_, title: string, htmlContent: string) => {
+    const safeTitle = (title || '文档')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+
     const result = await dialog.showSaveDialog(mainWindow, {
       defaultPath: `${title || '文档'}.pdf`,
       filters: [
@@ -215,7 +221,7 @@ export function setupIpcHandlers(mainWindow: BrowserWindow) {
   </style>
 </head>
 <body>
-  <h1>${title || '无标题'}</h1>
+  <h1>${safeTitle}</h1>
   ${htmlContent}
 </body>
 </html>`

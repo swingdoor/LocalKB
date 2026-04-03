@@ -2,15 +2,20 @@ import React, { useState, useCallback, useEffect, useRef, lazy, Suspense } from 
 import type { Document } from '@shared/types'
 import { cleanExcalidrawData } from '../utils/canvasUtils'
 
-// 设置 Excalidraw 字体路径（打包后使用本地字体）
-const isDev = process.env.NODE_ENV === 'development' || !window.location.href.includes('file://')
-if (!isDev) {
-  // 打包后从 resources/fonts 目录加载字体
-  window.EXCALIDRAW_ASSET_PATH = '../../../resources/fonts/'
-}
+// 初始化 Excalidraw 字体路径（必须在 Excalidraw import 之前完成）
+const fontPathReady = (async () => {
+  const isPackaged = window.location.href.includes('file://')
+  if (isPackaged) {
+    const assetPath = await window.electronAPI.app.getAssetPath()
+    if (assetPath) {
+      window.EXCALIDRAW_ASSET_PATH = assetPath
+    }
+  }
+})()
 
-// 懒加载 Excalidraw
+// 懒加载 Excalidraw（等待字体路径设置完成后再 import）
 const Excalidraw = lazy(async () => {
+  await fontPathReady
   const module = await import('@excalidraw/excalidraw')
   return { default: module.Excalidraw }
 })
@@ -182,7 +187,7 @@ function ExcalidrawCanvas({ document, onUpdate }: ExcalidrawCanvasProps) {
 
   const initialData = getInitialData()
 
-  const handleChange = useCallback((elements: readonly any[], appState: any, files: any) => {
+  const handleChange = useCallback((elements: any[], appState: any, files: any) => {
     const { activeElements, cleanedFiles } = cleanExcalidrawData(elements, files)
     dataRef.current = { elements: activeElements, appState, files: cleanedFiles }
     saveContent()

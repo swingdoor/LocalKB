@@ -2,7 +2,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { app } from 'electron'
 import { v4 as uuidv4 } from 'uuid'
-import type { Document, Vault, VaultMeta, AISettings } from '@shared/types'
+import type { Document, Vault, VaultMeta, AISettings } from '../shared/types'
 
 // 数据存储路径
 const getDataPath = () => {
@@ -348,23 +348,31 @@ export const imageStore = {
   save(vaultId: string, imageData: string, fileName: string): string {
     const imagesPath = path.join(getVaultsPath(), vaultId, 'images')
     ensureDir(imagesPath)
-    
+
     const ext = path.extname(fileName) || '.png'
     const id = uuidv4()
     const imagePath = path.join(imagesPath, `${id}${ext}`)
-    
+
     // 处理 base64 数据
     const base64Data = imageData.replace(/^data:image\/\w+;base64,/, '')
     fs.writeFileSync(imagePath, base64Data, 'base64')
-    
+
     return imagePath
   },
 
   // 读取图片为 base64
   read(imagePath: string): string | null {
-    if (fs.existsSync(imagePath)) {
-      const data = fs.readFileSync(imagePath)
-      const ext = path.extname(imagePath).slice(1)
+    const vaultsPath = getVaultsPath()
+    const resolvedPath = path.resolve(imagePath)
+    // 防止路径穿越攻击：确保路径在 vault 目录内
+    if (!resolvedPath.startsWith(path.resolve(vaultsPath))) {
+      console.error('Image path traversal attempt:', imagePath)
+      return null
+    }
+
+    if (fs.existsSync(resolvedPath)) {
+      const data = fs.readFileSync(resolvedPath)
+      const ext = path.extname(resolvedPath).slice(1)
       return `data:image/${ext};base64,${data.toString('base64')}`
     }
     return null

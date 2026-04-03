@@ -42,6 +42,9 @@ export const IPC_CHANNELS = {
     IS_MAXIMIZED: 'window:isMaximized',
     MAXIMIZED_CHANGE: 'window:maximized',
   },
+  APP: {
+    GET_ASSET_PATH: 'app:getAssetPath',
+  },
 } as const
 
 /**
