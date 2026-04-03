@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { BubbleMenu, Editor } from '@tiptap/react'
 
 interface BubbleMenuProps {
@@ -13,6 +13,23 @@ interface BubbleMenuProps {
 function EditorBubbleMenu({ editor, vaultId: _vaultId, onEditCanvas, onPolish, onExpand, hidden = false }: BubbleMenuProps) {
   const [linkUrl, setLinkUrl] = useState('')
   const [showLinkInput, setShowLinkInput] = useState(false)
+  const [fontDropdownOpen, setFontDropdownOpen] = useState(false)
+  const [sizeDropdownOpen, setSizeDropdownOpen] = useState(false)
+  const [headingDropdownOpen, setHeadingDropdownOpen] = useState(false)
+
+  // 点击外部关闭下拉框
+  useEffect(() => {
+    const handleClickOutside = () => {
+      setFontDropdownOpen(false)
+      setSizeDropdownOpen(false)
+      setHeadingDropdownOpen(false)
+    }
+
+    if (fontDropdownOpen || sizeDropdownOpen || headingDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [fontDropdownOpen, sizeDropdownOpen, headingDropdownOpen])
 
   // 设置链接
   const setLink = () => {
@@ -200,9 +217,198 @@ function EditorBubbleMenu({ editor, vaultId: _vaultId, onEditCanvas, onPolish, o
     )
   }
 
+  // 字体选择器
+  const renderFontFamilyDropdown = () => {
+    const fonts = [
+      { label: '默认', value: '' },
+      { label: '宋体', value: 'SimSun, serif' },
+      { label: '黑体', value: 'SimHei, sans-serif' },
+      { label: '楷体', value: 'KaiTi, serif' },
+      { label: '微软雅黑', value: 'Microsoft YaHei, sans-serif' },
+      { label: '苹方', value: 'PingFang SC, sans-serif' },
+      { label: 'Arial', value: 'Arial, sans-serif' },
+      { label: 'Times New Roman', value: 'Times New Roman, serif' },
+      { label: 'Consolas', value: 'Consolas, monospace' },
+      { label: 'Monaco', value: 'Monaco, monospace' },
+      { label: 'Courier New', value: 'Courier New, monospace' },
+    ]
+
+    const currentFont = editor.getAttributes('textStyle').fontFamily || ''
+    const currentLabel = fonts.find(f => f.value === currentFont)?.label || '默认'
+
+    return (
+      <div className="relative">
+        <button
+          onClick={() => setFontDropdownOpen(!fontDropdownOpen)}
+          className="px-2 py-1 text-sm border rounded hover:bg-gray-50 transition-colors"
+          style={{
+            minWidth: '80px',
+            maxWidth: '120px',
+            height: '32px'
+          }}
+          title="字体"
+        >
+          {currentLabel} ▼
+        </button>
+        {fontDropdownOpen && (
+          <div
+            className="absolute top-full left-0 mt-1 bg-white border rounded shadow-lg z-50"
+            style={{ minWidth: '120px', maxHeight: '300px', overflowY: 'auto' }}
+          >
+            {fonts.map(font => (
+              <button
+                key={font.value}
+                onClick={() => {
+                  if (font.value) {
+                    editor.chain().focus().setFontFamily(font.value).run()
+                  } else {
+                    editor.chain().focus().unsetFontFamily().run()
+                  }
+                  setFontDropdownOpen(false)
+                }}
+                className={`w-full px-3 py-2 text-left text-sm transition-colors ${
+                  currentFont === font.value ? 'bg-blue-100' : 'hover:bg-gray-50'
+                }`}
+                style={{ fontFamily: font.value || 'inherit' }}
+              >
+                {font.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // 字号选择器
+  const renderFontSizeDropdown = () => {
+    const sizes = [
+      { label: '小', value: '12px' },
+      { label: '正常', value: '16px' },
+      { label: '大', value: '20px' },
+      { label: '特大', value: '24px' },
+    ]
+
+    const currentSize = editor.getAttributes('textStyle').fontSize || '16px'
+    const currentLabel = sizes.find(s => s.value === currentSize)?.label || '正常'
+
+    return (
+      <div className="relative">
+        <button
+          onClick={() => setSizeDropdownOpen(!sizeDropdownOpen)}
+          className="px-2 py-1 text-sm border rounded hover:bg-gray-50 transition-colors"
+          style={{
+            minWidth: '70px',
+            height: '32px'
+          }}
+          title="字号"
+        >
+          {currentLabel} ▼
+        </button>
+        {sizeDropdownOpen && (
+          <div
+            className="absolute top-full left-0 mt-1 bg-white border rounded shadow-lg z-50"
+            style={{ minWidth: '100px' }}
+          >
+            {sizes.map(size => (
+              <button
+                key={size.value}
+                onClick={() => {
+                  editor.chain().focus().setFontSize(size.value).run()
+                  setSizeDropdownOpen(false)
+                }}
+                className={`w-full px-3 py-2 text-left text-sm transition-colors ${
+                  currentSize === size.value ? 'bg-blue-100' : 'hover:bg-gray-50'
+                }`}
+                style={{ fontSize: size.value }}
+              >
+                {size.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // 标题选择器
+  const renderHeadingDropdown = () => {
+    const headings = [
+      { label: '正文', value: 0 },
+      { label: '标题 1', value: 1 },
+      { label: '标题 2', value: 2 },
+      { label: '标题 3', value: 3 },
+      { label: '标题 4', value: 4 },
+      { label: '标题 5', value: 5 },
+      { label: '标题 6', value: 6 },
+    ]
+
+    let currentLevel = 0
+    for (let i = 1; i <= 6; i++) {
+      if (editor.isActive('heading', { level: i })) {
+        currentLevel = i
+        break
+      }
+    }
+
+    const currentLabel = headings.find(h => h.value === currentLevel)?.label || '正文'
+
+    return (
+      <div className="relative">
+        <button
+          onClick={() => setHeadingDropdownOpen(!headingDropdownOpen)}
+          className="px-2 py-1 text-sm border rounded hover:bg-gray-50 transition-colors"
+          style={{
+            minWidth: '80px',
+            height: '32px'
+          }}
+          title="标题"
+        >
+          {currentLabel} ▼
+        </button>
+        {headingDropdownOpen && (
+          <div
+            className="absolute top-full left-0 mt-1 bg-white border rounded shadow-lg z-50"
+            style={{ minWidth: '120px' }}
+          >
+            {headings.map(heading => (
+              <button
+                key={heading.value}
+                onClick={() => {
+                  if (heading.value === 0) {
+                    editor.chain().focus().setParagraph().run()
+                  } else {
+                    editor.chain().focus().toggleHeading({ level: heading.value as 1 | 2 | 3 | 4 | 5 | 6 }).run()
+                  }
+                  setHeadingDropdownOpen(false)
+                }}
+                className={`w-full px-3 py-2 text-left transition-colors ${
+                  currentLevel === heading.value ? 'bg-blue-100' : 'hover:bg-gray-50'
+                }`}
+                style={{
+                  fontSize: heading.value === 0 ? '14px' : `${20 - heading.value}px`,
+                  fontWeight: heading.value > 0 ? 'bold' : 'normal'
+                }}
+              >
+                {heading.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   // 渲染文本菜单
   const renderTextMenu = () => (
     <>
+      {/* 样式选择器组 */}
+      {renderFontFamilyDropdown()}
+      {renderFontSizeDropdown()}
+      {renderHeadingDropdown()}
+
+      <div className="divider" />
+
       {/* 加粗 */}
       <button
         onClick={() => editor.chain().focus().toggleBold().run()}
