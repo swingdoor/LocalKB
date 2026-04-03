@@ -6,6 +6,9 @@ import TaskList from '@tiptap/extension-task-list'
 import TaskItem from '@tiptap/extension-task-item'
 import TextAlign from '@tiptap/extension-text-align'
 import Placeholder from '@tiptap/extension-placeholder'
+import TextStyle from '@tiptap/extension-text-style'
+import FontFamily from '@tiptap/extension-font-family'
+import FontSize from '../extensions/FontSize'
 import ResizableImage from '../extensions/ResizableImage'
 import CommandMenu from './CommandMenu'
 import EditorBubbleMenu from './BubbleMenu'
@@ -71,6 +74,13 @@ function Editor({ document, vaultId, onUpdate }: EditorProps) {
       ResizableImage.configure({
         inline: false,
         allowBase64: true,
+      }),
+      TextStyle,
+      FontFamily.configure({
+        types: ['textStyle'],
+      }),
+      FontSize.configure({
+        types: ['textStyle'],
       }),
     ],
     content: (() => {
