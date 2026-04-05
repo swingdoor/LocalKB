@@ -9,6 +9,7 @@ import Placeholder from '@tiptap/extension-placeholder'
 import TextStyle from '@tiptap/extension-text-style'
 import FontFamily from '@tiptap/extension-font-family'
 import FontSize from '../extensions/FontSize'
+import Color from '../extensions/Color'
 import ResizableImage from '../extensions/ResizableImage'
 import CommandMenu from './CommandMenu'
 import EditorBubbleMenu from './BubbleMenu'
@@ -28,7 +29,7 @@ interface EditorProps {
   onUpdate: (data: Partial<Document>) => void
 }
 
-function Editor({ document, vaultId, onUpdate }: EditorProps) {
+function Editor({ document, vaultId: _vaultId, onUpdate }: EditorProps) {
   const [title, setTitle] = useState(document.title)
 
   // 使用自定义 Hooks
@@ -57,6 +58,8 @@ function Editor({ document, vaultId, onUpdate }: EditorProps) {
       }),
       Link.configure({
         openOnClick: false,
+        protocols: ['file'],
+        validate: (href) => /^https?:\/\//.test(href) || /^file:\/\/\//.test(href),
         HTMLAttributes: {
           class: 'text-primary underline cursor-pointer',
         },
@@ -80,6 +83,9 @@ function Editor({ document, vaultId, onUpdate }: EditorProps) {
         types: ['textStyle'],
       }),
       FontSize.configure({
+        types: ['textStyle'],
+      }),
+      Color.configure({
         types: ['textStyle'],
       }),
     ],
@@ -106,19 +112,32 @@ function Editor({ document, vaultId, onUpdate }: EditorProps) {
           const lineStart = $from.start()
           const posInLine = $from.pos - lineStart
 
-          // 如果在行首或行首附近（前2个字符内），插入2个全角空格的缩进
-          if (posInLine <= 2) {
-            const tr = state.tr.insertText('　　', $from.pos) // 2个全角空格
-            dispatch(tr)
-          } else {
-            // 否则插入普通Tab（2个空格）
-            const tr = state.tr.insertText('  ', $from.pos)
-            dispatch(tr)
-          }
+          // 如果在行首（前2个字符内），插入2个全角空格；否则插入2个普通空格
+          const indent = posInLine <= 2 ? '\u3000\u3000' : '  '
+          const tr = state.tr.insertText(indent, $from.pos)
+          dispatch(tr)
           return true
         }
         // 将键盘事件委托给 commandMenu
         return commandMenu.handleKeyDown(view, event)
+      },
+      handleClick: (_view, _pos, event) => {
+        const target = event.target as HTMLElement
+        const linkEl = target.closest('a[href]')
+        if (linkEl) {
+          event.preventDefault()
+          const href = linkEl.getAttribute('href')
+          if (!href) return
+          // 本地文件路径以 file:/// 开头
+          if (href.startsWith('file:///')) {
+            const filePath = href.replace('file:///', '').replace(/\//g, '\\')
+            window.electronAPI.file.openLocalFile(filePath)
+          } else {
+            window.open(href, '_blank')
+          }
+          return true
+        }
+        return false
       },
     },
   })
@@ -152,9 +171,7 @@ function Editor({ document, vaultId, onUpdate }: EditorProps) {
     }
     try {
       const htmlContent = editor.getHTML()
-      console.log('Exporting PDF:', title, htmlContent.substring(0, 100))
-      const result = await window.electronAPI.file.exportPDF(title, htmlContent)
-      console.log('Export result:', result)
+      await window.electronAPI.file.exportPDF(title, htmlContent)
     } catch (err) {
       console.error('Export PDF error:', err)
     }
@@ -233,7 +250,6 @@ function Editor({ document, vaultId, onUpdate }: EditorProps) {
             <>
               <EditorBubbleMenu
                 editor={editor}
-                vaultId={vaultId}
                 onEditCanvas={canvasEdit.handleEditCanvas}
                 onPolish={handlePolish}
                 onExpand={handleExpand}

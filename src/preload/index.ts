@@ -54,6 +54,8 @@ const electronAPI = {
       ipcRenderer.invoke(IPC_CHANNELS.FILE.DOWNLOAD_IMAGE, imageData, defaultName) as Promise<boolean>,
     exportPDF: (title: string, htmlContent: string) =>
       ipcRenderer.invoke(IPC_CHANNELS.FILE.EXPORT_PDF, title, htmlContent) as Promise<boolean>,
+    openLocalFile: (filePath: string) =>
+      ipcRenderer.invoke(IPC_CHANNELS.FILE.OPEN_LOCAL_FILE, filePath) as Promise<{ success: boolean; error?: string }>,
   },
 
   // 设置操作

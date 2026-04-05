@@ -24,6 +24,7 @@ export const IPC_CHANNELS = {
     READ_IMAGE: 'file:readImage',
     DOWNLOAD_IMAGE: 'file:downloadImage',
     EXPORT_PDF: 'file:exportPDF',
+    OPEN_LOCAL_FILE: 'file:openLocalFile',
   },
   SETTINGS: {
     GET_AI: 'settings:getAI',

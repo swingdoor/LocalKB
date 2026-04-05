@@ -27,6 +27,14 @@ ipcMain.handle(IPC_CHANNELS.APP.GET_ASSET_PATH, () => {
   return getExcalidrawAssetPath()
 })
 
+ipcMain.handle(IPC_CHANNELS.FILE.OPEN_LOCAL_FILE, async (_event, filePath: string) => {
+  const error = await shell.openPath(filePath)
+  if (error) {
+    return { success: false, error }
+  }
+  return { success: true }
+})
+
 ipcMain.on(IPC_CHANNELS.WINDOW.MINIMIZE, () => {
   mainWindow?.minimize()
 })

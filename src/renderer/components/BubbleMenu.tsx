@@ -1,21 +1,78 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { BubbleMenu, Editor } from '@tiptap/react'
+import type { NodeSelection } from '@tiptap/pm/state'
 
 interface BubbleMenuProps {
   editor: Editor
-  vaultId: string
   onEditCanvas?: (canvasId: string, imageData: string) => void
   onPolish?: (text: string) => void
   onExpand?: (text: string) => void
   hidden?: boolean
 }
 
-function EditorBubbleMenu({ editor, vaultId: _vaultId, onEditCanvas, onPolish, onExpand, hidden = false }: BubbleMenuProps) {
+// 选项常量（组件外，避免每次渲染重建）
+const FONT_OPTIONS = [
+  { label: '默认', value: '' },
+  { label: '楷体', value: 'KaiTi, serif' },
+  { label: '手写', value: 'Xiaolai, cursive' },
+] as const
+
+const SIZE_OPTIONS = [
+  { label: '小', value: '12px' },
+  { label: '正常', value: '16px' },
+  { label: '大', value: '20px' },
+  { label: '特大', value: '24px' },
+] as const
+
+const HEADING_OPTIONS = [
+  { label: '正文', value: 0 },
+  { label: '标题 1', value: 1 },
+  { label: '标题 2', value: 2 },
+  { label: '标题 3', value: 3 },
+  { label: '标题 4', value: 4 },
+  { label: '标题 5', value: 5 },
+  { label: '标题 6', value: 6 },
+] as const
+
+const COLOR_OPTIONS = [
+  { label: '默认', value: '' },
+  { label: '黑色', value: '#000000' },
+  { label: '深灰', value: '#333333' },
+  { label: '红色', value: '#E03E3E' },
+  { label: '橙色', value: '#E67E22' },
+  { label: '黄色', value: '#F1C40F' },
+  { label: '绿色', value: '#27AE60' },
+  { label: '蓝色', value: '#2980B9' },
+  { label: '紫色', value: '#8E44AD' },
+  { label: '浅灰', value: '#95A5A6' },
+] as const
+
+const PROTOCOL_OPTIONS = [
+  { label: 'https://', value: 'https://' },
+  { label: 'http://', value: 'http://' },
+  { label: '本地', value: 'local:' },
+] as const
+
+// 公共 dropdown trigger 样式
+const DROPDOWN_TRIGGER_STYLE: React.CSSProperties = {
+  width: '32px',
+  height: '28px',
+  padding: '0 6px',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  border: 'none',
+}
+
+function EditorBubbleMenu({ editor, onEditCanvas, onPolish, onExpand, hidden = false }: BubbleMenuProps) {
   const [linkUrl, setLinkUrl] = useState('')
   const [showLinkInput, setShowLinkInput] = useState(false)
+  const [linkProtocol, setLinkProtocol] = useState('https://')
+  const [protocolDropdownOpen, setProtocolDropdownOpen] = useState(false)
   const [fontDropdownOpen, setFontDropdownOpen] = useState(false)
   const [sizeDropdownOpen, setSizeDropdownOpen] = useState(false)
   const [headingDropdownOpen, setHeadingDropdownOpen] = useState(false)
+  const [colorDropdownOpen, setColorDropdownOpen] = useState(false)
 
   // 点击外部关闭下拉框
   useEffect(() => {
@@ -23,46 +80,70 @@ function EditorBubbleMenu({ editor, vaultId: _vaultId, onEditCanvas, onPolish, o
       setFontDropdownOpen(false)
       setSizeDropdownOpen(false)
       setHeadingDropdownOpen(false)
+      setColorDropdownOpen(false)
+      setProtocolDropdownOpen(false)
     }
 
-    if (fontDropdownOpen || sizeDropdownOpen || headingDropdownOpen) {
+    if (fontDropdownOpen || sizeDropdownOpen || headingDropdownOpen || colorDropdownOpen || protocolDropdownOpen) {
       document.addEventListener('mousedown', handleClickOutside)
       return () => document.removeEventListener('mousedown', handleClickOutside)
     }
-  }, [fontDropdownOpen, sizeDropdownOpen, headingDropdownOpen])
+  }, [fontDropdownOpen, sizeDropdownOpen, headingDropdownOpen, colorDropdownOpen, protocolDropdownOpen])
 
   // 设置链接
-  const setLink = () => {
+  const setLink = useCallback(() => {
     if (linkUrl) {
+      const href = linkProtocol === 'local:'
+        ? `file:///${linkUrl.replace(/\\/g, '/')}`
+        : `${linkProtocol}${linkUrl}`
       editor
         .chain()
         .focus()
-        .extendMarkRange('link')
-        .setLink({ href: linkUrl })
+        .setLink({ href })
         .run()
     } else {
       editor.chain().focus().unsetLink().run()
     }
     setShowLinkInput(false)
     setLinkUrl('')
-  }
+    setLinkProtocol('https://')
+  }, [editor, linkUrl, linkProtocol])
+
+  // 获取选中的图片节点（使用正确的 NodeSelection 类型）
+  const getSelectedImageNode = useCallback(() => {
+    const { selection } = editor.state
+    const node = (selection as NodeSelection).node
+    if (node?.type.name === 'image') {
+      return node
+    }
+    if (selection.$anchor.parent.type.name === 'image') {
+      return selection.$anchor.parent
+    }
+    return null
+  }, [editor.state])
+
+  // 判断是否选中图片
+  const isImageSelected = useCallback(() => {
+    return getSelectedImageNode() !== null
+  }, [getSelectedImageNode])
+
+  // 判断是否选中画布
+  const isCanvasSelected = useCallback(() => {
+    const node = getSelectedImageNode()
+    return node?.type.name === 'image' && node.attrs.alt?.startsWith('canvas-')
+  }, [getSelectedImageNode])
 
   // 下载图片
-  const downloadImage = async () => {
-    const { node } = editor.state.selection as any
-    if (node?.type.name === 'image' && node.attrs.src) {
-      // 判断是否是画布（有 excalidraw 数据）
+  const downloadImage = useCallback(async () => {
+    const node = getSelectedImageNode()
+    if (node?.attrs.src) {
       if (node.attrs.title) {
         try {
-          // 解码 Excalidraw 数据
           const excalidrawData = JSON.parse(decodeURIComponent(atob(node.attrs.title)))
           const { exportToBlob } = await import('@excalidraw/excalidraw')
           const blob = await exportToBlob({
             elements: excalidrawData.elements,
-            appState: {
-              ...excalidrawData.appState,
-              exportBackground: true,
-            },
+            appState: { ...excalidrawData.appState, exportBackground: true },
             files: excalidrawData.files,
             exportPadding: 20,
             quality: 1,
@@ -73,11 +154,9 @@ function EditorBubbleMenu({ editor, vaultId: _vaultId, onEditCanvas, onPolish, o
               scale: 4,
             }),
           })
-          // 转为 base64 data URL
           const reader = new FileReader()
           reader.onloadend = async () => {
-            const base64 = reader.result as string
-            await window.electronAPI.file.downloadImage(base64, '画布.png')
+            await window.electronAPI.file.downloadImage(reader.result as string, '画布.png')
           }
           reader.readAsDataURL(blob)
           return
@@ -85,52 +164,72 @@ function EditorBubbleMenu({ editor, vaultId: _vaultId, onEditCanvas, onPolish, o
           console.error('导出画布PNG失败:', e)
         }
       }
-      // 非画布图片，直接下载
       await window.electronAPI.file.downloadImage(node.attrs.src, 'image.png')
     }
-  }
-
-  // 判断是否选中图片（支持 NodeSelection）
-  const isImageSelected = () => {
-    const { selection } = editor.state
-    const node = (selection as any).node
-    if (node?.type.name === 'image') return true
-    if (selection.$anchor.parent.type.name === 'image') return true
-    return false
-  }
-
-  // 获取选中的图片节点
-  const getSelectedImageNode = () => {
-    const { selection } = editor.state
-    const node = (selection as any).node
-    if (node?.type.name === 'image') {
-      return node
-    }
-    if (selection.$anchor.parent.type.name === 'image') {
-      return selection.$anchor.parent
-    }
-    return null
-  }
-
-  // 判断是否选中画布（画布的 alt 以 canvas- 开头）
-  const isCanvasSelected = () => {
-    const node = getSelectedImageNode()
-    return node?.type.name === 'image' && node.attrs.alt?.startsWith('canvas-')
-  }
+  }, [getSelectedImageNode])
 
   // 编辑画布
-  const editCanvas = () => {
+  const editCanvas = useCallback(() => {
     const node = getSelectedImageNode()
     if (node?.type.name === 'image' && node.attrs.alt?.startsWith('canvas-')) {
       onEditCanvas?.(node.attrs.alt, node.attrs.src || '')
     }
-  }
+  }, [getSelectedImageNode, onEditCanvas])
+
+  // 解析已有链接
+  const parseExistingHref = useCallback((href: string) => {
+    const protocolMatch = href.match(/^(https?:\/\/)(.*)/)
+    if (protocolMatch) {
+      setLinkProtocol(protocolMatch[1])
+      setLinkUrl(protocolMatch[2])
+    } else if (href.startsWith('file:///')) {
+      setLinkProtocol('local:')
+      setLinkUrl(href.slice(8).replace(/\//g, '\\'))
+    } else {
+      setLinkProtocol('https://')
+      setLinkUrl(href)
+    }
+  }, [])
 
   // 渲染链接输入
   const renderLinkInput = () => (
     <>
+      <div className="relative">
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            setProtocolDropdownOpen(!protocolDropdownOpen)
+          }}
+          className="px-1 py-1 text-sm border-none outline-none bg-transparent cursor-pointer hover:bg-gray-100 rounded"
+          title="选择协议"
+        >
+          {PROTOCOL_OPTIONS.find(p => p.value === linkProtocol)?.label || 'https://'}
+        </button>
+        {protocolDropdownOpen && (
+          <div
+            className="absolute top-full left-0 mt-1 bg-white border rounded shadow-lg z-50"
+            style={{ minWidth: '100px' }}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            {PROTOCOL_OPTIONS.map(protocol => (
+              <button
+                key={protocol.value}
+                className={`bubble-dropdown-item text-sm ${
+                  linkProtocol === protocol.value ? 'is-active' : ''
+                }`}
+                onClick={() => {
+                  setLinkProtocol(protocol.value)
+                  setProtocolDropdownOpen(false)
+                }}
+              >
+                {protocol.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
       <input
-        type="url"
+        type="text"
         value={linkUrl}
         onChange={(e) => setLinkUrl(e.target.value)}
         onKeyDown={(e) => {
@@ -140,21 +239,26 @@ function EditorBubbleMenu({ editor, vaultId: _vaultId, onEditCanvas, onPolish, o
             setLinkUrl('')
           }
         }}
-        placeholder="输入链接地址..."
+        placeholder={linkProtocol === 'local:' ? '输入本地文件路径...' : '输入链接地址...'}
         className="px-2 py-1 text-sm border-none outline-none w-48"
-        autoFocus
       />
-      <button onClick={setLink} className="px-2 py-1 text-sm text-primary">
-        确定
+      <button onClick={setLink} className="p-1 text-primary" title="确定">
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+        </svg>
       </button>
       <button
         onClick={() => {
           setShowLinkInput(false)
           setLinkUrl('')
+          setLinkProtocol('https://')
         }}
-        className="px-2 py-1 text-sm text-gray-500"
+        className="p-1 text-gray-500"
+        title="取消"
       >
-        取消
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+        </svg>
       </button>
     </>
   )
@@ -164,7 +268,6 @@ function EditorBubbleMenu({ editor, vaultId: _vaultId, onEditCanvas, onPolish, o
     const isCanvas = isCanvasSelected()
     return (
       <>
-        {/* 编辑画布按钮（仅对画布显示） */}
         {isCanvas && (
           <>
             <button onClick={editCanvas} title="编辑画布">
@@ -175,8 +278,6 @@ function EditorBubbleMenu({ editor, vaultId: _vaultId, onEditCanvas, onPolish, o
             <div className="divider" />
           </>
         )}
-        
-        {/* 对齐方式 */}
         <button
           onClick={() => editor.chain().focus().setImageAlign('left').run()}
           className={getSelectedImageNode()?.attrs.textAlign === 'left' ? 'is-active' : ''}
@@ -204,10 +305,7 @@ function EditorBubbleMenu({ editor, vaultId: _vaultId, onEditCanvas, onPolish, o
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M10 12h10M4 18h16" />
           </svg>
         </button>
-        
         <div className="divider" />
-        
-        {/* 下载 */}
         <button onClick={downloadImage} title="下载图片">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
@@ -219,45 +317,39 @@ function EditorBubbleMenu({ editor, vaultId: _vaultId, onEditCanvas, onPolish, o
 
   // 字体选择器
   const renderFontFamilyDropdown = () => {
-    const fonts = [
-      { label: '默认', value: '' },
-      { label: '宋体', value: 'SimSun, serif' },
-      { label: '黑体', value: 'SimHei, sans-serif' },
-      { label: '楷体', value: 'KaiTi, serif' },
-      { label: '微软雅黑', value: 'Microsoft YaHei, sans-serif' },
-      { label: '苹方', value: 'PingFang SC, sans-serif' },
-      { label: 'Arial', value: 'Arial, sans-serif' },
-      { label: 'Times New Roman', value: 'Times New Roman, serif' },
-      { label: 'Consolas', value: 'Consolas, monospace' },
-      { label: 'Monaco', value: 'Monaco, monospace' },
-      { label: 'Courier New', value: 'Courier New, monospace' },
-    ]
-
     const currentFont = editor.getAttributes('textStyle').fontFamily || ''
-    const currentLabel = fonts.find(f => f.value === currentFont)?.label || '默认'
+    const currentLabel = FONT_OPTIONS.find(f => f.value === currentFont)?.label || '默认'
 
     return (
       <div className="relative">
         <button
-          onClick={() => setFontDropdownOpen(!fontDropdownOpen)}
-          className="px-2 py-1 text-sm border rounded hover:bg-gray-50 transition-colors"
-          style={{
-            minWidth: '80px',
-            maxWidth: '120px',
-            height: '32px'
+          onClick={(e) => {
+            e.stopPropagation()
+            setFontDropdownOpen(!fontDropdownOpen)
+            setSizeDropdownOpen(false)
+            setHeadingDropdownOpen(false)
+            setColorDropdownOpen(false)
           }}
+          className={`bubble-dropdown-trigger ${fontDropdownOpen ? 'is-active' : ''}`}
+          style={DROPDOWN_TRIGGER_STYLE}
           title="字体"
         >
-          {currentLabel} ▼
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M7 6v12M17 6v12M7 12h10" />
+          </svg>
         </button>
         {fontDropdownOpen && (
           <div
             className="absolute top-full left-0 mt-1 bg-white border rounded shadow-lg z-50"
             style={{ minWidth: '120px', maxHeight: '300px', overflowY: 'auto' }}
+            onMouseDown={(e) => e.stopPropagation()}
           >
-            {fonts.map(font => (
+            <div className="px-3 py-1.5 text-xs text-gray-500 border-b">{currentLabel}</div>
+            {FONT_OPTIONS.map(font => (
               <button
                 key={font.value}
+                className={`bubble-dropdown-item text-sm ${currentFont === font.value ? 'is-active' : ''}`}
+                style={{ fontFamily: font.value || 'inherit' }}
                 onClick={() => {
                   if (font.value) {
                     editor.chain().focus().setFontFamily(font.value).run()
@@ -266,10 +358,6 @@ function EditorBubbleMenu({ editor, vaultId: _vaultId, onEditCanvas, onPolish, o
                   }
                   setFontDropdownOpen(false)
                 }}
-                className={`w-full px-3 py-2 text-left text-sm transition-colors ${
-                  currentFont === font.value ? 'bg-blue-100' : 'hover:bg-gray-50'
-                }`}
-                style={{ fontFamily: font.value || 'inherit' }}
               >
                 {font.label}
               </button>
@@ -282,45 +370,42 @@ function EditorBubbleMenu({ editor, vaultId: _vaultId, onEditCanvas, onPolish, o
 
   // 字号选择器
   const renderFontSizeDropdown = () => {
-    const sizes = [
-      { label: '小', value: '12px' },
-      { label: '正常', value: '16px' },
-      { label: '大', value: '20px' },
-      { label: '特大', value: '24px' },
-    ]
-
     const currentSize = editor.getAttributes('textStyle').fontSize || '16px'
-    const currentLabel = sizes.find(s => s.value === currentSize)?.label || '正常'
+    const currentLabel = SIZE_OPTIONS.find(s => s.value === currentSize)?.label || '正常'
 
     return (
       <div className="relative">
         <button
-          onClick={() => setSizeDropdownOpen(!sizeDropdownOpen)}
-          className="px-2 py-1 text-sm border rounded hover:bg-gray-50 transition-colors"
-          style={{
-            minWidth: '70px',
-            height: '32px'
+          onClick={(e) => {
+            e.stopPropagation()
+            setSizeDropdownOpen(!sizeDropdownOpen)
+            setFontDropdownOpen(false)
+            setHeadingDropdownOpen(false)
+            setColorDropdownOpen(false)
           }}
+          className={`bubble-dropdown-trigger ${sizeDropdownOpen ? 'is-active' : ''}`}
+          style={DROPDOWN_TRIGGER_STYLE}
           title="字号"
         >
-          {currentLabel} ▼
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 20v-4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+          </svg>
         </button>
         {sizeDropdownOpen && (
           <div
             className="absolute top-full left-0 mt-1 bg-white border rounded shadow-lg z-50"
             style={{ minWidth: '100px' }}
+            onMouseDown={(e) => e.stopPropagation()}
           >
-            {sizes.map(size => (
+            <div className="px-3 py-1.5 text-xs text-gray-500 border-b">{currentLabel}</div>
+            {SIZE_OPTIONS.map(size => (
               <button
                 key={size.value}
+                className={`bubble-dropdown-item text-sm ${currentSize === size.value ? 'is-active' : ''}`}
                 onClick={() => {
                   editor.chain().focus().setFontSize(size.value).run()
                   setSizeDropdownOpen(false)
                 }}
-                className={`w-full px-3 py-2 text-left text-sm transition-colors ${
-                  currentSize === size.value ? 'bg-blue-100' : 'hover:bg-gray-50'
-                }`}
-                style={{ fontSize: size.value }}
               >
                 {size.label}
               </button>
@@ -333,16 +418,6 @@ function EditorBubbleMenu({ editor, vaultId: _vaultId, onEditCanvas, onPolish, o
 
   // 标题选择器
   const renderHeadingDropdown = () => {
-    const headings = [
-      { label: '正文', value: 0 },
-      { label: '标题 1', value: 1 },
-      { label: '标题 2', value: 2 },
-      { label: '标题 3', value: 3 },
-      { label: '标题 4', value: 4 },
-      { label: '标题 5', value: 5 },
-      { label: '标题 6', value: 6 },
-    ]
-
     let currentLevel = 0
     for (let i = 1; i <= 6; i++) {
       if (editor.isActive('heading', { level: i })) {
@@ -350,30 +425,37 @@ function EditorBubbleMenu({ editor, vaultId: _vaultId, onEditCanvas, onPolish, o
         break
       }
     }
-
-    const currentLabel = headings.find(h => h.value === currentLevel)?.label || '正文'
+    const currentLabel = HEADING_OPTIONS.find(h => h.value === currentLevel)?.label || '正文'
 
     return (
       <div className="relative">
         <button
-          onClick={() => setHeadingDropdownOpen(!headingDropdownOpen)}
-          className="px-2 py-1 text-sm border rounded hover:bg-gray-50 transition-colors"
-          style={{
-            minWidth: '80px',
-            height: '32px'
+          onClick={(e) => {
+            e.stopPropagation()
+            setHeadingDropdownOpen(!headingDropdownOpen)
+            setFontDropdownOpen(false)
+            setSizeDropdownOpen(false)
+            setColorDropdownOpen(false)
           }}
+          className={`bubble-dropdown-trigger ${headingDropdownOpen ? 'is-active' : ''}`}
+          style={DROPDOWN_TRIGGER_STYLE}
           title="标题"
         >
-          {currentLabel} ▼
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h10" />
+          </svg>
         </button>
         {headingDropdownOpen && (
           <div
             className="absolute top-full left-0 mt-1 bg-white border rounded shadow-lg z-50"
             style={{ minWidth: '120px' }}
+            onMouseDown={(e) => e.stopPropagation()}
           >
-            {headings.map(heading => (
+            <div className="px-3 py-1.5 text-xs text-gray-500 border-b">{currentLabel}</div>
+            {HEADING_OPTIONS.map(heading => (
               <button
                 key={heading.value}
+                className={`bubble-dropdown-item text-sm ${currentLevel === heading.value ? 'is-active' : ''}`}
                 onClick={() => {
                   if (heading.value === 0) {
                     editor.chain().focus().setParagraph().run()
@@ -381,13 +463,6 @@ function EditorBubbleMenu({ editor, vaultId: _vaultId, onEditCanvas, onPolish, o
                     editor.chain().focus().toggleHeading({ level: heading.value as 1 | 2 | 3 | 4 | 5 | 6 }).run()
                   }
                   setHeadingDropdownOpen(false)
-                }}
-                className={`w-full px-3 py-2 text-left transition-colors ${
-                  currentLevel === heading.value ? 'bg-blue-100' : 'hover:bg-gray-50'
-                }`}
-                style={{
-                  fontSize: heading.value === 0 ? '14px' : `${20 - heading.value}px`,
-                  fontWeight: heading.value > 0 ? 'bold' : 'normal'
                 }}
               >
                 {heading.label}
@@ -399,17 +474,91 @@ function EditorBubbleMenu({ editor, vaultId: _vaultId, onEditCanvas, onPolish, o
     )
   }
 
+  // 字体颜色选择器
+  const renderColorDropdown = () => {
+    const currentColor = editor.getAttributes('textStyle').color || ''
+    const currentLabel = COLOR_OPTIONS.find(c => c.value === currentColor)?.label || '默认'
+
+    return (
+      <div className="relative">
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            setColorDropdownOpen(!colorDropdownOpen)
+            setFontDropdownOpen(false)
+            setSizeDropdownOpen(false)
+            setHeadingDropdownOpen(false)
+          }}
+          className={`bubble-dropdown-trigger ${colorDropdownOpen ? 'is-active' : ''}`}
+          style={{ ...DROPDOWN_TRIGGER_STYLE, position: 'relative' }}
+          title="字体颜色"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V7a4 4 0 014-4h10a4 4 0 014 4v10a4 4 0 01-4 4M7 21l4-4m0 0l4 4m-4-4v-16" />
+          </svg>
+          {currentColor && (
+            <span
+              className="absolute bottom-0 left-1/2 -translate-x-1/2"
+              style={{ width: '12px', height: '3px', backgroundColor: currentColor, borderRadius: '1px' }}
+            />
+          )}
+        </button>
+        {colorDropdownOpen && (
+          <div
+            className="absolute top-full left-0 mt-1 bg-white border rounded shadow-lg z-50 p-2"
+            style={{ minWidth: '140px' }}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <div className="px-1 py-1 text-xs text-gray-500 border-b mb-2">{currentLabel}</div>
+            <div className="grid grid-cols-5 gap-1.5">
+              {COLOR_OPTIONS.map(color => (
+                <button
+                  key={color.value}
+                  className={`w-6 h-6 rounded border-2 flex items-center justify-center ${
+                    currentColor === color.value ? 'border-blue-500' : 'border-gray-200'
+                  }`}
+                  style={{
+                    backgroundColor: color.value || '#FFFFFF',
+                    ...(color.value === '' ? {
+                      backgroundImage: 'linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%)',
+                      backgroundSize: '6px 6px',
+                      backgroundPosition: '0 0, 0 3px, 3px -3px, -3px 0px'
+                    } : {})
+                  }}
+                  title={color.label}
+                  onClick={() => {
+                    if (color.value) {
+                      editor.chain().focus().setColor(color.value).run()
+                    } else {
+                      editor.chain().focus().unsetColor().run()
+                    }
+                    setColorDropdownOpen(false)
+                  }}
+                >
+                  {currentColor === color.value && (
+                    <svg className="w-3 h-3" fill={color.value ? 'white' : '#333'} viewBox="0 0 24 24">
+                      <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
+                    </svg>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
   // 渲染文本菜单
   const renderTextMenu = () => (
     <>
-      {/* 样式选择器组 */}
       {renderFontFamilyDropdown()}
       {renderFontSizeDropdown()}
       {renderHeadingDropdown()}
+      {renderColorDropdown()}
 
       <div className="divider" />
 
-      {/* 加粗 */}
       <button
         onClick={() => editor.chain().focus().toggleBold().run()}
         className={editor.isActive('bold') ? 'is-active' : ''}
@@ -420,8 +569,6 @@ function EditorBubbleMenu({ editor, vaultId: _vaultId, onEditCanvas, onPolish, o
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 12h9a4 4 0 014 4 4 4 0 01-4 4H6z" />
         </svg>
       </button>
-      
-      {/* 斜体 */}
       <button
         onClick={() => editor.chain().focus().toggleItalic().run()}
         className={editor.isActive('italic') ? 'is-active' : ''}
@@ -431,8 +578,6 @@ function EditorBubbleMenu({ editor, vaultId: _vaultId, onEditCanvas, onPolish, o
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 4h4m-2 0v16m4-16h-4m4 16h-4" transform="skewX(-10)" />
         </svg>
       </button>
-      
-      {/* 删除线 */}
       <button
         onClick={() => editor.chain().focus().toggleStrike().run()}
         className={editor.isActive('strike') ? 'is-active' : ''}
@@ -442,15 +587,13 @@ function EditorBubbleMenu({ editor, vaultId: _vaultId, onEditCanvas, onPolish, o
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.5 12h-11M12 7.5c-2.5 0-4 1.5-4 3 0 2 2.5 2.5 4 3s4 1 4 3c0 1.5-1.5 3-4 3" />
         </svg>
       </button>
-      
-      {/* 链接 */}
       <button
         onClick={() => {
           if (editor.isActive('link')) {
             editor.chain().focus().unsetLink().run()
           } else {
             setShowLinkInput(true)
-            setLinkUrl(editor.getAttributes('link').href || '')
+            parseExistingHref(editor.getAttributes('link').href || '')
           }
         }}
         className={editor.isActive('link') ? 'is-active' : ''}
@@ -461,41 +604,8 @@ function EditorBubbleMenu({ editor, vaultId: _vaultId, onEditCanvas, onPolish, o
         </svg>
       </button>
 
-      {/* 润色 */}
-      <button
-        onClick={() => {
-          const { from, to } = editor.state.selection
-          const selectedText = editor.state.doc.textBetween(from, to, ' ')
-          if (selectedText.trim()) {
-            onPolish?.(selectedText)
-          }
-        }}
-        title="AI润色"
-      >
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-        </svg>
-      </button>
-
-      {/* 扩写 */}
-      <button
-        onClick={() => {
-          const { from, to } = editor.state.selection
-          const selectedText = editor.state.doc.textBetween(from, to, ' ')
-          if (selectedText.trim()) {
-            onExpand?.(selectedText)
-          }
-        }}
-        title="AI扩写"
-      >
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
-        </svg>
-      </button>
-      
       <div className="divider" />
-      
-      {/* 对齐方式 */}
+
       <button
         onClick={() => editor.chain().focus().setTextAlign('left').run()}
         className={editor.isActive({ textAlign: 'left' }) ? 'is-active' : ''}
@@ -532,38 +642,60 @@ function EditorBubbleMenu({ editor, vaultId: _vaultId, onEditCanvas, onPolish, o
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
         </svg>
       </button>
+
+      <div className="divider" />
+
+      <button
+        onClick={() => {
+          const { from, to } = editor.state.selection
+          const selectedText = editor.state.doc.textBetween(from, to, ' ')
+          if (selectedText.trim()) {
+            onPolish?.(selectedText)
+          }
+        }}
+        title="AI润色"
+      >
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+        </svg>
+      </button>
+      <button
+        onClick={() => {
+          const { from, to } = editor.state.selection
+          const selectedText = editor.state.doc.textBetween(from, to, ' ')
+          if (selectedText.trim()) {
+            onExpand?.(selectedText)
+          }
+        }}
+        title="AI扩写"
+      >
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+        </svg>
+      </button>
     </>
   )
 
-  // 渲染菜单内容
   const renderMenuContent = () => {
-    if (showLinkInput) {
-      return renderLinkInput()
-    }
-    if (isImageSelected()) {
-      return renderImageMenu()
-    }
+    if (showLinkInput) return renderLinkInput()
+    if (isImageSelected()) return renderImageMenu()
     return renderTextMenu()
   }
 
   return (
-    <BubbleMenu 
-      editor={editor} 
-      tippyOptions={{ 
+    <BubbleMenu
+      editor={editor}
+      tippyOptions={{
         duration: 100,
+        maxWidth: 'none',
         ...(hidden && { getReferenceClientRect: null })
       }}
       shouldShow={({ state }) => {
-        // 隐藏时不显示
         if (hidden) return false
-        
-        // 检查是否选中了图片节点
         const { selection } = state
-        const node = (selection as any).node
+        const node = (selection as NodeSelection).node
         if (node?.type.name === 'image') return true
         if (selection.$anchor.parent.type.name === 'image') return true
-        
-        // 检查是否有文本选区
         const { from, to } = selection
         return from !== to
       }}
