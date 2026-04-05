@@ -25,6 +25,7 @@ node_modules
 # AI tools
 .claude/
 .sisyphus/
+.superpowers/
 
 # Docs
 docs/

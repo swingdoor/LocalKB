@@ -15,9 +15,11 @@ function App() {
     currentDocument,
     isSearchOpen,
     isSettingsOpen,
-    theme,
+    sidebarOpen,
+    hotkeys,
     loadVaults,
     loadTheme,
+    loadHotkeys,
     selectDocument,
     updateDocument,
     setSearchOpen,
@@ -28,25 +30,54 @@ function App() {
   useEffect(() => {
     loadVaults()
     loadTheme()
+    loadHotkeys()
     loadXiaolaiFont()
   }, [])
 
   // 键盘快捷键
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ctrl+K 打开搜索
-      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
-        e.preventDefault()
-        setSearchOpen(true)
+      // 遍历保存的快捷键配置
+      for (const hotkey of hotkeys) {
+        let matches = true
+        
+        // 检查修饰键
+        if (hotkey.modifiers.includes('ctrl') && !e.ctrlKey && !e.metaKey) matches = false
+        if (hotkey.modifiers.includes('alt') && !e.altKey) matches = false
+        if (hotkey.modifiers.includes('shift') && !e.shiftKey) matches = false
+        
+        // 检查主键
+        const expectedKey = hotkey.key.toLowerCase()
+        const actualKey = e.key.toLowerCase()
+        if (expectedKey !== actualKey) matches = false
+        
+        if (matches) {
+          e.preventDefault()
+          
+          // 根据 hotkey.id 执行对应操作
+          switch (hotkey.id) {
+            case 'search':
+              setSearchOpen(true)
+              break
+            case 'imageCommand':
+              // TODO: 图片命令
+              break
+            case 'canvasCommand':
+              // TODO: 画布命令
+              break
+          }
+          break
+        }
       }
+      
       // Escape 关闭搜索
-      if (e.key === 'Escape') {
+      if (e.key === 'Escape' && isSearchOpen) {
         setSearchOpen(false)
       }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [setSearchOpen])
+  }, [hotkeys, isSearchOpen, setSearchOpen])
 
   // 搜索选择文档
   const handleSearchSelect = (doc: Document) => {
@@ -61,7 +92,7 @@ function App() {
     >
       <TitleBar />
       <div className="flex flex-1 overflow-hidden">
-        <Sidebar />
+        {sidebarOpen && <Sidebar />}
         <main className="flex-1 overflow-hidden" style={{ backgroundColor: 'var(--bg-primary)' }}>
           {currentDocument ? (
             currentDocument.type === 'drawing' ? (

@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
+import { useAppStore } from '../stores/appStore'
 
 function TitleBar() {
   const [isMaximized, setIsMaximized] = useState(false)
+  const { sidebarOpen, toggleSidebar } = useAppStore()
 
   useEffect(() => {
     // 检查初始状态
@@ -28,7 +30,21 @@ function TitleBar() {
     <div className="flex items-center h-9 border-b select-none" style={{ backgroundColor: 'var(--bg-sidebar)', borderColor: 'var(--border-color)' }}>
       {/* 拖拽区域 */}
       <div className="flex-1 h-full flex items-center px-4" style={{ WebkitAppRegion: 'drag' } as any}>
-        <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>极简笔记</span>
+        <span className="text-sm font-medium mr-3" style={{ color: 'var(--text-primary)' }}>极简笔记</span>
+        <button
+          onClick={toggleSidebar}
+          className="flex items-center justify-center w-7 h-7 rounded hover:bg-gray-200 transition-colors"
+          style={{ WebkitAppRegion: 'no-drag' } as any}
+          title={sidebarOpen ? '收起侧边栏' : '展开侧边栏'}
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: 'var(--text-primary)' }}>
+            {sidebarOpen ? (
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+            ) : (
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+            )}
+          </svg>
+        </button>
       </div>
       
       {/* 窗口控制按钮 */}

@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC_CHANNELS } from '../shared/ipc-channels'
-import type { Document, Vault, ImageFile, AISettings, PolishResult } from '../shared/types'
+import type { Document, Vault, ImageFile, AISettings, PolishResult, DefaultConfig, HotkeyConfig } from '../shared/types'
 
 // 暴露给渲染进程的 API
 const electronAPI = {
@@ -65,6 +65,12 @@ const electronAPI = {
       ipcRenderer.invoke(IPC_CHANNELS.SETTINGS.SAVE_AI, settings) as Promise<AISettings>,
     getTheme: () => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS.GET_THEME) as Promise<string>,
     saveTheme: (theme: string) => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS.SAVE_THEME, theme) as Promise<string>,
+    getDefaults: () => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS.GET_DEFAULTS) as Promise<DefaultConfig>,
+    saveDefaults: (config: Partial<DefaultConfig>) => 
+      ipcRenderer.invoke(IPC_CHANNELS.SETTINGS.SAVE_DEFAULTS, config) as Promise<DefaultConfig>,
+    getHotkeys: () => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS.GET_HOTKEYS) as Promise<HotkeyConfig[]>,
+    saveHotkeys: (hotkeys: HotkeyConfig[]) => 
+      ipcRenderer.invoke(IPC_CHANNELS.SETTINGS.SAVE_HOTKEYS, hotkeys) as Promise<HotkeyConfig[]>,
   },
 
   // AI 功能

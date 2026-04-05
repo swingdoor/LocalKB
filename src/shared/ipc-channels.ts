@@ -31,6 +31,10 @@ export const IPC_CHANNELS = {
     SAVE_AI: 'settings:saveAI',
     GET_THEME: 'settings:getTheme',
     SAVE_THEME: 'settings:saveTheme',
+    GET_DEFAULTS: 'settings:getDefaults',
+    SAVE_DEFAULTS: 'settings:saveDefaults',
+    GET_HOTKEYS: 'settings:getHotkeys',
+    SAVE_HOTKEYS: 'settings:saveHotkeys',
   },
   AI: {
     POLISH: 'ai:polish',

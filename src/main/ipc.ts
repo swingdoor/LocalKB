@@ -3,7 +3,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { vaultStore, documentStore, imageStore, settingsStore } from './store'
 import { IPC_CHANNELS } from '../shared/ipc-channels'
-import type { AISettings, PolishResult } from '../shared/types'
+import type { AISettings, PolishResult, HotkeyConfig } from '../shared/types'
 
 /**
  * 通用 AI 调用函数
@@ -274,6 +274,14 @@ export function setupIpcHandlers(mainWindow: BrowserWindow) {
 
   ipcMain.handle(IPC_CHANNELS.SETTINGS.SAVE_THEME, async (_, theme: string) => {
     return settingsStore.saveTheme(theme)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.SETTINGS.GET_HOTKEYS, async () => {
+    return settingsStore.getHotkeys()
+  })
+
+  ipcMain.handle(IPC_CHANNELS.SETTINGS.SAVE_HOTKEYS, async (_, hotkeys: HotkeyConfig[]) => {
+    return settingsStore.saveHotkeys(hotkeys)
   })
 
   // ========== AI 润色与扩写 ==========

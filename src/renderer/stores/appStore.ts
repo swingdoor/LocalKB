@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Document, Vault } from '@shared/types'
+import type { Document, Vault, HotkeyConfig } from '@shared/types'
 
 interface AppState {
   // 数据状态
@@ -11,7 +11,9 @@ interface AppState {
   // UI 状态
   isSearchOpen: boolean
   isSettingsOpen: boolean
+  sidebarOpen: boolean
   theme: string
+  hotkeys: HotkeyConfig[]
   
   // Actions
   loadVaults: () => Promise<void>
@@ -25,8 +27,11 @@ interface AppState {
   updateDocument: (data: Partial<Document>) => Promise<void>
   setSearchOpen: (open: boolean) => void
   setSettingsOpen: (open: boolean) => void
+  toggleSidebar: () => void
   loadTheme: () => Promise<void>
   setTheme: (theme: string) => Promise<void>
+  loadHotkeys: () => Promise<void>
+  updateHotkeys: (hotkeys: HotkeyConfig[]) => void
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -37,7 +42,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   currentDocument: null,
   isSearchOpen: false,
   isSettingsOpen: false,
+  sidebarOpen: true,
   theme: 'white',
+  hotkeys: [],
 
   // 加载知识库列表
   loadVaults: async () => {
@@ -176,6 +183,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ isSettingsOpen: open })
   },
 
+  // 侧边栏开关
+  toggleSidebar: () => {
+    set((state) => ({ sidebarOpen: !state.sidebarOpen }))
+  },
+
   // 加载主题
   loadTheme: async () => {
     const savedTheme = await window.electronAPI.settings.getTheme()
@@ -188,5 +200,16 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ theme })
     await window.electronAPI.settings.saveTheme(theme)
     document.documentElement.setAttribute('data-theme', theme === 'white' ? '' : theme)
-  }
+  },
+
+  // 加载快捷键
+  loadHotkeys: async () => {
+    const hotkeys = await window.electronAPI.settings.getHotkeys()
+    set({ hotkeys })
+  },
+
+  // 更新快捷键（内存中）
+  updateHotkeys: (hotkeys: HotkeyConfig[]) => {
+    set({ hotkeys })
+  },
 }))

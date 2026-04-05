@@ -13,6 +13,10 @@
   --text-primary: #1E293B;
   --text-secondary: #64748B;
   --border-color: #E2E8F0;
+  --primary-color: #3B82F6;
+  --success-color: #22C55E;
+  --error-color: #EF4444;
+  --overlay-bg: rgba(0, 0, 0, 0.5);
   --code-bg: transparent;
   --code-header-bg: transparent;
   --code-border: #E2E8F0;
@@ -70,6 +74,10 @@
   --text-primary: #78350F;
   --text-secondary: #92400E;
   --border-color: #FFF3D6;
+  --primary-color: #F59E0B;
+  --success-color: #22C55E;
+  --error-color: #EF4444;
+  --overlay-bg: rgba(0, 0, 0, 0.5);
   --code-bg: transparent;
   --code-header-bg: transparent;
   --code-border: #FDE68A;
@@ -98,6 +106,10 @@
   --text-primary: #14532D;
   --text-secondary: #166534;
   --border-color: #E0F2E3;
+  --primary-color: #10B981;
+  --success-color: #22C55E;
+  --error-color: #EF4444;
+  --overlay-bg: rgba(0, 0, 0, 0.5);
   --code-bg: transparent;
   --code-header-bg: transparent;
   --code-border: #86EFAC;

@@ -16,6 +16,26 @@ export interface Document {
 }
 
 /**
+ * Hotkey configuration
+ */
+export interface HotkeyConfig {
+  id: string           // 'search', 'imageCommand', 'canvasCommand'
+  name: string         // Function name (Chinese)
+  key: string          // Key value, e.g., 'k'
+  modifiers: string[]  // ['ctrl', 'shift', 'alt'] etc.
+  display: string      // Display text, e.g., 'Ctrl+K'
+}
+
+/**
+ * Default hotkeys
+ */
+export const DEFAULT_HOTKEYS: HotkeyConfig[] = [
+  { id: 'search', name: '打开搜索', key: 'k', modifiers: ['ctrl'], display: 'Ctrl+K' },
+  { id: 'imageCommand', name: '图片命令', key: 'i', modifiers: ['ctrl', 'shift'], display: 'Ctrl+Shift+I' },
+  { id: 'canvasCommand', name: '画布命令', key: 'p', modifiers: ['ctrl', 'shift'], display: 'Ctrl+Shift+P' },
+]
+
+/**
  * 知识库类型
  */
 export interface Vault {

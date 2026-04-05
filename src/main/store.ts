@@ -2,7 +2,8 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { app } from 'electron'
 import { v4 as uuidv4 } from 'uuid'
-import type { Document, Vault, VaultMeta, AISettings } from '../shared/types'
+import type { Document, Vault, VaultMeta, AISettings, HotkeyConfig } from '../shared/types'
+import { DEFAULT_HOTKEYS } from '../shared/types'
 
 // 数据存储路径
 const getDataPath = () => {
@@ -339,6 +340,79 @@ export const settingsStore = {
     allSettings.theme = theme
     fs.writeFileSync(settingsPath, JSON.stringify(allSettings, null, 2), 'utf-8')
     return theme
+  },
+
+  // 获取默认配置（已禁用，仅保留用于数据迁移）
+  getDefaultConfig() {
+    const settingsPath = this.getSettingsPath()
+    ensureDir(getDataPath())
+    
+    if (fs.existsSync(settingsPath)) {
+      try {
+        const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'))
+        return settings.defaultConfig || { defaultFont: 'default', defaultFontColor: 'auto', defaultTheme: 'white' }
+      } catch (e) {
+        console.error('Failed to read default config:', e)
+      }
+    }
+    return { defaultFont: 'default', defaultFontColor: 'auto', defaultTheme: 'white' }
+  },
+
+  // 保存默认配置（已禁用，仅保留用于数据迁移）
+  saveDefaultConfig(config: any): any {
+    const settingsPath = this.getSettingsPath()
+    ensureDir(getDataPath())
+    
+    let allSettings: any = {}
+    if (fs.existsSync(settingsPath)) {
+      try {
+        allSettings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'))
+      } catch (e) {
+        console.error('Failed to read settings:', e)
+      }
+    }
+    
+    const current = allSettings.defaultConfig || { defaultFont: 'default', defaultFontColor: 'auto', defaultTheme: 'white' }
+    const newConfig = { ...current, ...config }
+    allSettings.defaultConfig = newConfig
+    
+    fs.writeFileSync(settingsPath, JSON.stringify(allSettings, null, 2), 'utf-8')
+    return newConfig
+  },
+
+  // 获取快捷键配置
+  getHotkeys(): HotkeyConfig[] {
+    const settingsPath = this.getSettingsPath()
+    ensureDir(getDataPath())
+    
+    if (fs.existsSync(settingsPath)) {
+      try {
+        const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'))
+        return settings.hotkeys || DEFAULT_HOTKEYS
+      } catch (e) {
+        console.error('Failed to read hotkeys:', e)
+      }
+    }
+    return DEFAULT_HOTKEYS
+  },
+
+  // 保存快捷键配置
+  saveHotkeys(hotkeys: HotkeyConfig[]): HotkeyConfig[] {
+    const settingsPath = this.getSettingsPath()
+    ensureDir(getDataPath())
+    
+    let allSettings: any = {}
+    if (fs.existsSync(settingsPath)) {
+      try {
+        allSettings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'))
+      } catch (e) {
+        console.error('Failed to read settings:', e)
+      }
+    }
+    
+    allSettings.hotkeys = hotkeys
+    fs.writeFileSync(settingsPath, JSON.stringify(allSettings, null, 2), 'utf-8')
+    return hotkeys
   },
 }
 
