@@ -6,6 +6,7 @@ import ExcalidrawCanvas from './components/ExcalidrawCanvas'
 import SearchModal from './components/SearchModal'
 import SettingsModal from './components/SettingsModal'
 import { useAppStore } from './stores/appStore'
+import { loadXiaolaiFont } from './utils/loadFonts'
 import type { Document } from '@shared/types'
 
 function App() {
@@ -27,6 +28,7 @@ function App() {
   useEffect(() => {
     loadVaults()
     loadTheme()
+    loadXiaolaiFont()
   }, [])
 
   // 键盘快捷键

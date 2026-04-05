@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import type { Editor } from '@tiptap/react'
 
 interface CommandMenuState {
@@ -19,11 +19,15 @@ export function useCommandMenu(editor: Editor | null, options: UseCommandMenuOpt
     searchQuery: '',
   })
 
+  // 使用 ref 避免闭包陷阱
+  const showCommandMenuRef = useRef(false)
+
   const setSearchQuery = useCallback((query: string) => {
     setState(prev => ({ ...prev, searchQuery: query }))
   }, [])
 
   const openCommandMenu = useCallback((pos: { x: number; y: number }) => {
+    showCommandMenuRef.current = true
     setState({
       showCommandMenu: true,
       commandMenuPos: pos,
@@ -32,16 +36,25 @@ export function useCommandMenu(editor: Editor | null, options: UseCommandMenuOpt
   }, [])
 
   const closeCommandMenu = useCallback(() => {
+    showCommandMenuRef.current = false
     setState(prev => ({ ...prev, showCommandMenu: false }))
-  }, [])
+    if (editor) {
+      setTimeout(() => {
+        editor.commands.focus()
+      }, 10)
+    }
+  }, [editor])
 
   /**
    * 编辑器键盘事件处理函数
-   * 返回 true 表示已处理事件，false 表示未处理
+   * 使用 ref 读取最新状态，避免闭包过期
    */
   const handleKeyDown = useCallback((view: any, event: KeyboardEvent): boolean => {
-    // 检测 \ 键 或 Alt 键呼出命令菜单
-    if (event.key === '\\' || event.key === 'Alt') {
+    // IME 输入过程中不触发唤醒
+    if (event.isComposing) return false
+
+    // 检测 Alt+\ 组合键呼出命令菜单
+    if (event.key === '\\' && event.altKey && !showCommandMenuRef.current) {
       event.preventDefault()
       const { from } = view.state.selection
       const coords = view.coordsAtPos(from)
@@ -49,19 +62,19 @@ export function useCommandMenu(editor: Editor | null, options: UseCommandMenuOpt
       return true
     }
     // Escape 关闭命令菜单
-    if (event.key === 'Escape' && state.showCommandMenu) {
+    if (event.key === 'Escape' && showCommandMenuRef.current) {
       closeCommandMenu()
       return true
     }
     return false
-  }, [state.showCommandMenu, openCommandMenu, closeCommandMenu])
+  }, [openCommandMenu, closeCommandMenu])
 
   /**
    * 命令菜单选择处理
    */
   const handleCommandSelect = useCallback(async (command: string) => {
     closeCommandMenu()
-    
+
     if (!editor) return
 
     switch (command) {

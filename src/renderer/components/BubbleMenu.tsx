@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { BubbleMenu, Editor } from '@tiptap/react'
 import type { NodeSelection } from '@tiptap/pm/state'
 
@@ -73,6 +73,7 @@ function EditorBubbleMenu({ editor, onEditCanvas, onPolish, onExpand, hidden = f
   const [sizeDropdownOpen, setSizeDropdownOpen] = useState(false)
   const [headingDropdownOpen, setHeadingDropdownOpen] = useState(false)
   const [colorDropdownOpen, setColorDropdownOpen] = useState(false)
+  const linkInputRef = useRef<HTMLInputElement>(null)
 
   // 点击外部关闭下拉框
   useEffect(() => {
@@ -89,6 +90,16 @@ function EditorBubbleMenu({ editor, onEditCanvas, onPolish, onExpand, hidden = f
       return () => document.removeEventListener('mousedown', handleClickOutside)
     }
   }, [fontDropdownOpen, sizeDropdownOpen, headingDropdownOpen, colorDropdownOpen, protocolDropdownOpen])
+
+  // 链接输入框自动聚焦（延迟避免 HMR 冲突）
+  useEffect(() => {
+    if (showLinkInput) {
+      const timer = setTimeout(() => {
+        linkInputRef.current?.focus()
+      }, 50)
+      return () => clearTimeout(timer)
+    }
+  }, [showLinkInput])
 
   // 设置链接
   const setLink = useCallback(() => {
@@ -109,7 +120,7 @@ function EditorBubbleMenu({ editor, onEditCanvas, onPolish, onExpand, hidden = f
     setLinkProtocol('https://')
   }, [editor, linkUrl, linkProtocol])
 
-  // 获取选中的图片节点（使用正确的 NodeSelection 类型）
+  // 获取选中的图片节点（直接读 editor.state，不依赖闭包）
   const getSelectedImageNode = useCallback(() => {
     const { selection } = editor.state
     const node = (selection as NodeSelection).node
@@ -120,7 +131,7 @@ function EditorBubbleMenu({ editor, onEditCanvas, onPolish, onExpand, hidden = f
       return selection.$anchor.parent
     }
     return null
-  }, [editor.state])
+  }, [editor])
 
   // 判断是否选中图片
   const isImageSelected = useCallback(() => {
@@ -160,8 +171,8 @@ function EditorBubbleMenu({ editor, onEditCanvas, onPolish, onExpand, hidden = f
           }
           reader.readAsDataURL(blob)
           return
-        } catch (e) {
-          console.error('导出画布PNG失败:', e)
+        } catch {
+          // 静默失败
         }
       }
       await window.electronAPI.file.downloadImage(node.attrs.src, 'image.png')
@@ -229,6 +240,7 @@ function EditorBubbleMenu({ editor, onEditCanvas, onPolish, onExpand, hidden = f
         )}
       </div>
       <input
+        ref={linkInputRef}
         type="text"
         value={linkUrl}
         onChange={(e) => setLinkUrl(e.target.value)}
@@ -266,6 +278,7 @@ function EditorBubbleMenu({ editor, onEditCanvas, onPolish, onExpand, hidden = f
   // 渲染图片菜单
   const renderImageMenu = () => {
     const isCanvas = isCanvasSelected()
+    const imageNode = getSelectedImageNode()
     return (
       <>
         {isCanvas && (
@@ -280,7 +293,7 @@ function EditorBubbleMenu({ editor, onEditCanvas, onPolish, onExpand, hidden = f
         )}
         <button
           onClick={() => editor.chain().focus().setImageAlign('left').run()}
-          className={getSelectedImageNode()?.attrs.textAlign === 'left' ? 'is-active' : ''}
+          className={imageNode?.attrs.textAlign === 'left' ? 'is-active' : ''}
           title="左对齐"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -289,7 +302,7 @@ function EditorBubbleMenu({ editor, onEditCanvas, onPolish, onExpand, hidden = f
         </button>
         <button
           onClick={() => editor.chain().focus().setImageAlign('center').run()}
-          className={getSelectedImageNode()?.attrs.textAlign === 'center' ? 'is-active' : ''}
+          className={imageNode?.attrs.textAlign === 'center' ? 'is-active' : ''}
           title="居中"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -298,7 +311,7 @@ function EditorBubbleMenu({ editor, onEditCanvas, onPolish, onExpand, hidden = f
         </button>
         <button
           onClick={() => editor.chain().focus().setImageAlign('right').run()}
-          className={getSelectedImageNode()?.attrs.textAlign === 'right' ? 'is-active' : ''}
+          className={imageNode?.attrs.textAlign === 'right' ? 'is-active' : ''}
           title="右对齐"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -416,15 +429,10 @@ function EditorBubbleMenu({ editor, onEditCanvas, onPolish, onExpand, hidden = f
     )
   }
 
-  // 标题选择器
+  // 标题选择器（优化：一次 getAttributes 替代 6 次 isActive）
   const renderHeadingDropdown = () => {
-    let currentLevel = 0
-    for (let i = 1; i <= 6; i++) {
-      if (editor.isActive('heading', { level: i })) {
-        currentLevel = i
-        break
-      }
-    }
+    const headingAttrs = editor.getAttributes('heading')
+    const currentLevel = headingAttrs.level || 0
     const currentLabel = HEADING_OPTIONS.find(h => h.value === currentLevel)?.label || '正文'
 
     return (

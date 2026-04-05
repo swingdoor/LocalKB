@@ -1,6 +1,8 @@
-import { useState, useEffect, useCallback } from 'react'
-import { useEditor, EditorContent } from '@tiptap/react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { useEditor, EditorContent, ReactNodeViewRenderer } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
+import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
+import { lowlight } from 'lowlight'
 import Link from '@tiptap/extension-link'
 import TaskList from '@tiptap/extension-task-list'
 import TaskItem from '@tiptap/extension-task-item'
@@ -11,6 +13,7 @@ import FontFamily from '@tiptap/extension-font-family'
 import FontSize from '../extensions/FontSize'
 import Color from '../extensions/Color'
 import ResizableImage from '../extensions/ResizableImage'
+import CodeBlockComponent from './CodeBlockComponent'
 import CommandMenu from './CommandMenu'
 import EditorBubbleMenu from './BubbleMenu'
 import DrawingEditorModal from './DrawingEditorModal'
@@ -35,7 +38,7 @@ function Editor({ document, vaultId: _vaultId, onUpdate }: EditorProps) {
   // 使用自定义 Hooks
   const { saveContent, saveTitle } = useDebouncedSave(onUpdate)
   const aiProcess = useAIProcess()
-  
+
   // 格式化时间
   const formatTime = (dateStr: string) => {
     const date = new Date(dateStr)
@@ -47,6 +50,13 @@ function Editor({ document, vaultId: _vaultId, onUpdate }: EditorProps) {
       minute: '2-digit',
     })
   }
+
+  // Refs 用于 editorProps 中引用后定义的 hooks
+  const canvasEditRef = useRef<{ createCanvas: () => void }>({ createCanvas: () => {} })
+  const commandMenuRef = useRef<{ handleCommandSelect: (cmd: string) => void; handleKeyDown: (view: any, e: KeyboardEvent) => boolean }>({
+    handleCommandSelect: () => {},
+    handleKeyDown: () => false,
+  })
 
   // 初始化编辑器
   const editor = useEditor({
@@ -72,7 +82,7 @@ function Editor({ document, vaultId: _vaultId, onUpdate }: EditorProps) {
         types: ['heading', 'paragraph'],
       }),
       Placeholder.configure({
-        placeholder: '输入 \\ 打开命令菜单...',
+        placeholder: '输入 Alt+\\ 打开命令菜单...',
       }),
       ResizableImage.configure({
         inline: false,
@@ -88,6 +98,14 @@ function Editor({ document, vaultId: _vaultId, onUpdate }: EditorProps) {
       Color.configure({
         types: ['textStyle'],
       }),
+      CodeBlockLowlight.extend({
+        addNodeView() {
+          return ReactNodeViewRenderer(CodeBlockComponent)
+        },
+      }).configure({
+        lowlight,
+        defaultLanguage: 'plaintext',
+      }),
     ],
     content: (() => {
       try {
@@ -96,8 +114,8 @@ function Editor({ document, vaultId: _vaultId, onUpdate }: EditorProps) {
         return { type: 'doc', content: [{ type: 'paragraph' }] }
       }
     })(),
-    onUpdate: ({ editor }) => {
-      const json = JSON.stringify(editor.getJSON())
+    onUpdate: ({ editor: ed }) => {
+      const json = JSON.stringify(ed.getJSON())
       saveContent(json)
     },
     editorProps: {
@@ -107,19 +125,28 @@ function Editor({ document, vaultId: _vaultId, onUpdate }: EditorProps) {
           event.preventDefault()
           const { state, dispatch } = view
           const { $from } = state.selection
-
-          // 获取当前行开始位置
           const lineStart = $from.start()
           const posInLine = $from.pos - lineStart
-
-          // 如果在行首（前2个字符内），插入2个全角空格；否则插入2个普通空格
           const indent = posInLine <= 2 ? '\u3000\u3000' : '  '
           const tr = state.tr.insertText(indent, $from.pos)
           dispatch(tr)
           return true
         }
+        // 全局快捷键
+        if (event.ctrlKey && event.shiftKey) {
+          if (event.key === 'P' || event.key === 'p') {
+            event.preventDefault()
+            canvasEditRef.current.createCanvas()
+            return true
+          }
+          if (event.key === 'I' || event.key === 'i') {
+            event.preventDefault()
+            commandMenuRef.current.handleCommandSelect('image')
+            return true
+          }
+        }
         // 将键盘事件委托给 commandMenu
-        return commandMenu.handleKeyDown(view, event)
+        return commandMenuRef.current.handleKeyDown(view, event)
       },
       handleClick: (_view, _pos, event) => {
         const target = event.target as HTMLElement
@@ -128,7 +155,6 @@ function Editor({ document, vaultId: _vaultId, onUpdate }: EditorProps) {
           event.preventDefault()
           const href = linkEl.getAttribute('href')
           if (!href) return
-          // 本地文件路径以 file:/// 开头
           if (href.startsWith('file:///')) {
             const filePath = href.replace('file:///', '').replace(/\//g, '\\')
             window.electronAPI.file.openLocalFile(filePath)
@@ -156,6 +182,10 @@ function Editor({ document, vaultId: _vaultId, onUpdate }: EditorProps) {
     onCreateCanvas: canvasEdit.createCanvas,
   })
 
+  // 更新 refs（每次渲染同步最新引用）
+  canvasEditRef.current = canvasEdit
+  commandMenuRef.current = commandMenu
+
   // 标题变化时保存
   useEffect(() => {
     if (title !== document.title) {
@@ -166,7 +196,6 @@ function Editor({ document, vaultId: _vaultId, onUpdate }: EditorProps) {
   // 导出 PDF
   const handleExportPDF = useCallback(async () => {
     if (!editor) {
-      console.error('Editor not ready')
       return
     }
     try {

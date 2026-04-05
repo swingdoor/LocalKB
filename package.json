@@ -1,6 +1,6 @@
 {
   "name": "jijian-notes",
-  "version": "0.7.3",
+  "version": "0.7.5",
   "description": "极简笔记 - 本地知识库笔记软件",
   "main": "dist/main/main/index.js",
   "scripts": {
@@ -40,6 +40,8 @@
   },
   "dependencies": {
     "@excalidraw/excalidraw": "^0.18.0",
+    "@tiptap/extension-code-block": "^2.27.2",
+    "@tiptap/extension-code-block-lowlight": "^2.27.2",
     "@tiptap/extension-font-family": "^2.27.2",
     "@tiptap/extension-image": "^2.1.0",
     "@tiptap/extension-link": "^2.1.0",
@@ -52,6 +54,7 @@
     "@tiptap/react": "^2.1.0",
     "@tiptap/starter-kit": "^2.1.0",
     "electron-store": "^8.1.0",
+    "lowlight": "^2.9.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "uuid": "^9.0.0",
