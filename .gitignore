@@ -28,3 +28,6 @@ node_modules
 
 # Docs
 docs/
+
+# Worktrees
+.worktrees/
