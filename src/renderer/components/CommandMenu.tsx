@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react'
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 
 interface CommandMenuProps {
   position: { x: number; y: number }
@@ -13,15 +13,10 @@ interface CommandItem {
   title: string
   icon: React.ReactNode
   shortcut?: string
+  isHeading?: boolean
 }
 
-const commands: CommandItem[] = [
-  {
-    id: 'heading',
-    title: '标题',
-    icon: <span className="text-xs font-bold">H</span>,
-    shortcut: 'H1-H6',
-  },
+const baseCommands: CommandItem[] = [
   {
     id: 'bullet',
     title: '无序列表',
@@ -102,6 +97,17 @@ const commands: CommandItem[] = [
   },
 ]
 
+// 展开 H1-H6 为独立项，放在最前面
+function getFullCommands(): CommandItem[] {
+  const headings: CommandItem[] = [1, 2, 3, 4, 5, 6].map(level => ({
+    id: `h${level}`,
+    title: `H${level}`,
+    icon: <span className="text-xs font-bold">H{level}</span>,
+    isHeading: true,
+  }))
+  return [...headings, ...baseCommands]
+}
+
 function CommandMenu({
   position,
   searchQuery,
@@ -114,20 +120,15 @@ function CommandMenu({
   const menuRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  // 过滤命令（搜索有结果时隐藏标题行）
+  // 过滤命令（搜索时匹配标题）
   const filteredCommands = useMemo(() => {
+    const allCommands = getFullCommands()
     const hasSearchQuery = searchQuery.trim().length > 0
-    return commands.filter(
-      (cmd) => !hasSearchQuery || cmd.title.toLowerCase().includes(searchQuery.toLowerCase())
+    if (!hasSearchQuery) return allCommands
+    return allCommands.filter(
+      (cmd) => cmd.title.toLowerCase().includes(searchQuery.toLowerCase())
     )
   }, [searchQuery])
-
-  // 可导航的索引（排除标题行）
-  const navigableIndices = useMemo(() => {
-    return filteredCommands
-      .map((cmd, i) => cmd.id !== 'heading' ? i : -1)
-      .filter(i => i !== -1)
-  }, [filteredCommands])
 
   // 计算菜单位置
   useEffect(() => {
@@ -141,30 +142,34 @@ function CommandMenu({
     }
   }, [position])
 
+  const navigate = useCallback((direction: 'up' | 'down') => {
+    if (filteredCommands.length === 0) return
+    setSelectedIndex(prev => {
+      const len = filteredCommands.length
+      if (direction === 'down') return (prev + 1) % len
+      return (prev - 1 + len) % len
+    })
+  }, [filteredCommands.length])
+
   // 键盘导航
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       switch (e.key) {
+        case 'Tab':
+          e.preventDefault()
+          navigate(e.shiftKey ? 'up' : 'down')
+          break
         case 'ArrowUp':
           e.preventDefault()
-          if (navigableIndices.length === 0) break
-          const currentUpIdx = navigableIndices.indexOf(selectedIndex)
-          const nextUp = currentUpIdx <= 0 ? navigableIndices[navigableIndices.length - 1] : navigableIndices[currentUpIdx - 1]
-          setSelectedIndex(nextUp)
+          navigate('up')
           break
         case 'ArrowDown':
           e.preventDefault()
-          if (navigableIndices.length === 0) break
-          const currentDownIdx = navigableIndices.indexOf(selectedIndex)
-          const nextDown = currentDownIdx >= navigableIndices.length - 1 ? navigableIndices[0] : navigableIndices[currentDownIdx + 1]
-          setSelectedIndex(nextDown)
+          navigate('down')
           break
         case 'Enter':
-          // 如果焦点在 heading 按钮上，不拦截，让按钮原生处理
-          const active = document.activeElement
-          if (active && active.classList.contains('heading-btn')) return
           e.preventDefault()
-          if (filteredCommands[selectedIndex] && filteredCommands[selectedIndex].id !== 'heading') {
+          if (filteredCommands[selectedIndex]) {
             onSelect(filteredCommands[selectedIndex].id)
           }
           break
@@ -177,7 +182,7 @@ function CommandMenu({
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [filteredCommands, navigableIndices, selectedIndex, onSelect, onClose])
+  }, [filteredCommands, selectedIndex, navigate, onSelect, onClose])
 
   // 重置选中索引
   useEffect(() => {
@@ -237,33 +242,15 @@ function CommandMenu({
       <div className="py-1 max-h-80 overflow-y-auto">
         {filteredCommands.length > 0 ? (
           filteredCommands.map((cmd, index) => (
-            <div key={cmd.id}>
-              {cmd.id === 'heading' ? (
-                <div className="heading-row">
-                  {[1, 2, 3, 4, 5, 6].map(level => (
-                    <button
-                      key={level}
-                      className="heading-btn"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        onSelect(`h${level}`)
-                      }}
-                    >
-                      H{level}
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <div
-                  onClick={() => onSelect(cmd.id)}
-                  className={`command-menu-item-compact ${index === selectedIndex ? 'selected' : ''}`}
-                >
-                  <div className="icon">{cmd.icon}</div>
-                  <span className="title">{cmd.title}</span>
-                  {cmd.shortcut && (
-                    <kbd className="command-shortcut">{cmd.shortcut}</kbd>
-                  )}
-                </div>
+            <div
+              key={cmd.id}
+              onClick={() => onSelect(cmd.id)}
+              className={`command-menu-item-compact ${index === selectedIndex ? 'selected' : ''}`}
+            >
+              <div className="icon">{cmd.icon}</div>
+              <span className="title">{cmd.title}</span>
+              {cmd.shortcut && (
+                <kbd className="command-shortcut">{cmd.shortcut}</kbd>
               )}
             </div>
           ))
