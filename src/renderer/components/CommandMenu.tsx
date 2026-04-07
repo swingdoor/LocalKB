@@ -13,7 +13,12 @@ interface CommandItem {
   title: string
   icon: React.ReactNode
   shortcut?: string
-  isHeading?: boolean
+}
+
+interface NavItem {
+  id: string          // 实际命令 id (h1-h6, bullet, ordered...)
+  type: 'heading' | 'command'
+  headingLevel?: number  // 1-6
 }
 
 const baseCommands: CommandItem[] = [
@@ -97,16 +102,28 @@ const baseCommands: CommandItem[] = [
   },
 ]
 
-// 展开 H1-H6 为独立项，放在最前面
-function getFullCommands(): CommandItem[] {
-  const headings: CommandItem[] = [1, 2, 3, 4, 5, 6].map(level => ({
+// 构建扁平导航序列：H1-H6 + 其他命令
+function buildNavItems(): NavItem[] {
+  const headings: NavItem[] = [1, 2, 3, 4, 5, 6].map(level => ({
     id: `h${level}`,
-    title: `H${level}`,
-    icon: <span className="text-xs font-bold">H{level}</span>,
-    isHeading: true,
+    type: 'heading' as const,
+    headingLevel: level,
   }))
-  return [...headings, ...baseCommands]
+  const commands: NavItem[] = baseCommands.map(cmd => ({
+    id: cmd.id,
+    type: 'command' as const,
+  }))
+  return [...headings, ...commands]
 }
+
+// 命令映射（用于搜索过滤）
+const commandMap = new Map<string, CommandItem>(baseCommands.map(c => [c.id, c]))
+const headingMap = new Map<number, CommandItem>(
+  [1, 2, 3, 4, 5, 6].map(level => [
+    level,
+    { id: `h${level}`, title: `H${level}`, icon: <span className="text-xs font-bold">H{level}</span> },
+  ])
+)
 
 function CommandMenu({
   position,
@@ -120,14 +137,38 @@ function CommandMenu({
   const menuRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  // 过滤命令（搜索时匹配标题）
-  const filteredCommands = useMemo(() => {
-    const allCommands = getFullCommands()
-    const hasSearchQuery = searchQuery.trim().length > 0
-    if (!hasSearchQuery) return allCommands
-    return allCommands.filter(
-      (cmd) => cmd.title.toLowerCase().includes(searchQuery.toLowerCase())
-    )
+  // 构建导航序列并根据搜索过滤
+  const { navItems, headingVisible } = useMemo(() => {
+    const allNav = buildNavItems()
+    const hasQuery = searchQuery.trim().length > 0
+
+    if (!hasQuery) {
+      return {
+        navItems: allNav,
+        headingVisible: new Set([1, 2, 3, 4, 5, 6]),
+      }
+    }
+
+    const q = searchQuery.toLowerCase()
+    const headingVisible = new Set<number>()
+    const navItems: NavItem[] = []
+
+    for (const nav of allNav) {
+      if (nav.type === 'heading') {
+        const cmd = headingMap.get(nav.headingLevel!)!
+        if (cmd.title.toLowerCase().includes(q)) {
+          headingVisible.add(nav.headingLevel!)
+          navItems.push(nav)
+        }
+      } else {
+        const cmd = commandMap.get(nav.id)!
+        if (cmd.title.toLowerCase().includes(q)) {
+          navItems.push(nav)
+        }
+      }
+    }
+
+    return { navItems, headingVisible }
   }, [searchQuery])
 
   // 计算菜单位置
@@ -143,13 +184,13 @@ function CommandMenu({
   }, [position])
 
   const navigate = useCallback((direction: 'up' | 'down') => {
-    if (filteredCommands.length === 0) return
+    if (navItems.length === 0) return
     setSelectedIndex(prev => {
-      const len = filteredCommands.length
+      const len = navItems.length
       if (direction === 'down') return (prev + 1) % len
       return (prev - 1 + len) % len
     })
-  }, [filteredCommands.length])
+  }, [navItems.length])
 
   // 键盘导航
   useEffect(() => {
@@ -169,8 +210,8 @@ function CommandMenu({
           break
         case 'Enter':
           e.preventDefault()
-          if (filteredCommands[selectedIndex]) {
-            onSelect(filteredCommands[selectedIndex].id)
+          if (navItems[selectedIndex]) {
+            onSelect(navItems[selectedIndex].id)
           }
           break
         case 'Escape':
@@ -182,7 +223,7 @@ function CommandMenu({
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [filteredCommands, selectedIndex, navigate, onSelect, onClose])
+  }, [navItems, selectedIndex, navigate, onSelect, onClose])
 
   // 重置选中索引
   useEffect(() => {
@@ -207,6 +248,22 @@ function CommandMenu({
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [onClose])
+
+  // 获取命令的显示信息
+  const getCommandInfo = (nav: NavItem): CommandItem => {
+    if (nav.type === 'heading') {
+      return headingMap.get(nav.headingLevel!)!
+    }
+    return commandMap.get(nav.id)!
+  }
+
+  // 获取 navItem 在 navItems 中的索引
+  const getNavIndex = (id: string, headingLevel?: number): number => {
+    return navItems.findIndex(n => {
+      if (n.type === 'heading') return n.headingLevel === headingLevel
+      return n.id === id
+    })
+  }
 
   return (
     <div
@@ -240,20 +297,54 @@ function CommandMenu({
 
       {/* 命令列表 */}
       <div className="py-1 max-h-80 overflow-y-auto">
-        {filteredCommands.length > 0 ? (
-          filteredCommands.map((cmd, index) => (
-            <div
-              key={cmd.id}
-              onClick={() => onSelect(cmd.id)}
-              className={`command-menu-item-compact ${index === selectedIndex ? 'selected' : ''}`}
-            >
-              <div className="icon">{cmd.icon}</div>
-              <span className="title">{cmd.title}</span>
-              {cmd.shortcut && (
-                <kbd className="command-shortcut">{cmd.shortcut}</kbd>
-              )}
-            </div>
-          ))
+        {navItems.length > 0 ? (
+          <>
+            {/* 标题行 - H1-H6 合并为一行 */}
+            {headingVisible.size > 0 && (
+              <div className="heading-row">
+                {[1, 2, 3, 4, 5, 6]
+                  .filter(level => headingVisible.has(level))
+                  .map(level => {
+                    const idx = getNavIndex('', level)
+                    const isSelected = idx === selectedIndex
+                    return (
+                      <button
+                        key={level}
+                        className={`heading-btn ${isSelected ? 'selected' : ''}`}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onSelect(`h${level}`)
+                        }}
+                      >
+                        H{level}
+                      </button>
+                    )
+                  })}
+              </div>
+            )}
+
+            {/* 其他命令 */}
+            {navItems
+              .filter(nav => nav.type === 'command')
+              .map((nav) => {
+                const cmd = getCommandInfo(nav)
+                const idx = getNavIndex(nav.id)
+                const isSelected = idx === selectedIndex
+                return (
+                  <div
+                    key={nav.id}
+                    onClick={() => onSelect(nav.id)}
+                    className={`command-menu-item-compact ${isSelected ? 'selected' : ''}`}
+                  >
+                    <div className="icon">{cmd.icon}</div>
+                    <span className="title">{cmd.title}</span>
+                    {cmd.shortcut && (
+                      <kbd className="command-shortcut">{cmd.shortcut}</kbd>
+                    )}
+                  </div>
+                )
+              })}
+          </>
         ) : (
           <div className="px-3 py-3 text-center text-sm text-gray-400">
             未找到匹配的命令
