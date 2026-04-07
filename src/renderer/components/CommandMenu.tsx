@@ -160,6 +160,9 @@ function CommandMenu({
           setSelectedIndex(nextDown)
           break
         case 'Enter':
+          // 如果焦点在 heading 按钮上，不拦截，让按钮原生处理
+          const active = document.activeElement
+          if (active && active.classList.contains('heading-btn')) return
           e.preventDefault()
           if (filteredCommands[selectedIndex] && filteredCommands[selectedIndex].id !== 'heading') {
             onSelect(filteredCommands[selectedIndex].id)
