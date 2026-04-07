@@ -13,15 +13,18 @@ import FontFamily from '@tiptap/extension-font-family'
 import FontSize from '../extensions/FontSize'
 import Color from '../extensions/Color'
 import ResizableImage from '../extensions/ResizableImage'
+import MindMapNode from '../extensions/MindMapNode'
 import CodeBlockComponent from './CodeBlockComponent'
 import CommandMenu from './CommandMenu'
 import EditorBubbleMenu from './BubbleMenu'
 import DrawingEditorModal from './DrawingEditorModal'
+import MindMapEditorModal from './MindMapEditorModal'
 import PolishConfirmModal from './PolishConfirmModal'
 import TocPanel from './TocPanel'
 import { useCommandMenu } from '../hooks/useCommandMenu'
 import { useAIProcess } from '../hooks/useAIProcess'
 import { useCanvasEdit } from '../hooks/useCanvasEdit'
+import { useMindMapEdit } from '../hooks/useMindMapEdit'
 import { useDebouncedSave } from '../hooks/useDebouncedSave'
 import { useToc } from '../hooks/useToc'
 import type { Document } from '@shared/types'
@@ -58,6 +61,7 @@ function Editor({ document, vaultId: _vaultId, onUpdate }: EditorProps) {
     handleCommandSelect: () => {},
     handleKeyDown: () => false,
   })
+  const mindMapEditRef = useRef<ReturnType<typeof useMindMapEdit> | null>(null)
 
   // 初始化编辑器
   const editor = useEditor({
@@ -107,6 +111,7 @@ function Editor({ document, vaultId: _vaultId, onUpdate }: EditorProps) {
         lowlight,
         defaultLanguage: 'plaintext',
       }),
+      MindMapNode,
     ],
     content: (() => {
       try {
@@ -145,6 +150,11 @@ function Editor({ document, vaultId: _vaultId, onUpdate }: EditorProps) {
             commandMenuRef.current.handleCommandSelect('image')
             return true
           }
+          if (event.key === 'M' || event.key === 'm') {
+            event.preventDefault()
+            mindMapEditRef.current?.createMindMap()
+            return true
+          }
         }
         // 将键盘事件委托给 commandMenu
         return commandMenuRef.current.handleKeyDown(view, event)
@@ -172,6 +182,9 @@ function Editor({ document, vaultId: _vaultId, onUpdate }: EditorProps) {
   // 画布编辑 Hook（需要 editor 实例）
   const canvasEdit = useCanvasEdit(editor)
 
+  // 思维导图编辑 Hook（需要 editor 实例）
+  const mindMapEdit = useMindMapEdit(editor)
+
   // TOC Hook（需要在 editor 初始化后使用）
   const { toc, isPanelVisible, togglePanel, handleNavigate } = useToc(editor)
 
@@ -181,10 +194,12 @@ function Editor({ document, vaultId: _vaultId, onUpdate }: EditorProps) {
       return await window.electronAPI.file.selectImage()
     },
     onCreateCanvas: canvasEdit.createCanvas,
+    onCreateMindMap: mindMapEdit.createMindMap,
   })
 
   // 更新 refs（每次渲染同步最新引用）
   canvasEditRef.current = canvasEdit
+  mindMapEditRef.current = mindMapEdit
   commandMenuRef.current = commandMenu
 
   // 标题变化时保存
@@ -281,9 +296,10 @@ function Editor({ document, vaultId: _vaultId, onUpdate }: EditorProps) {
               <EditorBubbleMenu
                 editor={editor}
                 onEditCanvas={canvasEdit.handleEditCanvas}
+                onEditMindMap={mindMapEdit.handleEditMindMap}
                 onPolish={handlePolish}
                 onExpand={handleExpand}
-                hidden={aiProcess.showPolishModal || !!canvasEdit.editingCanvas}
+                hidden={aiProcess.showPolishModal || !!canvasEdit.editingCanvas || !!mindMapEdit.editingMindMap}
               />
               <EditorContent editor={editor} className="prose max-w-none" />
             </>
@@ -316,6 +332,16 @@ function Editor({ document, vaultId: _vaultId, onUpdate }: EditorProps) {
           canvasData={canvasEdit.editingCanvas.data}
           onSave={canvasEdit.handleSaveCanvas}
           onClose={canvasEdit.closeCanvasEditor}
+        />
+      )}
+
+      {/* 思维导图编辑模态框 */}
+      {mindMapEdit.editingMindMap && (
+        <MindMapEditorModal
+          mindmapData={mindMapEdit.editingMindMap.data}
+          isOpen={!!mindMapEdit.editingMindMap}
+          onSave={mindMapEdit.handleSaveMindMap}
+          onClose={mindMapEdit.closeMindMapEditor}
         />
       )}
 

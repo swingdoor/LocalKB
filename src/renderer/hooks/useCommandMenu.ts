@@ -10,6 +10,7 @@ interface CommandMenuState {
 interface UseCommandMenuOptions {
   onSelectImage?: () => Promise<{ data: string } | null>
   onCreateCanvas?: () => void
+  onCreateMindMap?: () => void
 }
 
 export function useCommandMenu(editor: Editor | null, options: UseCommandMenuOptions = {}) {
@@ -125,6 +126,11 @@ export function useCommandMenu(editor: Editor | null, options: UseCommandMenuOpt
       case 'canvas':
         if (options.onCreateCanvas) {
           options.onCreateCanvas()
+        }
+        break
+      case 'mindmap':
+        if (options.onCreateMindMap) {
+          options.onCreateMindMap()
         }
         break
     }

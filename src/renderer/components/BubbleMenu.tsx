@@ -2,9 +2,11 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { BubbleMenu, Editor } from '@tiptap/react'
 import type { NodeSelection } from '@tiptap/pm/state'
 
+
 interface BubbleMenuProps {
   editor: Editor
   onEditCanvas?: (canvasId: string, imageData: string) => void
+  onEditMindMap?: (mindmapId: string) => void
   onPolish?: (text: string) => void
   onExpand?: (text: string) => void
   hidden?: boolean
@@ -64,7 +66,7 @@ const DROPDOWN_TRIGGER_STYLE: React.CSSProperties = {
   border: 'none',
 }
 
-function EditorBubbleMenu({ editor, onEditCanvas, onPolish, onExpand, hidden = false }: BubbleMenuProps) {
+function EditorBubbleMenu({ editor, onEditCanvas, onEditMindMap, onPolish, onExpand, hidden = false }: BubbleMenuProps) {
   const [linkUrl, setLinkUrl] = useState('')
   const [showLinkInput, setShowLinkInput] = useState(false)
   const [linkProtocol, setLinkProtocol] = useState('https://')
@@ -144,6 +146,24 @@ function EditorBubbleMenu({ editor, onEditCanvas, onPolish, onExpand, hidden = f
     return node?.type.name === 'image' && node.attrs.alt?.startsWith('canvas-')
   }, [getSelectedImageNode])
 
+  // 获取选中的思维导图节点
+  const getSelectedMindMapNode = useCallback(() => {
+    const { selection } = editor.state
+    const node = (selection as NodeSelection).node
+    if (node?.type.name === 'mindmap') {
+      return node
+    }
+    if (selection.$anchor.parent.type.name === 'mindmap') {
+      return selection.$anchor.parent
+    }
+    return null
+  }, [editor])
+
+  // 判断是否选中思维导图
+  const isMindMapSelected = useCallback(() => {
+    return getSelectedMindMapNode() !== null
+  }, [getSelectedMindMapNode])
+
   // 下载图片
   const downloadImage = useCallback(async () => {
     const node = getSelectedImageNode()
@@ -186,6 +206,69 @@ function EditorBubbleMenu({ editor, onEditCanvas, onPolish, onExpand, hidden = f
       onEditCanvas?.(node.attrs.alt, node.attrs.src || '')
     }
   }, [getSelectedImageNode, onEditCanvas])
+
+  // 编辑思维导图
+  const editMindMap = useCallback(() => {
+    const node = getSelectedMindMapNode()
+    if (node?.type.name === 'mindmap' && node.attrs.alt) {
+      onEditMindMap?.(node.attrs.alt)
+    }
+  }, [getSelectedMindMapNode, onEditMindMap])
+
+  // 适应窗口 - 已移除
+
+  // 下载思维导图 - 从存储的数据中提取原始数据并导出PNG
+  const downloadMindMap = useCallback(async () => {
+    const node = getSelectedMindMapNode()
+    if (!node || node.type.name !== 'mindmap' || !node.attrs.data) return
+
+    try {
+      // Dynamically import MindElixir
+      const MindElixir = (await import('mind-elixir')).default
+      const { DARK_THEME, THEME } = await import('mind-elixir')
+
+      // Create a temporary container
+      const container = document.createElement('div')
+      container.style.position = 'absolute'
+      container.style.left = '-9999px'
+      container.style.top = '-9999px'
+      document.body.appendChild(container)
+
+      const isDark = document.documentElement.classList.contains('dark')
+      const mind = new MindElixir({
+        el: container,
+        theme: isDark ? DARK_THEME : THEME,
+      })
+
+      // Parse stored data - format is { svg, data }
+      const storedData = JSON.parse(node.attrs.data)
+      const rawData = storedData.data || storedData
+      mind.init(rawData)
+
+      // Wait for render then export
+      setTimeout(async () => {
+        try {
+          const blob = await mind.exportPng(true, '0')
+          if (blob) {
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+            const filename = `mindmap-${timestamp}.png`
+            const url = URL.createObjectURL(blob)
+            const a = document.createElement('a')
+            a.href = url
+            a.download = filename
+            a.click()
+            URL.revokeObjectURL(url)
+          }
+        } catch (err) {
+          console.error('Failed to export mind map:', err)
+        } finally {
+          document.body.removeChild(container)
+        }
+      }, 100)
+    } catch (err) {
+      console.error('Failed to download mind map:', err)
+    }
+  }, [getSelectedMindMapNode])
 
   // 解析已有链接
   const parseExistingHref = useCallback((href: string) => {
@@ -320,6 +403,54 @@ function EditorBubbleMenu({ editor, onEditCanvas, onPolish, onExpand, hidden = f
         </button>
         <div className="divider" />
         <button onClick={downloadImage} title="下载图片">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+          </svg>
+        </button>
+      </>
+    )
+  }
+
+  // 渲染思维导图菜单
+  const renderMindMapMenu = () => {
+    const mindmapNode = getSelectedMindMapNode()
+    return (
+      <>
+        <button onClick={editMindMap} title="编辑思维导图">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+          </svg>
+        </button>
+        <div className="divider" />
+        <button
+          onClick={() => editor.chain().focus().setMindMapAlign('left').run()}
+          className={mindmapNode?.attrs.textAlign === 'left' ? 'is-active' : ''}
+          title="左对齐"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h10M4 18h16" />
+          </svg>
+        </button>
+        <button
+          onClick={() => editor.chain().focus().setMindMapAlign('center').run()}
+          className={mindmapNode?.attrs.textAlign === 'center' ? 'is-active' : ''}
+          title="居中"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M7 12h10M4 18h16" />
+          </svg>
+        </button>
+        <button
+          onClick={() => editor.chain().focus().setMindMapAlign('right').run()}
+          className={mindmapNode?.attrs.textAlign === 'right' ? 'is-active' : ''}
+          title="右对齐"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M10 12h10M4 18h16" />
+          </svg>
+        </button>
+        <div className="divider" />
+        <button onClick={downloadMindMap} title="下载思维导图">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
           </svg>
@@ -686,6 +817,7 @@ function EditorBubbleMenu({ editor, onEditCanvas, onPolish, onExpand, hidden = f
 
   const renderMenuContent = () => {
     if (showLinkInput) return renderLinkInput()
+    if (isMindMapSelected()) return renderMindMapMenu()
     if (isImageSelected()) return renderImageMenu()
     return renderTextMenu()
   }
@@ -702,6 +834,8 @@ function EditorBubbleMenu({ editor, onEditCanvas, onPolish, onExpand, hidden = f
         if (hidden) return false
         const { selection } = state
         const node = (selection as NodeSelection).node
+        if (node?.type.name === 'mindmap') return true
+        if (selection.$anchor.parent.type.name === 'mindmap') return true
         if (node?.type.name === 'image') return true
         if (selection.$anchor.parent.type.name === 'image') return true
         const { from, to } = selection

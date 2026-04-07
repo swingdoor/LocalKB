@@ -776,6 +776,33 @@ body {
   --color-primary: #2563EB;
 }
 
+/* 思维导图节点样式 */
+.mindmap-node-wrapper {
+  display: inline-block;
+  position: relative;
+  line-height: 0;
+  transition: box-shadow 0.15s;
+}
+
+.mindmap-node-wrapper.selected {
+  outline: 2px solid #2563EB;
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.mindmap-node-wrapper .resize-handle {
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.mindmap-node-wrapper.selected .resize-handle {
+  opacity: 1;
+}
+
+.mindmap-node-wrapper:hover .resize-handle {
+  opacity: 0.7;
+}
+
 /* 画布节点样式 */
 .canvas-node {
   display: inline-block;
