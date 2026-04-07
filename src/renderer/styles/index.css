@@ -830,3 +830,9 @@ body {
   background: #2563EB;
   color: #fff;
 }
+
+.heading-btn.selected {
+  background: #EFF6FF;
+  color: #3B82F6;
+  border-color: #3B82F6;
+}
