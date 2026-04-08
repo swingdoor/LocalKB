@@ -108,44 +108,46 @@ const MindMapNodeView = ({ node, updateAttributes, selected }: any) => {
           draggable={false}
         />
         
-        {/* Resize handles - show when selected, same as ResizableImage */}
-        <>
-          {/* 右下角手柄 */}
-          <div
-            className="resize-handle resize-handle-se"
-            onMouseDown={handleMouseDown}
-            style={{
-              position: 'absolute',
-              right: -6,
-              bottom: -6,
-              width: 12,
-              height: 12,
-              background: '#2563EB',
-              border: '2px solid white',
-              borderRadius: 2,
-              cursor: 'se-resize',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
-            }}
-          />
-          {/* 右侧中间手柄 */}
-          <div
-            className="resize-handle resize-handle-e"
-            onMouseDown={handleMouseDown}
-            style={{
-              position: 'absolute',
-              right: -6,
-              top: '50%',
-              transform: 'translateY(-50%)',
-              width: 12,
-              height: 24,
-              background: '#2563EB',
-              border: '2px solid white',
-              borderRadius: 2,
-              cursor: 'e-resize',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
-            }}
-          />
-        </>
+        {/* Resize handles - show when selected */}
+        {selected && (
+          <>
+            {/* 右下角手柄 */}
+            <div
+              className="resize-handle resize-handle-se"
+              onMouseDown={handleMouseDown}
+              style={{
+                position: 'absolute',
+                right: -6,
+                bottom: -6,
+                width: 12,
+                height: 12,
+                background: '#2563EB',
+                border: '2px solid white',
+                borderRadius: 2,
+                cursor: 'se-resize',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+              }}
+            />
+            {/* 右侧中间手柄 */}
+            <div
+              className="resize-handle resize-handle-e"
+              onMouseDown={handleMouseDown}
+              style={{
+                position: 'absolute',
+                right: -6,
+                top: '50%',
+                transform: 'translateY(-50%)',
+                width: 12,
+                height: 24,
+                background: '#2563EB',
+                border: '2px solid white',
+                borderRadius: 2,
+                cursor: 'e-resize',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+              }}
+            />
+          </>
+        )}
       </div>
     </NodeViewWrapper>
   )
