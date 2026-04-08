@@ -70,6 +70,8 @@ function Editor({ document, vaultId: _vaultId, onUpdate }: EditorProps) {
         heading: {
           levels: [1, 2, 3, 4, 5, 6],
         },
+        // 排除 codeBlock，使用 CodeBlockLowlight 替代
+        codeBlock: false,
       }),
       Link.configure({
         openOnClick: false,
