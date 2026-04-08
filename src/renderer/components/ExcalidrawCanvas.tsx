@@ -25,6 +25,11 @@ interface ExcalidrawCanvasProps {
   onUpdate: (data: { title?: string; content?: string }) => void
 }
 
+// Excalidraw API 类型
+interface ExcalidrawAPI {
+  updateScene: (options: { appState?: any; elements?: any[]; captureUpdate?: string }) => void
+}
+
 // 错误边界组件
 class ErrorBoundary extends React.Component<
   { children: React.ReactNode; fallback: React.ReactNode },
@@ -54,12 +59,17 @@ class ErrorBoundary extends React.Component<
 function ExcalidrawCanvas({ document, onUpdate }: ExcalidrawCanvasProps) {
   const [title, setTitle] = useState(document.title)
   const [isReady, setIsReady] = useState(false)
+  const [excalidrawAPI, setExcalidrawAPI] = useState<ExcalidrawAPI | null>(null)
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const dataRef = useRef<{ elements: any[]; appState: any; files: any }>({
     elements: [],
     appState: {},
     files: {},
   })
+
+  // 画布模式状态
+  const [viewModeEnabled, setViewModeEnabled] = useState(false)
+  const [zenModeEnabled, setZenModeEnabled] = useState(false)
 
   // 使用 ref 稳定 onUpdate 引用，避免 store 更新导致防抖失效
   const onUpdateRef = useRef(onUpdate)
@@ -155,6 +165,7 @@ function ExcalidrawCanvas({ document, onUpdate }: ExcalidrawCanvasProps) {
           zoom: appState?.zoom,
           scrollX: appState?.scrollX,
           scrollY: appState?.scrollY,
+          snapToElement: appState?.snapToElement,
         },
         files: cleanedFiles,
       })
@@ -193,6 +204,45 @@ function ExcalidrawCanvas({ document, onUpdate }: ExcalidrawCanvasProps) {
     saveContent()
   }, [saveContent])
 
+  // 切换查看模式
+  const toggleViewMode = () => {
+    const newValue = !viewModeEnabled
+    setViewModeEnabled(newValue)
+    if (excalidrawAPI) {
+      excalidrawAPI.updateScene({ 
+        appState: { 
+          viewModeEnabled: newValue,
+          zenModeEnabled: newValue ? false : zenModeEnabled,
+        } 
+      })
+    }
+    if (newValue) {
+      setZenModeEnabled(false)
+    }
+  }
+
+  // 切换禅模式
+  const toggleZenMode = () => {
+    const newValue = !zenModeEnabled
+    setZenModeEnabled(newValue)
+    if (excalidrawAPI) {
+      excalidrawAPI.updateScene({ 
+        appState: { 
+          zenModeEnabled: newValue,
+          viewModeEnabled: newValue ? false : viewModeEnabled,
+        } 
+      })
+    }
+    if (newValue) {
+      setViewModeEnabled(false)
+    }
+  }
+
+  // 获取 Excalidraw API
+  const handleExcalidrawAPI = useCallback((api: ExcalidrawAPI) => {
+    setExcalidrawAPI(api)
+  }, [])
+
   const LoadingFallback = (
     <div className="flex-1 flex items-center justify-center bg-gray-50">
       <div className="text-center">
@@ -216,6 +266,14 @@ function ExcalidrawCanvas({ document, onUpdate }: ExcalidrawCanvasProps) {
     </div>
   )
 
+  // 模式切换按钮样式
+  const modeButtonClass = (isActive: boolean) => `
+    flex items-center gap-1 px-2 py-1 text-xs rounded transition-colors
+    ${isActive 
+      ? 'bg-primary text-white' 
+      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}
+  `
+
   return (
     <div className="h-full flex flex-col">
       {/* 文档标题 */}
@@ -235,17 +293,46 @@ function ExcalidrawCanvas({ document, onUpdate }: ExcalidrawCanvasProps) {
               <span>上次保存 {formatTime(document.updatedAt)}</span>
             </div>
           </div>
-          <button
-            onClick={handleExportImage}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition-colors"
-            style={{ color: 'var(--text-secondary)' }}
-            title="导出图片"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
-            <span>导出图片</span>
-          </button>
+          
+          {/* 画布模式工具栏 */}
+          <div className="flex items-center gap-2">
+            {/* 视图模式 */}
+            <div className="flex items-center gap-1 px-2 py-1 bg-gray-100 rounded">
+              <button
+                onClick={toggleViewMode}
+                className={modeButtonClass(viewModeEnabled)}
+                title="查看模式（只读）"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                </svg>
+                <span>查看</span>
+              </button>
+              <button
+                onClick={toggleZenMode}
+                className={modeButtonClass(zenModeEnabled)}
+                title="禅模式（专注画图）"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                </svg>
+                <span>禅</span>
+              </button>
+            </div>
+
+            <button
+              onClick={handleExportImage}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition-colors"
+              style={{ color: 'var(--text-secondary)' }}
+              title="导出图片"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              <span>导出</span>
+            </button>
+          </div>
         </div>
       </div>
       
@@ -260,16 +347,22 @@ function ExcalidrawCanvas({ document, onUpdate }: ExcalidrawCanvasProps) {
                   appState: {
                     ...initialData.appState,
                     collaborators: new Map(),
-                    currentItemFontFamily: initialData.appState?.currentItemFontFamily ?? 5, // 5 = Excalifont（内置 Xiaolai 小赖字体作为中文 fallback）
+                    currentItemFontFamily: initialData.appState?.currentItemFontFamily ?? 5,
                   },
                   files: initialData.files,
                 }}
                 onChange={handleChange}
+                excalidrawAPI={handleExcalidrawAPI}
+                langCode="zh-CN"
                 UIOptions={{
                   canvasActions: {
                     loadScene: false,
                     export: false,
                     saveAsImage: false,
+                    saveToActiveFile: true,
+                    clearCanvas: true,
+                    changeViewBackgroundColor: true,
+                    toggleTheme: null,
                   },
                 }}
               />

@@ -241,7 +241,9 @@ function MindMapEditorModal({ mindmapData, isOpen, onSave, onClose }: MindMapEdi
         return
       }
       
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+      const pad = (n: number) => n.toString().padStart(2, '0')
+      const d = new Date()
+      const timestamp = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}-${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}`
       const filename = `mindmap-${timestamp}.png`
       
       const url = URL.createObjectURL(blob)
