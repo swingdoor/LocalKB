@@ -86,7 +86,15 @@
     "icon": "icon.png",
     "win": {
       "target": "nsis",
-      "icon": "icon.ico"
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "极简笔记"
     },
     "mac": {
       "target": "dmg",
