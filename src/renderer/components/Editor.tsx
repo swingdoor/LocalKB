@@ -27,7 +27,8 @@ import { useCanvasEdit } from '../hooks/useCanvasEdit'
 import { useMindMapEdit } from '../hooks/useMindMapEdit'
 import { useDebouncedSave } from '../hooks/useDebouncedSave'
 import { useToc } from '../hooks/useToc'
-import type { Document } from '@shared/types'
+import { useAppStore } from '../stores/appStore'
+import type { Document, HotkeyConfig } from '@shared/types'
 
 interface EditorProps {
   document: Document
@@ -37,6 +38,9 @@ interface EditorProps {
 
 function Editor({ document, vaultId: _vaultId, onUpdate }: EditorProps) {
   const [title, setTitle] = useState(document.title)
+
+  // 从 store 获取快捷键配置
+  const hotkeys = useAppStore((state) => state.hotkeys)
 
   // 使用自定义 Hooks
   const { saveContent, saveTitle } = useDebouncedSave(onUpdate)
@@ -62,6 +66,8 @@ function Editor({ document, vaultId: _vaultId, onUpdate }: EditorProps) {
     handleKeyDown: () => false,
   })
   const mindMapEditRef = useRef<ReturnType<typeof useMindMapEdit> | null>(null)
+  // 快捷键配置 ref（用于在 handleKeyDown 中访问最新的配置）
+  const hotkeysRef = useRef<HotkeyConfig[]>(hotkeys)
 
   // 初始化编辑器
   const editor = useEditor({
@@ -140,22 +146,29 @@ function Editor({ document, vaultId: _vaultId, onUpdate }: EditorProps) {
           dispatch(tr)
           return true
         }
-        // 全局快捷键
-        if (event.ctrlKey && event.shiftKey) {
-          if (event.key === 'P' || event.key === 'p') {
+        // 全局快捷键（从配置读取）
+        for (const hotkey of hotkeysRef.current) {
+          let matches = true
+          if (hotkey.modifiers.includes('ctrl') && !event.ctrlKey && !event.metaKey) matches = false
+          if (hotkey.modifiers.includes('alt') && !event.altKey) matches = false
+          if (hotkey.modifiers.includes('shift') && !event.shiftKey) matches = false
+          if (hotkey.key.toLowerCase() !== event.key.toLowerCase()) matches = false
+          if (hotkey.readonly) matches = false // 跳过只读快捷键
+          
+          if (matches) {
             event.preventDefault()
-            canvasEditRef.current.createCanvas()
-            return true
-          }
-          if (event.key === 'I' || event.key === 'i') {
-            event.preventDefault()
-            commandMenuRef.current.handleCommandSelect('image')
-            return true
-          }
-          if (event.key === 'M' || event.key === 'm') {
-            event.preventDefault()
-            mindMapEditRef.current?.createMindMap()
-            return true
+            switch (hotkey.id) {
+              case 'canvasCommand':
+                canvasEditRef.current.createCanvas()
+                return true
+              case 'imageCommand':
+                commandMenuRef.current.handleCommandSelect('image')
+                return true
+              case 'mindmapCommand':
+                mindMapEditRef.current?.createMindMap()
+                return true
+            }
+            break
           }
         }
         // 将键盘事件委托给 commandMenu
@@ -203,6 +216,7 @@ function Editor({ document, vaultId: _vaultId, onUpdate }: EditorProps) {
   canvasEditRef.current = canvasEdit
   mindMapEditRef.current = mindMapEdit
   commandMenuRef.current = commandMenu
+  hotkeysRef.current = hotkeys
 
   // 标题变化时保存
   useEffect(() => {

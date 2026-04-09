@@ -388,7 +388,17 @@ export const settingsStore = {
     if (fs.existsSync(settingsPath)) {
       try {
         const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'))
-        return settings.hotkeys || DEFAULT_HOTKEYS
+        const savedHotkeys = settings.hotkeys
+        if (!savedHotkeys || savedHotkeys.length === 0) {
+          return DEFAULT_HOTKEYS
+        }
+        // 合并配置：以 DEFAULT_HOTKEYS 为基础，用已保存的配置覆盖
+        // 这样新增的快捷键也会被包含
+        const mergedHotkeys = DEFAULT_HOTKEYS.map(defaultHk => {
+          const saved = savedHotkeys.find((s: HotkeyConfig) => s.id === defaultHk.id)
+          return saved || defaultHk
+        })
+        return mergedHotkeys
       } catch (e) {
         console.error('Failed to read hotkeys:', e)
       }
@@ -396,7 +406,7 @@ export const settingsStore = {
     return DEFAULT_HOTKEYS
   },
 
-  // 保存快捷键配置
+  // 保存快捷键配置（只保存可修改的快捷键）
   saveHotkeys(hotkeys: HotkeyConfig[]): HotkeyConfig[] {
     const settingsPath = this.getSettingsPath()
     ensureDir(getDataPath())
@@ -410,7 +420,8 @@ export const settingsStore = {
       }
     }
     
-    allSettings.hotkeys = hotkeys
+    // 只保存可修改的快捷键（排除只读的 heading1-6）
+    allSettings.hotkeys = hotkeys.filter(h => !h.readonly)
     fs.writeFileSync(settingsPath, JSON.stringify(allSettings, null, 2), 'utf-8')
     return hotkeys
   },

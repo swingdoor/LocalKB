@@ -16,6 +16,7 @@ function Sidebar() {
     documents,
     currentDocument,
     theme,
+    hotkeys,
     createVault,
     deleteVault,
     switchVault,
@@ -26,6 +27,10 @@ function Sidebar() {
     setSettingsOpen,
     setTheme,
   } = useAppStore()
+
+  // 获取搜索快捷键显示文本
+  const searchHotkey = hotkeys.find(h => h.id === 'search')
+  const searchHotkeyDisplay = searchHotkey?.display || 'Ctrl+K'
 
   // 本地 UI 状态
   const [isVaultDropdownOpen, setIsVaultDropdownOpen] = useState(false)
@@ -165,7 +170,7 @@ function Sidebar() {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
           </svg>
           <span>搜索...</span>
-          <span className="ml-auto text-xs" style={{ color: 'var(--text-secondary)' }}>Ctrl+K</span>
+          <span className="ml-auto text-xs" style={{ color: 'var(--text-secondary)' }}>{searchHotkeyDisplay}</span>
         </button>
       </div>
       

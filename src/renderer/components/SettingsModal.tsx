@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import type { AISettings, HotkeyConfig } from '@shared/types'
+import { DEFAULT_HOTKEYS } from '@shared/types'
 import { useAppStore } from '../stores/appStore'
 
 interface SettingsModalProps {
@@ -131,10 +132,11 @@ function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     try {
       await Promise.all([
         window.electronAPI.settings.saveAI(aiSettings),
-        window.electronAPI.settings.saveHotkeys(hotkeys),
+        // 只保存可修改的快捷键（排除只读的 heading1-6）
+        window.electronAPI.settings.saveHotkeys(hotkeys.filter(h => !h.readonly)),
       ])
       
-      // 更新 store 中的配置
+      // 更新 store 中的配置（使用完整配置，包含只读的 heading1-6）
       const { updateHotkeys } = useAppStore.getState()
       updateHotkeys(hotkeys)
       
@@ -378,7 +380,7 @@ function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   {editingHotkeyId === hotkey.id ? (
                     <div className="flex items-center gap-2">
                       <span 
-                        className="px-3 py-1 text-sm border rounded font-mono"
+                        className="px-3 py-1 text-sm border rounded font-mono w-28 text-center"
                         style={{ backgroundColor: 'var(--primary-color)', color: '#fff', borderColor: 'var(--primary-color)' }}
                         onKeyDown={(e) => handleHotkeyKeyDown(e, hotkey.id)}
                         tabIndex={0}
@@ -387,25 +389,51 @@ function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       </span>
                       <button
                         onClick={cancelEditHotkey}
-                        className="text-sm"
+                        className="p-1.5 rounded hover:bg-gray-100 transition-colors"
                         style={{ color: 'var(--text-secondary)' }}
+                        title="取消"
                       >
-                        取消
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
                       </button>
                     </div>
                   ) : (
-                    <div className="flex items-center gap-2">
-                      <span className="px-3 py-1 text-sm rounded font-mono"
+                    <div className="flex items-center gap-3">
+                      <span className="px-3 py-1 text-sm rounded font-mono w-28 text-center"
                         style={{ backgroundColor: 'var(--bg-secondary)', color: 'var(--text-secondary)' }}>
                         {hotkey.display}
                       </span>
-                      <button
-                        onClick={() => startEditHotkey(hotkey.id)}
-                        className="text-sm"
-                        style={{ color: 'var(--text-secondary)' }}
-                      >
-                        修改
-                      </button>
+                      {!hotkey.readonly && (
+                        <>
+                          <button
+                            onClick={() => startEditHotkey(hotkey.id)}
+                            className="p-1.5 rounded hover:bg-gray-100 transition-colors"
+                            style={{ color: 'var(--text-secondary)' }}
+                            title="修改快捷键"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                            </svg>
+                          </button>
+                          <button
+                            onClick={() => {
+                              const defaultHk = DEFAULT_HOTKEYS.find(d => d.id === hotkey.id)
+                              if (defaultHk) {
+                                setHotkeys(hotkeys.map(h => h.id === hotkey.id ? { ...defaultHk, readonly: hotkey.readonly } : h))
+                              }
+                            }}
+                            className="p-1.5 rounded hover:bg-gray-100 transition-colors"
+                            style={{ color: 'var(--text-secondary)' }}
+                            title="恢复默认"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12a9 9 0 109-9 9.75 9.75 0 00-6.74 2.74L3 8" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3v5h5" />
+                            </svg>
+                          </button>
+                        </>
+                      )}
                     </div>
                   )}
                 </div>

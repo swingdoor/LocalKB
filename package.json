@@ -1,6 +1,6 @@
 {
   "name": "jijian-notes",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "description": "极简笔记 - 本地知识库笔记软件",
   "main": "dist/main/main/index.js",
   "scripts": {
@@ -94,7 +94,11 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "极简笔记"
+      "shortcutName": "极简笔记",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
+      "artifactName": "${productName}-Setup-${version}.exe"
     },
     "mac": {
       "target": "dmg",

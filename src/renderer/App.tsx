@@ -114,7 +114,7 @@ function App() {
               {currentVault ? (
                 <div className="text-center">
                   <p className="text-lg mb-2">选择或创建一个文档开始编辑</p>
-                  <p className="text-sm">按 Ctrl+K 快速搜索</p>
+                  <p className="text-sm">按 {hotkeys.find(h => h.id === 'search')?.display || 'Ctrl+K'} 快速搜索</p>
                 </div>
               ) : (
                 <div className="text-center">
