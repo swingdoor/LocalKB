@@ -38,6 +38,7 @@ function Sidebar() {
   const [newVaultName, setNewVaultName] = useState('')
   const [contextMenuDoc, setContextMenuDoc] = useState<Document | null>(null)
   const [contextMenuPos, setContextMenuPos] = useState({ x: 0, y: 0 })
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null)
 
   const handleCreateVault = () => {
     if (newVaultName.trim()) {
@@ -101,9 +102,7 @@ function Sidebar() {
                   <button
                     onClick={(e) => {
                       e.stopPropagation()
-                      if (confirm(`确定删除知识库"${vault.name}"吗？此操作不可恢复。`)) {
-                        deleteVault(vault.id)
-                      }
+                      setDeleteTarget({ id: vault.id, name: vault.name })
                     }}
                     className="px-2 py-1 mr-1 text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
                     title="删除知识库"
@@ -302,6 +301,43 @@ function Sidebar() {
           className="fixed inset-0 z-0"
           onClick={() => setIsVaultDropdownOpen(false)}
         />
+      )}
+
+      {/* 删除确认弹窗 */}
+      {deleteTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}
+          onClick={() => setDeleteTarget(null)}
+        >
+          <div
+            className="bg-white rounded-lg shadow-xl p-4 w-72"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-base font-medium mb-2">确认删除</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              确定删除知识库 "{deleteTarget.name}" 吗？此操作不可恢复。
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  deleteVault(deleteTarget.id)
+                  setIsVaultDropdownOpen(false)
+                  setDeleteTarget(null)
+                }}
+                className="flex-1 px-3 py-2 text-sm bg-red-500 text-white rounded-lg hover:bg-red-600"
+              >
+                删除
+              </button>
+              <button
+                onClick={() => setDeleteTarget(null)}
+                className="flex-1 px-3 py-2 text-sm bg-gray-100 rounded-lg hover:bg-gray-200"
+              >
+                取消
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </aside>
   )
