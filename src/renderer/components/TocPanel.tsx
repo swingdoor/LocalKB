@@ -14,6 +14,8 @@ interface TocPanelProps {
   isVisible?: boolean
   /** 切换显示状态的回调 */
   onToggle?: () => void
+  /** 是否显示章节序号 */
+  showNumbers?: boolean
 }
 
 // ============================================================================
@@ -27,12 +29,14 @@ function TocNodeRow({
   onToggle,
   expandedNodes,
   onNavigate,
+  showNumbers,
 }: {
   node: TocNode
   depth: number
   onToggle: (id: string) => void
   expandedNodes: Set<string>
   onNavigate: (pos: number | undefined, id: string) => void
+  showNumbers?: boolean
 }) {
   const hasChildren = node.children.length > 0
   const isExpanded = expandedNodes.has(node.id)
@@ -97,6 +101,13 @@ function TocNodeRow({
           H{node.level}
         </span>
 
+        {/* 章节序号 */}
+        {showNumbers && node.number && (
+          <span className="flex-shrink-0 text-xs mr-1" style={{ color: 'var(--text-secondary)' }}>
+            {node.number}
+          </span>
+        )}
+
         {/* 标题文本 */}
         <span className="truncate flex-1 group-hover:opacity-80" style={{ color: 'var(--text-primary)' }}>
           {node.text || <span className="italic" style={{ color: 'var(--text-secondary)' }}>无标题</span>}
@@ -114,6 +125,7 @@ function TocNodeRow({
               onToggle={onToggle}
               expandedNodes={expandedNodes}
               onNavigate={onNavigate}
+              showNumbers={showNumbers}
             />
           ))}
         </div>
@@ -143,7 +155,7 @@ function levelColor(level: number): string {
 // Main Component
 // ============================================================================
 
-function TocPanel({ toc, onNavigate, isVisible = true, onToggle }: TocPanelProps) {
+function TocPanel({ toc, onNavigate, isVisible = true, onToggle, showNumbers = false }: TocPanelProps) {
   // 记录每个节点是否展开（默认全部展开）
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(() => {
     // 初始化：所有有子节点的节点默认展开
@@ -235,6 +247,7 @@ function TocPanel({ toc, onNavigate, isVisible = true, onToggle }: TocPanelProps
                 onToggle={handleToggle}
                 expandedNodes={expandedNodes}
                 onNavigate={onNavigate}
+                showNumbers={showNumbers}
               />
             ))}
           </div>

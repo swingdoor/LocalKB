@@ -7,14 +7,15 @@ interface AppState {
   currentVault: Vault | null
   documents: Document[]
   currentDocument: Document | null
-  
+
   // UI 状态
   isSearchOpen: boolean
   isSettingsOpen: boolean
   sidebarOpen: boolean
   theme: string
   hotkeys: HotkeyConfig[]
-  
+  showHeadingNumbers: boolean
+
   // Actions
   loadVaults: () => Promise<void>
   createVault: (name: string) => Promise<void>
@@ -32,6 +33,7 @@ interface AppState {
   setTheme: (theme: string) => Promise<void>
   loadHotkeys: () => Promise<void>
   updateHotkeys: (hotkeys: HotkeyConfig[]) => void
+  toggleHeadingNumbers: () => void
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -45,6 +47,14 @@ export const useAppStore = create<AppState>((set, get) => ({
   sidebarOpen: true,
   theme: 'white',
   hotkeys: [],
+  showHeadingNumbers: (() => {
+    try {
+      const stored = localStorage.getItem('show-heading-numbers')
+      return stored ? JSON.parse(stored) : false
+    } catch {
+      return false
+    }
+  })(),
 
   // 加载知识库列表
   loadVaults: async () => {
@@ -211,5 +221,18 @@ export const useAppStore = create<AppState>((set, get) => ({
   // 更新快捷键（内存中）
   updateHotkeys: (hotkeys: HotkeyConfig[]) => {
     set({ hotkeys })
+  },
+
+  // 切换章节序号显示
+  toggleHeadingNumbers: () => {
+    set((state) => {
+      const next = !state.showHeadingNumbers
+      try {
+        localStorage.setItem('show-heading-numbers', JSON.stringify(next))
+      } catch {
+        // ignore
+      }
+      return { showHeadingNumbers: next }
+    })
   },
 }))

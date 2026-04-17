@@ -14,6 +14,7 @@ import FontSize from '../extensions/FontSize'
 import Color from '../extensions/Color'
 import ResizableImage from '../extensions/ResizableImage'
 import MindMapNode from '../extensions/MindMapNode'
+import { HeadingNumbers } from '../extensions/HeadingNumbers'
 import CodeBlockComponent from './CodeBlockComponent'
 import CommandMenu from './CommandMenu'
 import EditorBubbleMenu from './BubbleMenu'
@@ -28,6 +29,7 @@ import { useMindMapEdit } from '../hooks/useMindMapEdit'
 import { useDebouncedSave } from '../hooks/useDebouncedSave'
 import { useToc } from '../hooks/useToc'
 import { useAppStore } from '../stores/appStore'
+import { addNumbersToHTML } from '../utils/pdfExport'
 import type { Document, HotkeyConfig } from '@shared/types'
 
 interface EditorProps {
@@ -41,6 +43,8 @@ function Editor({ document, vaultId: _vaultId, onUpdate }: EditorProps) {
 
   // 从 store 获取快捷键配置
   const hotkeys = useAppStore((state) => state.hotkeys)
+  const showHeadingNumbers = useAppStore((state) => state.showHeadingNumbers)
+  const toggleHeadingNumbers = useAppStore((state) => state.toggleHeadingNumbers)
 
   // 使用自定义 Hooks
   const { saveContent, saveTitle } = useDebouncedSave(onUpdate)
@@ -111,6 +115,7 @@ function Editor({ document, vaultId: _vaultId, onUpdate }: EditorProps) {
       Color.configure({
         types: ['textStyle'],
       }),
+      HeadingNumbers,
       CodeBlockLowlight.extend({
         addNodeView() {
           return ReactNodeViewRenderer(CodeBlockComponent)
@@ -231,12 +236,25 @@ function Editor({ document, vaultId: _vaultId, onUpdate }: EditorProps) {
       return
     }
     try {
-      const htmlContent = editor.getHTML()
+      let htmlContent = editor.getHTML()
+
+      // 如果开启了序号显示，则在 HTML 中添加序号
+      if (showHeadingNumbers && toc.length > 0) {
+        htmlContent = addNumbersToHTML(htmlContent, toc)
+      }
+
       await window.electronAPI.file.exportPDF(title, htmlContent)
-    } catch (err) {
+    } catch (err: any) {
       console.error('Export PDF error:', err)
+      // 显示用户友好的错误提示
+      const errorMessage = err?.message || String(err)
+      if (errorMessage.includes('占用') || errorMessage.includes('EBUSY') || errorMessage.includes('locked')) {
+        alert('文件正在被其他程序占用，请关闭后重试')
+      } else {
+        alert('导出 PDF 失败，请重试')
+      }
     }
-  }, [editor, title])
+  }, [editor, title, showHeadingNumbers, toc])
 
   // AI 处理回调（润色/扩写）
   const handlePolish = useCallback((text: string) => {
@@ -290,6 +308,17 @@ function Editor({ document, vaultId: _vaultId, onUpdate }: EditorProps) {
               <span>目录</span>
             </button>
             <button
+              onClick={toggleHeadingNumbers}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition-colors"
+              style={{ color: showHeadingNumbers ? 'var(--text-primary)' : 'var(--text-secondary)' }}
+              title={showHeadingNumbers ? "隐藏章节序号" : "显示章节序号"}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" />
+              </svg>
+              <span>序号</span>
+            </button>
+            <button
               onClick={handleExportPDF}
               className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition-colors"
               style={{ color: 'var(--text-secondary)' }}
@@ -306,7 +335,7 @@ function Editor({ document, vaultId: _vaultId, onUpdate }: EditorProps) {
 
       {/* 编辑器内容 */}
       <div className="flex-1 flex overflow-hidden">
-        <div className="flex-1 overflow-y-auto px-8 pb-8" style={{ backgroundColor: 'var(--bg-editor)' }}>
+        <div className={`flex-1 overflow-y-auto px-8 pb-8 ${showHeadingNumbers ? 'show-heading-numbers' : ''}`} style={{ backgroundColor: 'var(--bg-editor)' }}>
           {editor && (
             <>
               <EditorBubbleMenu
@@ -328,6 +357,7 @@ function Editor({ document, vaultId: _vaultId, onUpdate }: EditorProps) {
           onNavigate={handleNavigate}
           isVisible={isPanelVisible}
           onToggle={togglePanel}
+          showNumbers={showHeadingNumbers}
         />
       </div>
 

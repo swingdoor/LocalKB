@@ -1,6 +1,6 @@
 {
   "name": "jijian-notes",
-  "version": "0.8.3",
+  "version": "0.8.5",
   "description": "极简笔记 - 本地知识库笔记软件",
   "main": "dist/main/main/index.js",
   "scripts": {

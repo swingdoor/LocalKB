@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import type { Editor } from '@tiptap/react'
-import { parseHeadings, computeHeadingPositions, flattenToc, type TocNode } from '../utils/headingParser'
+import { parseHeadings, computeHeadingPositions, flattenToc, addHeadingNumbers, type TocNode } from '../utils/headingParser'
 
 // ============================================================================
 // Types
@@ -93,7 +93,10 @@ export function useToc(
 
     // 从 JSON 解析标题
     const json = ed.getJSON()
-    const parsed = parseHeadings(json as { type: string; content?: unknown[] })
+    let parsed = parseHeadings(json as { type: string; content?: unknown[] })
+
+    // 添加章节序号
+    parsed = addHeadingNumbers(parsed)
 
     // 计算位置（如果需要点击导航）
     if (computePositionOnMount) {

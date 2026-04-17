@@ -28,6 +28,8 @@ export interface TocNode {
   level: number
   /** 在文档中的字符偏移位置（用于点击定位），undefined 表示未解析 */
   pos?: number
+  /** 章节序号（如 "1", "1.1", "1.2.1"） */
+  number?: string
   /** 子节点 */
   children: TocNode[]
 }
@@ -190,4 +192,51 @@ function attachPositions(nodes: TocNode[], posMap: Map<string, number>): TocNode
     pos: posMap.get(node.id),
     children: attachPositions(node.children, posMap),
   }))
+}
+
+// ============================================================================
+// Numbering
+// ============================================================================
+
+/**
+ * 为 TOC 树添加章节序号
+ *
+ * @param nodes - TOC 树
+ * @returns 添加了 number 属性的 TOC 树
+ */
+export function addHeadingNumbers(nodes: TocNode[]): TocNode[] {
+  // 计数器数组，索引对应标题级别（1-6）
+  const counters: number[] = [0, 0, 0, 0, 0, 0]
+
+  function processNode(node: TocNode, parentLevel: number): TocNode {
+    const level = node.level - 1 // 转换为 0-based 索引
+
+    // 重置更深层级的计数器
+    for (let i = level + 1; i < counters.length; i++) {
+      counters[i] = 0
+    }
+
+    // 当前级别计数器加 1
+    counters[level]++
+
+    // 生成序号字符串（只包含有效的层级）
+    const numberParts: number[] = []
+    for (let i = 0; i <= level; i++) {
+      if (counters[i] > 0) {
+        numberParts.push(counters[i])
+      }
+    }
+    const number = numberParts.join('.')
+
+    // 递归处理子节点
+    const children = node.children.map(child => processNode(child, level))
+
+    return {
+      ...node,
+      number,
+      children,
+    }
+  }
+
+  return nodes.map(node => processNode(node, -1))
 }

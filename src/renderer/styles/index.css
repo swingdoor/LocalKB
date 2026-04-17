@@ -863,3 +863,15 @@ body {
   color: #3B82F6;
   border-color: #3B82F6;
 }
+
+/* 章节序号样式 */
+.show-heading-numbers .ProseMirror h1[data-heading-number]::before,
+.show-heading-numbers .ProseMirror h2[data-heading-number]::before,
+.show-heading-numbers .ProseMirror h3[data-heading-number]::before,
+.show-heading-numbers .ProseMirror h4[data-heading-number]::before,
+.show-heading-numbers .ProseMirror h5[data-heading-number]::before,
+.show-heading-numbers .ProseMirror h6[data-heading-number]::before {
+  content: attr(data-heading-number) " ";
+  color: var(--text-secondary);
+  margin-right: 0.5em;
+}

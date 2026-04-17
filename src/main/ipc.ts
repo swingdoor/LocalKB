@@ -232,7 +232,7 @@ export function setupIpcHandlers(mainWindow: BrowserWindow) {
 
       try {
         await pdfWindow.loadFile(tempPath)
-        
+
         // 等待内容加载完成
         await new Promise(resolve => setTimeout(resolve, 500))
 
@@ -246,7 +246,14 @@ export function setupIpcHandlers(mainWindow: BrowserWindow) {
           },
         })
 
-        fs.writeFileSync(result.filePath, pdfData)
+        try {
+          fs.writeFileSync(result.filePath, pdfData)
+        } catch (writeErr: any) {
+          if (writeErr.code === 'EBUSY' || writeErr.code === 'EPERM') {
+            throw new Error('文件正在被其他程序占用，请关闭后重试')
+          }
+          throw writeErr
+        }
         return true
       } finally {
         pdfWindow.close()
