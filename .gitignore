@@ -5,6 +5,10 @@ node_modules/
 dist/
 release/
 
+# Project icon duplicates
+/icon.ico
+/logo.ico
+
 # IDE
 .vscode/
 .idea/
