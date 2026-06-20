@@ -6,6 +6,10 @@ import { lowlight } from 'lowlight'
 import Link from '@tiptap/extension-link'
 import TaskList from '@tiptap/extension-task-list'
 import TaskItem from '@tiptap/extension-task-item'
+import Table from '@tiptap/extension-table'
+import TableRow from '@tiptap/extension-table-row'
+import TableHeader from '@tiptap/extension-table-header'
+import TableCell from '@tiptap/extension-table-cell'
 import TextAlign from '@tiptap/extension-text-align'
 import Placeholder from '@tiptap/extension-placeholder'
 import TextStyle from '@tiptap/extension-text-style'
@@ -30,6 +34,7 @@ import { useDebouncedSave } from '../hooks/useDebouncedSave'
 import { useToc } from '../hooks/useToc'
 import { useAppStore } from '../stores/appStore'
 import { addNumbersToHTML } from '../utils/pdfExport'
+import { handleRichPaste } from '../utils/richPaste'
 import type { Document, HotkeyConfig } from '@shared/types'
 
 interface EditorProps {
@@ -38,8 +43,13 @@ interface EditorProps {
   onUpdate: (data: Partial<Document>) => void
 }
 
+function countContentCharacters(text: string) {
+  return text.replace(/\s/g, '').length
+}
+
 function Editor({ document, vaultId: _vaultId, onUpdate }: EditorProps) {
   const [title, setTitle] = useState(document.title)
+  const [characterCount, setCharacterCount] = useState(0)
 
   // 从 store 获取快捷键配置
   const hotkeys = useAppStore((state) => state.hotkeys)
@@ -95,6 +105,12 @@ function Editor({ document, vaultId: _vaultId, onUpdate }: EditorProps) {
       TaskItem.configure({
         nested: true,
       }),
+      Table.configure({
+        resizable: true,
+      }),
+      TableRow,
+      TableHeader,
+      TableCell,
       TextAlign.configure({
         types: ['heading', 'paragraph'],
       }),
@@ -135,9 +151,11 @@ function Editor({ document, vaultId: _vaultId, onUpdate }: EditorProps) {
     })(),
     onUpdate: ({ editor: ed }) => {
       const json = JSON.stringify(ed.getJSON())
+      setCharacterCount(countContentCharacters(ed.getText()))
       saveContent(json)
     },
     editorProps: {
+      handlePaste: (view, event) => handleRichPaste(view, event),
       handleKeyDown: (view, event) => {
         // Tab 键处理：在行首插入缩进
         if (event.key === 'Tab' && !event.shiftKey) {
@@ -218,6 +236,12 @@ function Editor({ document, vaultId: _vaultId, onUpdate }: EditorProps) {
   })
 
   // 更新 refs（每次渲染同步最新引用）
+  useEffect(() => {
+    if (editor) {
+      setCharacterCount(countContentCharacters(editor.getText()))
+    }
+  }, [editor, document.id])
+
   canvasEditRef.current = canvasEdit
   mindMapEditRef.current = mindMapEdit
   commandMenuRef.current = commandMenu
@@ -293,6 +317,7 @@ function Editor({ document, vaultId: _vaultId, onUpdate }: EditorProps) {
             <div className="mt-2 text-xs flex items-center gap-4" style={{ color: 'var(--text-secondary)' }}>
               <span>创建于 {formatTime(document.createdAt)}</span>
               <span>上次保存 {formatTime(document.updatedAt)}</span>
+              <span>{'\u5b57\u6570'} {characterCount}</span>
             </div>
           </div>
           <div className="flex items-center gap-2">

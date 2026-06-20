@@ -1,3 +1,4 @@
+/// <reference types="vitest" />
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
@@ -25,5 +26,8 @@ export default defineConfig({
   server: {
     port: 5180,
     strictPort: true,
+  },
+  test: {
+    environment: 'jsdom',
   },
 })

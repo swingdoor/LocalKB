@@ -191,6 +191,18 @@ export function setupIpcHandlers(mainWindow: BrowserWindow) {
     p { margin: 12px 0; }
     ul, ol { padding-left: 24px; }
     li { margin: 6px 0; }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      margin: 16px 0;
+    }
+    th, td {
+      border: 1px solid #ddd;
+      padding: 8px 10px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th { background: #f4f4f4; font-weight: 600; }
     blockquote {
       border-left: 4px solid #ddd;
       padding-left: 16px;
