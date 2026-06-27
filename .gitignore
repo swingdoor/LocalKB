@@ -30,6 +30,7 @@ node_modules
 .claude/
 .sisyphus/
 .superpowers/
+openspec/
 
 # Docs
 docs/
