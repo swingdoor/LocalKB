@@ -1,4 +1,4 @@
-
+import { markdownToHtml, sanitizePastedHtml } from '../utils/richPaste'
 
 type AIMode = 'polish' | 'expand'
 
@@ -113,9 +113,10 @@ function PolishConfirmModal({
                 <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">
                   {config.resultLabel}
                 </label>
-                <div className="p-3 bg-primary/5 dark:bg-primary/10 border border-primary/20 rounded-md text-gray-900 dark:text-white text-sm whitespace-pre-wrap max-h-48 overflow-y-auto">
-                  {polishedText}
-                </div>
+                <div
+                  className="ai-result-preview p-3 bg-primary/5 dark:bg-primary/10 border border-primary/20 rounded-md text-gray-900 dark:text-white text-sm max-h-48 overflow-y-auto"
+                  dangerouslySetInnerHTML={{ __html: sanitizePastedHtml(markdownToHtml(polishedText)) }}
+                />
               </div>
             </>
           )}
