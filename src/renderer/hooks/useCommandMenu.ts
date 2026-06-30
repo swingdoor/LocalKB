@@ -54,19 +54,30 @@ export function useCommandMenu(editor: Editor | null, options: UseCommandMenuOpt
     // IME 输入过程中不触发唤醒
     if (event.isComposing) return false
 
-    // 检测 Alt+\ 组合键呼出命令菜单
-    if (event.key === '\\' && event.altKey && !showCommandMenuRef.current) {
-      event.preventDefault()
-      const { from } = view.state.selection
-      const coords = view.coordsAtPos(from)
-      openCommandMenu({ x: coords.left, y: coords.bottom + 5 })
-      return true
+    // 检测行首 `/` 触发命令菜单
+    if (event.key === '/' && !showCommandMenuRef.current) {
+      const { $from } = view.state.selection
+
+      // 触发条件判断
+      const isAtBlockStart = $from.parentOffset === 0
+      const isParagraph = $from.parent.type.name === 'paragraph'
+      const notInCodeBlock = !$from.node(-1) || $from.node(-1).type.name !== 'code_block'
+      const notInCodeMark = $from.marks().every((m: any) => m.type.name !== 'code')
+
+      if (isAtBlockStart && isParagraph && notInCodeBlock && notInCodeMark) {
+        event.preventDefault()
+        const coords = view.coordsAtPos($from.pos)
+        openCommandMenu({ x: coords.left, y: coords.bottom + 5 })
+        return true
+      }
     }
+
     // Escape 关闭命令菜单
     if (event.key === 'Escape' && showCommandMenuRef.current) {
       closeCommandMenu()
       return true
     }
+
     return false
   }, [openCommandMenu, closeCommandMenu])
 

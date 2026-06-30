@@ -210,6 +210,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ theme })
     await window.electronAPI.settings.saveTheme(theme)
     document.documentElement.setAttribute('data-theme', theme === 'white' ? '' : theme)
+
+    // 同步系统按钮颜色（仅 Windows/Linux）
+    if (process.platform !== 'darwin') {
+      window.electronAPI.theme.changed(theme)
+    }
   },
 
   // 加载快捷键

@@ -82,6 +82,12 @@ const electronAPI = {
   // 应用资源路径
   app: {
     getAssetPath: () => ipcRenderer.invoke(IPC_CHANNELS.APP.GET_ASSET_PATH) as Promise<string>,
+    getPlatform: () => process.platform,
+  },
+
+  // 主题（用于同步系统按钮颜色）
+  theme: {
+    changed: (theme: string) => ipcRenderer.invoke(IPC_CHANNELS.THEME.CHANGED, theme),
   },
 }
 

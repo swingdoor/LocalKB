@@ -50,6 +50,9 @@ export const IPC_CHANNELS = {
   APP: {
     GET_ASSET_PATH: 'app:getAssetPath',
   },
+  THEME: {
+    CHANGED: 'theme:changed',
+  },
 } as const
 
 /**

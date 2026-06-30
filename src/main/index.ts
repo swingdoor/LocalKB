@@ -6,6 +6,7 @@ import { IPC_CHANNELS } from '../shared/ipc-channels'
 let mainWindow: BrowserWindow | null = null
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
+const isMac = process.platform === 'darwin'
 
 // 注册自定义协议（用于本地加载 Excalidraw 字体）
 protocol.registerSchemesAsPrivileged([{
@@ -63,6 +64,15 @@ function createWindow() {
     minHeight: 600,
     frame: false,
     titleBarStyle: 'hidden',
+    ...(isMac ? {
+      trafficLightPosition: { x: 14, y: 10 }
+    } : {
+      titleBarOverlay: {
+        color: '#FFFFFF',
+        symbolColor: '#333333',
+        height: 36
+      }
+    }),
     backgroundColor: '#FFFFFF',
     webPreferences: {
       preload: path.join(__dirname, '../../preload/index.js'),
@@ -102,6 +112,20 @@ function createWindow() {
     return { action: 'deny' }
   })
 }
+
+// 主题到系统按钮颜色的映射
+const themeColorMap: Record<string, { color: string; symbolColor: string }> = {
+  white: { color: '#FFFFFF', symbolColor: '#333333' },
+  warm: { color: '#FFF9E6', symbolColor: '#4A4A4A' },
+  green: { color: '#F0F9F4', symbolColor: '#2D5F3F' }
+}
+
+// IPC handler: 主题切换时同步系统按钮颜色（仅 Windows/Linux）
+ipcMain.handle(IPC_CHANNELS.THEME.CHANGED, (_event, theme: string) => {
+  if (isMac || !mainWindow) return
+  const colors = themeColorMap[theme] || themeColorMap.white
+  mainWindow.setTitleBarOverlay(colors)
+})
 
 app.whenReady().then(() => {
   // 注册自定义协议处理器：将 excalidraw-fonts:// 请求映射到本地 resources 目录

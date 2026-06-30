@@ -115,7 +115,7 @@ function Editor({ document, vaultId: _vaultId, onUpdate }: EditorProps) {
         types: ['heading', 'paragraph'],
       }),
       Placeholder.configure({
-        placeholder: '输入 Alt+\\ 打开命令菜单...',
+        placeholder: '在段落开头输入 / 打开命令菜单...',
       }),
       ResizableImage.configure({
         inline: false,
