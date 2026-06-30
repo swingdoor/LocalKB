@@ -167,6 +167,8 @@ src/
 npm install
 ```
 
+> 项目内置 `.npmrc`，已将 Electron 二进制下载指向国内镜像（npmmirror），国内网络环境无需额外配置即可安装。
+
 ### 启动开发环境
 
 ```bash
