@@ -82,9 +82,10 @@ const modelProviders = [
 ]
 
 const deepseekModels = [
-  { value: 'deepseek-chat', label: 'DeepSeek Chat' },
-  { value: 'deepseek-coder', label: 'DeepSeek Coder' },
-  { value: 'deepseek-reasoner', label: 'DeepSeek Reasoner' },
+  { value: 'deepseek-v4-flash', label: 'DeepSeek V4 Flash' },
+  { value: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro' },
+  { value: 'deepseek-chat', label: 'DeepSeek Chat (将于 2026/07/24 弃用)' },
+  { value: 'deepseek-reasoner', label: 'DeepSeek Reasoner (将于 2026/07/24 弃用)' },
 ]
 
 function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
@@ -94,7 +95,7 @@ function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [aiSettings, setAiSettings] = useState<AISettings>({
     apiKey: '',
     baseUrl: 'https://api.deepseek.com',
-    model: 'deepseek-chat',
+    model: 'deepseek-v4-flash',
     polishPrompt: '请对以下文本进行润色，使其更加流畅、专业，同时保持原意不变。只返回润色后的文本，不要添加任何解释或说明：\n\n',
     expandPrompt: '请对以下文本进行扩写，丰富内容细节，增加相关论述，使其更加完整充实。只返回扩写后的文本，不要添加任何解释或说明：\n\n',
   })
@@ -223,7 +224,7 @@ function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       setAiSettings({
         ...aiSettings,
         baseUrl: provider.baseUrl,
-        model: providerId === 'deepseek' ? 'deepseek-chat' : '',
+        model: providerId === 'deepseek' ? 'deepseek-v4-flash' : '',
       })
     }
   }
