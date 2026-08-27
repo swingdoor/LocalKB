@@ -57,6 +57,7 @@ interface AppState {
 
   loadVaults: () => Promise<void>
   createVault: (name: string) => Promise<void>
+  renameVault: (vaultId: string, name: string) => Promise<boolean>
   deleteVault: (vaultId: string) => Promise<void>
   switchVault: (vault: Vault) => Promise<void>
   loadDocuments: (vaultId: string) => Promise<void>
@@ -132,6 +133,19 @@ export const useAppStore = create<AppState>((set, get) => ({
       expandedGroupIds: [],
     }))
     await get().loadDocuments(vault.id)
+  },
+
+  renameVault: async (vaultId, name) => {
+    const nextName = name.trim()
+    if (!nextName) return false
+    if (get().vaults.find((vault) => vault.id === vaultId)?.name === nextName) return true
+    const updated = await window.electronAPI.vault.rename(vaultId, nextName)
+    if (!updated) return false
+    set((state) => ({
+      vaults: state.vaults.map((vault) => vault.id === vaultId ? updated : vault),
+      currentVault: state.currentVault?.id === vaultId ? updated : state.currentVault,
+    }))
+    return true
   },
 
   deleteVault: async (vaultId) => {

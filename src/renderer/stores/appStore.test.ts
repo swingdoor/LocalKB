@@ -111,4 +111,16 @@ describe('appStore structure state', () => {
     expect(useAppStore.getState().expandedGroupIds).toEqual([GROUP])
     expect(useAppStore.getState().revealDocumentId).toBe(DOCUMENT)
   })
+
+  it('renames a vault once and updates both the list and current selection', async () => {
+    const updated = { ...VAULT_A, name: '新名称' }
+    const rename = vi.fn(async () => updated)
+    window.electronAPI = { vault: { rename } } as any
+    useAppStore.setState({ vaults: [VAULT_A, VAULT_B], currentVault: VAULT_A })
+
+    expect(await useAppStore.getState().renameVault(VAULT_A.id, '  新名称  ')).toBe(true)
+    expect(rename).toHaveBeenCalledWith(VAULT_A.id, '新名称')
+    expect(useAppStore.getState().vaults[0]).toEqual(updated)
+    expect(useAppStore.getState().currentVault).toEqual(updated)
+  })
 })

@@ -90,6 +90,7 @@ describe('DocumentTree', () => {
       structureError: null,
       expandedGroupIds: [],
       revealDocumentId: null,
+      isSearchOpen: false,
     })
   })
 
@@ -107,6 +108,14 @@ describe('DocumentTree', () => {
     expect(document.body.textContent).toContain('新建组')
     expect(document.body.textContent).toContain('新建文档')
     expect(document.body.textContent).toContain('新建画布')
+  })
+
+  it('opens search from the compact content toolbar control', () => {
+    act(() => root.render(<DocumentTree />))
+    const search = container.querySelector<HTMLButtonElement>('button[aria-label="搜索文档"]')!
+    expect(search.className).toContain('h-7')
+    act(() => search.click())
+    expect(useAppStore.getState().isSearchOpen).toBe(true)
   })
 
   it('shows group creation and maintenance actions in one menu', () => {

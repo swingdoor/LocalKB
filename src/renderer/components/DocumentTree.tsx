@@ -13,6 +13,7 @@ import {
   Image as ImageIcon,
   MoreHorizontal,
   Plus,
+  Search,
 } from 'lucide-react'
 import { useAppStore } from '../stores/appStore'
 import {
@@ -174,6 +175,7 @@ function DocumentTree() {
     moveStructure,
     deleteGroup,
     setGroupExpanded,
+    setSearchOpen,
     clearRevealDocument,
   } = useAppStore()
   const treeRef = useRef<TreeApi<StructureTreeNode>>()
@@ -255,16 +257,27 @@ function DocumentTree() {
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex h-9 flex-none items-center justify-between px-3">
         <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>内容</span>
-        <button
-          type="button"
-          aria-label="新建内容"
-          aria-haspopup="menu"
-          onClick={(event) => openAddMenu(event.currentTarget, null)}
-          className="flex h-7 w-7 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-gray-100 hover:text-primary focus:outline-none focus:ring-1 focus:ring-primary"
-          title="新建"
-        >
-          <Plus size={16} />
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            aria-label="搜索文档"
+            onClick={() => setSearchOpen(true)}
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-gray-100 hover:text-primary focus:outline-none focus:ring-1 focus:ring-primary"
+            title="搜索"
+          >
+            <Search size={16} />
+          </button>
+          <button
+            type="button"
+            aria-label="新建内容"
+            aria-haspopup="menu"
+            onClick={(event) => openAddMenu(event.currentTarget, null)}
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-gray-100 hover:text-primary focus:outline-none focus:ring-1 focus:ring-primary"
+            title="新建"
+          >
+            <Plus size={16} />
+          </button>
+        </div>
       </div>
 
       {structureError && (
