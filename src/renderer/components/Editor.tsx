@@ -298,24 +298,24 @@ function Editor({ document, vaultId: _vaultId, onUpdate }: EditorProps) {
   return (
     <div className="h-full flex flex-col">
       {/* 文档标题 */}
-      <div className="px-8 pt-8 pb-4">
-        <div className="flex items-start justify-between">
-          <div className="flex-1">
+      <div className="px-4 py-2 flex-shrink-0">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex-1 min-w-0">
             <input
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="w-full text-3xl font-bold bg-transparent border-none outline-none"
+              className="w-full text-[22px] leading-7 font-medium bg-transparent border-none outline-none"
               style={{ color: 'var(--text-primary)' }}
               placeholder="无标题"
             />
-            <div className="mt-2 text-xs flex items-center gap-4" style={{ color: 'var(--text-secondary)' }}>
+            <div className="mt-1 text-xs flex items-center gap-4" style={{ color: 'var(--text-secondary)' }}>
               <span>创建于 {formatTime(document.createdAt)}</span>
               <span>上次保存 {formatTime(document.updatedAt)}</span>
               <span>{'\u5b57\u6570'} {characterCount}</span>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-none items-center gap-2">
             <button
               onClick={togglePanel}
               className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition-colors"

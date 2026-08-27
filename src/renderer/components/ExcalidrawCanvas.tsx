@@ -17,7 +17,24 @@ const fontPathReady = (async () => {
 const Excalidraw = lazy(async () => {
   await fontPathReady
   const module = await import('@excalidraw/excalidraw')
-  return { default: module.Excalidraw }
+  const Component = module.Excalidraw
+  const MainMenu = module.MainMenu
+  return {
+    default: (props: React.ComponentProps<typeof Component>) => (
+      <Component {...props}>
+        <MainMenu>
+          <MainMenu.DefaultItems.LoadScene />
+          <MainMenu.DefaultItems.SaveToActiveFile />
+          <MainMenu.DefaultItems.SearchMenu />
+          <MainMenu.DefaultItems.Help />
+          <MainMenu.DefaultItems.ClearCanvas />
+          <MainMenu.Separator />
+          <MainMenu.DefaultItems.ToggleTheme />
+          <MainMenu.DefaultItems.ChangeCanvasBackground />
+        </MainMenu>
+      </Component>
+    ),
+  }
 })
 
 interface ExcalidrawCanvasProps {
@@ -277,14 +294,14 @@ function ExcalidrawCanvas({ document, onUpdate }: ExcalidrawCanvasProps) {
   return (
     <div className="h-full flex flex-col">
       {/* 文档标题 */}
-      <div className="px-4 py-2 border-b flex-shrink-0" style={{ borderColor: 'var(--border-color)' }}>
-        <div className="flex items-start justify-between">
-          <div className="flex-1">
+      <div className="px-4 py-2 flex-shrink-0">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex-1 min-w-0">
             <input
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="w-full text-lg font-medium bg-transparent border-none outline-none"
+              className="w-full text-[22px] leading-7 font-medium bg-transparent border-none outline-none"
               style={{ color: 'var(--text-primary)' }}
               placeholder="无标题画布"
             />
@@ -295,7 +312,7 @@ function ExcalidrawCanvas({ document, onUpdate }: ExcalidrawCanvasProps) {
           </div>
           
           {/* 画布模式工具栏 */}
-          <div className="flex items-center gap-2">
+          <div className="flex flex-none items-center gap-2">
             {/* 视图模式 */}
             <div className="flex items-center gap-1 px-2 py-1 bg-gray-100 rounded">
               <button

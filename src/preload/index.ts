@@ -1,6 +1,17 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC_CHANNELS } from '../shared/ipc-channels'
-import type { Document, Vault, ImageFile, AISettings, PolishResult, DefaultConfig, HotkeyConfig } from '../shared/types'
+import type {
+  AISettings,
+  Document,
+  DocumentSummary,
+  HotkeyConfig,
+  ImageFile,
+  PolishResult,
+  StructureMoveInput,
+  StructureResult,
+  Vault,
+  VaultStructure,
+} from '../shared/types'
 
 // 暴露给渲染进程的 API
 const electronAPI = {
@@ -30,17 +41,62 @@ const electronAPI = {
   // Document 操作
   document: {
     list: (vaultId: string) => 
-      ipcRenderer.invoke(IPC_CHANNELS.DOCUMENT.LIST, vaultId) as Promise<Document[]>,
+      ipcRenderer.invoke(IPC_CHANNELS.DOCUMENT.LIST, vaultId) as Promise<DocumentSummary[]>,
     get: (vaultId: string, docId: string) => 
       ipcRenderer.invoke(IPC_CHANNELS.DOCUMENT.GET, vaultId, docId) as Promise<Document | null>,
-    create: (vaultId: string, title: string, type: 'document' | 'drawing' = 'document') => 
-      ipcRenderer.invoke(IPC_CHANNELS.DOCUMENT.CREATE, vaultId, title, type) as Promise<Document>,
+    create: (
+      vaultId: string,
+      title: string,
+      type: 'document' | 'drawing' = 'document',
+      parentId: string | null = null,
+      index?: number,
+    ) => ipcRenderer.invoke(
+      IPC_CHANNELS.DOCUMENT.CREATE,
+      vaultId,
+      title,
+      type,
+      parentId,
+      index,
+    ) as Promise<Document>,
     update: (vaultId: string, docId: string, data: { title?: string; content?: string }) => 
       ipcRenderer.invoke(IPC_CHANNELS.DOCUMENT.UPDATE, vaultId, docId, data) as Promise<Document | null>,
     delete: (vaultId: string, docId: string) => 
       ipcRenderer.invoke(IPC_CHANNELS.DOCUMENT.DELETE, vaultId, docId) as Promise<boolean>,
     search: (vaultId: string, query: string) => 
       ipcRenderer.invoke(IPC_CHANNELS.DOCUMENT.SEARCH, vaultId, query) as Promise<Document[]>,
+  },
+
+  // 文档组织结构操作。所有失败均返回稳定的领域错误，不暴露 ipcRenderer。
+  structure: {
+    get: (vaultId: string) =>
+      ipcRenderer.invoke(IPC_CHANNELS.STRUCTURE.GET, vaultId) as Promise<StructureResult<VaultStructure>>,
+    createGroup: (vaultId: string, parentId: string | null, name: string, index?: number) =>
+      ipcRenderer.invoke(
+        IPC_CHANNELS.STRUCTURE.CREATE_GROUP,
+        vaultId,
+        parentId,
+        name,
+        index,
+      ) as Promise<StructureResult<VaultStructure>>,
+    renameGroup: (vaultId: string, groupId: string, name: string) =>
+      ipcRenderer.invoke(
+        IPC_CHANNELS.STRUCTURE.RENAME_GROUP,
+        vaultId,
+        groupId,
+        name,
+      ) as Promise<StructureResult<VaultStructure>>,
+    move: (vaultId: string, input: StructureMoveInput) =>
+      ipcRenderer.invoke(
+        IPC_CHANNELS.STRUCTURE.MOVE,
+        vaultId,
+        input,
+      ) as Promise<StructureResult<VaultStructure>>,
+    deleteGroup: (vaultId: string, groupId: string) =>
+      ipcRenderer.invoke(
+        IPC_CHANNELS.STRUCTURE.DELETE_GROUP,
+        vaultId,
+        groupId,
+      ) as Promise<StructureResult<VaultStructure>>,
   },
 
   // 文件操作
@@ -65,9 +121,9 @@ const electronAPI = {
       ipcRenderer.invoke(IPC_CHANNELS.SETTINGS.SAVE_AI, settings) as Promise<AISettings>,
     getTheme: () => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS.GET_THEME) as Promise<string>,
     saveTheme: (theme: string) => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS.SAVE_THEME, theme) as Promise<string>,
-    getDefaults: () => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS.GET_DEFAULTS) as Promise<DefaultConfig>,
-    saveDefaults: (config: Partial<DefaultConfig>) => 
-      ipcRenderer.invoke(IPC_CHANNELS.SETTINGS.SAVE_DEFAULTS, config) as Promise<DefaultConfig>,
+    getDefaults: () => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS.GET_DEFAULTS) as Promise<Record<string, unknown>>,
+    saveDefaults: (config: Record<string, unknown>) =>
+      ipcRenderer.invoke(IPC_CHANNELS.SETTINGS.SAVE_DEFAULTS, config) as Promise<Record<string, unknown>>,
     getHotkeys: () => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS.GET_HOTKEYS) as Promise<HotkeyConfig[]>,
     saveHotkeys: (hotkeys: HotkeyConfig[]) => 
       ipcRenderer.invoke(IPC_CHANNELS.SETTINGS.SAVE_HOTKEYS, hotkeys) as Promise<HotkeyConfig[]>,

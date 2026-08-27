@@ -8,7 +8,7 @@ import SettingsModal from './components/SettingsModal'
 import { useAppStore } from './stores/appStore'
 import { loadXiaolaiFont } from './utils/loadFonts'
 import { eventMatchesHotkey, formatHotkeyDisplay } from './utils/hotkeys'
-import type { Document } from '@shared/types'
+import type { DocumentSummary } from '@shared/types'
 
 function App() {
   const {
@@ -22,6 +22,7 @@ function App() {
     loadTheme,
     loadHotkeys,
     selectDocument,
+    revealDocument,
     updateDocument,
     setSearchOpen,
     setSettingsOpen,
@@ -69,8 +70,9 @@ function App() {
   }, [hotkeys, isSearchOpen, setSearchOpen])
 
   // 搜索选择文档
-  const handleSearchSelect = (doc: Document) => {
-    selectDocument(doc)
+  const handleSearchSelect = (doc: DocumentSummary) => {
+    revealDocument(doc.id)
+    void selectDocument(doc)
     setSearchOpen(false)
   }
   const searchHotkey = hotkeys.find(h => h.id === 'search')

@@ -18,6 +18,13 @@ export const IPC_CHANNELS = {
     DELETE: 'document:delete',
     SEARCH: 'document:search',
   },
+  STRUCTURE: {
+    GET: 'structure:get',
+    CREATE_GROUP: 'structure:createGroup',
+    RENAME_GROUP: 'structure:renameGroup',
+    MOVE: 'structure:move',
+    DELETE_GROUP: 'structure:deleteGroup',
+  },
   FILE: {
     SELECT_IMAGE: 'file:selectImage',
     SAVE_IMAGE: 'file:saveImage',

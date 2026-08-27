@@ -1,0 +1,164 @@
+import type {
+  DocumentSummary,
+  StructureEntry,
+  StructureMoveInput,
+  VaultStructure,
+} from '@shared/types'
+
+export interface GroupTreeNode {
+  kind: 'group'
+  id: string
+  name: string
+  children: StructureTreeNode[]
+}
+
+export interface DocumentTreeNode {
+  kind: 'document'
+  id: string
+  name: string
+  documentType: DocumentSummary['type']
+  summary: DocumentSummary
+}
+
+export type StructureTreeNode = GroupTreeNode | DocumentTreeNode
+
+function orderedChildren(structure: VaultStructure, parentId: string | null): StructureEntry[] {
+  return structure.entries
+    .filter((entry) => entry.parentId === parentId)
+    .sort((a, b) => a.order - b.order || a.id.localeCompare(b.id))
+}
+
+export function buildTreeData(
+  structure: VaultStructure | null,
+  documents: DocumentSummary[],
+): StructureTreeNode[] {
+  if (!structure) return []
+  const summaries = new Map(documents.map((document) => [document.id, document]))
+  const build = (parentId: string | null): StructureTreeNode[] =>
+    orderedChildren(structure, parentId).flatMap((entry): StructureTreeNode[] => {
+      if (entry.kind === 'group') {
+        return [{
+          kind: 'group',
+          id: entry.id,
+          name: entry.name,
+          children: build(entry.id),
+        }]
+      }
+      const summary = summaries.get(entry.id)
+      return summary ? [{
+        kind: 'document',
+        id: entry.id,
+        name: summary.title,
+        documentType: summary.type,
+        summary,
+      }] : []
+    })
+  return build(null)
+}
+
+export function getAncestorGroupIds(
+  structure: VaultStructure | null,
+  documentId: string,
+): string[] {
+  if (!structure) return []
+  const byId = new Map(structure.entries.map((entry) => [entry.id, entry]))
+  const ancestors: string[] = []
+  let current = byId.get(documentId)?.parentId ?? null
+  const visited = new Set<string>()
+  while (current !== null && !visited.has(current)) {
+    visited.add(current)
+    const group = byId.get(current)
+    if (!group || group.kind !== 'group') break
+    ancestors.unshift(group.id)
+    current = group.parentId
+  }
+  return ancestors
+}
+
+export function getDocumentBreadcrumb(
+  structure: VaultStructure | null,
+  documentId: string,
+): string {
+  if (!structure) return ''
+  const byId = new Map(structure.entries.map((entry) => [entry.id, entry]))
+  return getAncestorGroupIds(structure, documentId)
+    .map((id) => byId.get(id))
+    .filter((entry): entry is Extract<StructureEntry, { kind: 'group' }> => entry?.kind === 'group')
+    .map((group) => group.name)
+    .join(' / ')
+}
+
+export function countDescendantContent(
+  structure: VaultStructure | null,
+  groupId: string,
+): number {
+  if (!structure) return 0
+  const groups = new Set([groupId])
+  let changed = true
+  while (changed) {
+    changed = false
+    for (const entry of structure.entries) {
+      if (
+        entry.kind === 'group' &&
+        entry.parentId !== null &&
+        groups.has(entry.parentId) &&
+        !groups.has(entry.id)
+      ) {
+        groups.add(entry.id)
+        changed = true
+      }
+    }
+  }
+  return structure.entries.filter(
+    (entry) => entry.kind === 'document' && entry.parentId !== null && groups.has(entry.parentId),
+  ).length
+}
+
+export function isInvalidMove(
+  structure: VaultStructure | null,
+  itemId: string,
+  targetParentId: string | null,
+): boolean {
+  if (!structure || targetParentId === null) return false
+  const item = structure.entries.find((entry) => entry.id === itemId)
+  const target = structure.entries.find((entry) => entry.id === targetParentId)
+  if (!item || !target || target.kind !== 'group') return true
+  if (item.kind === 'document') return false
+  if (item.id === targetParentId) return true
+
+  let parent: string | null = targetParentId
+  const visited = new Set<string>()
+  while (parent !== null && !visited.has(parent)) {
+    if (parent === item.id) return true
+    visited.add(parent)
+    parent = structure.entries.find(
+      (entry) => entry.kind === 'group' && entry.id === parent,
+    )?.parentId ?? null
+  }
+  return false
+}
+
+export function applyOptimisticMove(
+  structure: VaultStructure,
+  input: StructureMoveInput,
+): VaultStructure {
+  const entries = structure.entries.map((entry) => ({ ...entry }))
+  const item = entries.find((entry) => entry.id === input.id && entry.kind === input.kind)
+  if (!item) return structure
+  const oldParentId = item.parentId
+  item.parentId = input.targetParentId
+
+  const reorder = (parentId: string | null, moved?: StructureEntry) => {
+    const siblings = entries
+      .filter((entry) => entry.parentId === parentId && entry.id !== moved?.id)
+      .sort((a, b) => a.order - b.order || a.id.localeCompare(b.id))
+    if (moved) siblings.splice(Math.min(Math.max(input.index, 0), siblings.length), 0, moved)
+    siblings.forEach((entry, order) => {
+      entry.order = order
+    })
+  }
+
+  reorder(input.targetParentId, item)
+  if (oldParentId !== input.targetParentId) reorder(oldParentId)
+  return { version: 1, entries }
+}

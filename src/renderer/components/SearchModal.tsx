@@ -1,18 +1,21 @@
 import { useState, useEffect, useRef } from 'react'
-import type { Document } from '@shared/types'
+import type { DocumentSummary } from '@shared/types'
+import { useAppStore } from '../stores/appStore'
+import { getDocumentBreadcrumb } from '../utils/structureTree'
 
 interface SearchModalProps {
   vaultId: string
-  onSelect: (doc: Document) => void
+  onSelect: (doc: DocumentSummary) => void
   onClose: () => void
 }
 
 function SearchModal({ vaultId, onSelect, onClose }: SearchModalProps) {
   const [query, setQuery] = useState('')
-  const [results, setResults] = useState<Document[]>([])
+  const [results, setResults] = useState<DocumentSummary[]>([])
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [isLoading, setIsLoading] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+  const structure = useAppStore((state) => state.structure)
 
   // 搜索
   useEffect(() => {
@@ -124,7 +127,10 @@ function SearchModal({ vaultId, onSelect, onClose }: SearchModalProps) {
                   )}
                   <div className="flex-1 min-w-0">
                     <div className="font-medium text-text truncate">{doc.title}</div>
-                    <div className="text-sm text-gray-400">
+                    <div className="truncate text-sm text-gray-400">
+                      {getDocumentBreadcrumb(structure, doc.id)
+                        ? `${getDocumentBreadcrumb(structure, doc.id)} · `
+                        : ''}
                       {new Date(doc.updatedAt).toLocaleDateString('zh-CN')}
                     </div>
                   </div>

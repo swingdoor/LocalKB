@@ -1,0 +1,148 @@
+import React, { act } from 'react'
+import { createRoot, type Root } from 'react-dom/client'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { DocumentSummary, VaultStructure } from '@shared/types'
+import { useAppStore } from '../stores/appStore'
+
+vi.mock('react-arborist', async () => {
+  const ReactModule = await vi.importActual<typeof import('react')>('react')
+  const flatten = (nodes: any[]): any[] => nodes.flatMap((node) => [node, ...flatten(node.children || [])])
+  const Tree = ReactModule.forwardRef<any, any>((props, ref) => {
+    const nodes = flatten(props.data || [])
+    ReactModule.useImperativeHandle(ref, () => ({
+      get: () => null,
+      open: vi.fn(),
+      isOpen: () => true,
+      select: vi.fn(),
+      scrollTo: vi.fn(),
+    }))
+    const Node = props.children
+    return (
+      <div role="tree" aria-label={props['aria-label']}>
+        {nodes.map((data) => (
+          <Node
+            key={data.id}
+            data-testid={`node-${data.id}`}
+            node={{
+              id: data.id,
+              data,
+              isEditing: false,
+              isSelected: false,
+              isOpen: true,
+              isLeaf: data.kind === 'document',
+              willReceiveDrop: false,
+              toggle: vi.fn(),
+              open: vi.fn(),
+              reset: vi.fn(),
+              submit: vi.fn(),
+            }}
+            tree={{}}
+            style={{}}
+            dragHandle={() => undefined}
+          />
+        ))}
+      </div>
+    )
+  })
+  return {
+    Tree,
+    adjustMoveIndex: ({ index }: { index: number }) => index,
+  }
+})
+
+import DocumentTree from './DocumentTree'
+
+const VAULT = {
+  id: '11111111-1111-4111-8111-111111111111',
+  name: '测试库',
+  createdAt: '',
+}
+const GROUP_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+const DOC_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+const SUMMARY: DocumentSummary = {
+  id: DOC_ID,
+  title: '说明',
+  type: 'document',
+  createdAt: '',
+  updatedAt: '',
+}
+
+describe('DocumentTree', () => {
+  let container: HTMLDivElement
+  let root: Root
+
+  beforeEach(() => {
+    globalThis.IS_REACT_ACT_ENVIRONMENT = true
+    class ResizeObserverMock {
+      observe() {}
+      disconnect() {}
+    }
+    vi.stubGlobal('ResizeObserver', ResizeObserverMock)
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    root = createRoot(container)
+    useAppStore.setState({
+      currentVault: VAULT,
+      currentDocument: null,
+      documents: [],
+      structure: { version: 1, entries: [] },
+      structureLoading: false,
+      structureError: null,
+      expandedGroupIds: [],
+      revealDocumentId: null,
+    })
+  })
+
+  afterEach(() => {
+    act(() => root.unmount())
+    container.remove()
+    vi.unstubAllGlobals()
+  })
+
+  it('uses one compact labelled creation control with three choices', () => {
+    act(() => root.render(<DocumentTree />))
+    const add = container.querySelector<HTMLButtonElement>('button[aria-label="新建内容"]')!
+    expect(add.className).toContain('h-7')
+    act(() => add.click())
+    expect(document.body.textContent).toContain('新建组')
+    expect(document.body.textContent).toContain('新建文档')
+    expect(document.body.textContent).toContain('新建画布')
+  })
+
+  it('shows group creation and maintenance actions in one menu', () => {
+    const structure: VaultStructure = {
+      version: 1,
+      entries: [
+        { kind: 'group', id: GROUP_ID, name: '项目', parentId: null, order: 0 },
+      ],
+    }
+    useAppStore.setState({ structure })
+    act(() => root.render(<DocumentTree />))
+    const more = container.querySelector<HTMLButtonElement>('button[aria-label="项目 的更多操作"]')!
+    act(() => more.click())
+    const actions = Array.from(document.body.querySelectorAll<HTMLElement>('[role="menuitem"]'))
+      .map((item) => item.textContent)
+    expect(actions).toEqual(['新建组', '新建文档', '新建画布', '重命名', '删除组'])
+    expect(document.body.textContent).not.toContain('在组内新建')
+  })
+
+  it('keeps non-empty group deletion visible, focusable, greyed, and explained', () => {
+    const structure: VaultStructure = {
+      version: 1,
+      entries: [
+        { kind: 'group', id: GROUP_ID, name: '项目', parentId: null, order: 0 },
+        { kind: 'document', id: DOC_ID, parentId: GROUP_ID, order: 0 },
+      ],
+    }
+    useAppStore.setState({ structure, documents: [SUMMARY] })
+    act(() => root.render(<DocumentTree />))
+    const more = container.querySelector<HTMLButtonElement>('button[aria-label="项目 的更多操作"]')!
+    act(() => more.click())
+    const deleteItem = document.body.querySelector<HTMLButtonElement>('[role="menuitem"][aria-disabled="true"]')!
+    expect(deleteItem).toBeTruthy()
+    expect(deleteItem.disabled).toBe(false)
+    expect(deleteItem.tabIndex).not.toBe(-1)
+    expect(deleteItem.title).toContain('组内还有 1 项内容')
+    expect(deleteItem.className).toContain('text-gray-300')
+  })
+})

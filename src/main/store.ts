@@ -2,8 +2,9 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { app } from 'electron'
 import { v4 as uuidv4 } from 'uuid'
-import type { Document, Vault, VaultMeta, AISettings, HotkeyConfig } from '../shared/types'
+import type { AISettings, Document, DocumentSummary, HotkeyConfig, Vault, VaultMeta } from '../shared/types'
 import { DEFAULT_HOTKEYS } from '../shared/types'
+import { assertId, resolveInside } from './validation'
 
 // 数据存储路径
 const getDataPath = () => {
@@ -14,11 +15,42 @@ const getVaultsPath = () => {
   return path.join(getDataPath(), 'vaults')
 }
 
+const getVaultPath = (vaultId: string): string => {
+  assertId(vaultId, '知识库 ID')
+  return resolveInside(getVaultsPath(), vaultId)
+}
+
+const getDocumentsPath = (vaultId: string): string =>
+  resolveInside(getVaultPath(vaultId), 'documents')
+
+const getDocumentPath = (vaultId: string, documentId: string): string => {
+  assertId(documentId, '文档 ID')
+  return resolveInside(getDocumentsPath(vaultId), `${documentId}.json`)
+}
+
 // 确保目录存在
 const ensureDir = (dirPath: string) => {
   if (!fs.existsSync(dirPath)) {
     fs.mkdirSync(dirPath, { recursive: true })
   }
+}
+
+const readDocuments = (vaultId: string): Document[] => {
+  const documentsPath = getDocumentsPath(vaultId)
+  ensureDir(documentsPath)
+  const documents: Document[] = []
+  for (const file of fs.readdirSync(documentsPath).filter((name) => name.endsWith('.json'))) {
+    try {
+      documents.push(JSON.parse(
+        fs.readFileSync(resolveInside(documentsPath, file), 'utf-8'),
+      ) as Document)
+    } catch (error) {
+      console.error('Failed to read document:', error)
+    }
+  }
+  return documents.sort(
+    (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+  )
 }
 
 // Vault 操作
@@ -77,7 +109,7 @@ export const vaultStore = {
 
   // 删除 Vault
   delete(vaultId: string): boolean {
-    const vaultPath = path.join(getVaultsPath(), vaultId)
+    const vaultPath = getVaultPath(vaultId)
     if (fs.existsSync(vaultPath)) {
       fs.rmSync(vaultPath, { recursive: true, force: true })
       return true
@@ -87,7 +119,7 @@ export const vaultStore = {
 
   // 重命名 Vault
   rename(vaultId: string, newName: string): Vault | null {
-    const vaultPath = path.join(getVaultsPath(), vaultId)
+    const vaultPath = getVaultPath(vaultId)
     const metaPath = path.join(vaultPath, 'meta.json')
     
     if (fs.existsSync(metaPath)) {
@@ -103,33 +135,13 @@ export const vaultStore = {
 // Document 操作
 export const documentStore = {
   // 获取 Vault 下所有文档
-  list(vaultId: string): Document[] {
-    const documentsPath = path.join(getVaultsPath(), vaultId, 'documents')
-    ensureDir(documentsPath)
-    
-    const files = fs.readdirSync(documentsPath)
-      .filter(f => f.endsWith('.json'))
-    
-    const documents: Document[] = []
-    for (const file of files) {
-      try {
-        const doc: Document = JSON.parse(
-          fs.readFileSync(path.join(documentsPath, file), 'utf-8')
-        )
-        documents.push(doc)
-      } catch (e) {
-        console.error('Failed to read document:', e)
-      }
-    }
-    
-    return documents.sort((a, b) => 
-      new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-    )
+  list(vaultId: string): DocumentSummary[] {
+    return readDocuments(vaultId).map(({ content: _content, ...summary }) => summary)
   },
 
   // 获取单个文档
   get(vaultId: string, docId: string): Document | null {
-    const docPath = path.join(getVaultsPath(), vaultId, 'documents', `${docId}.json`)
+    const docPath = getDocumentPath(vaultId, docId)
     if (fs.existsSync(docPath)) {
       return JSON.parse(fs.readFileSync(docPath, 'utf-8'))
     }
@@ -138,7 +150,7 @@ export const documentStore = {
 
   // 创建文档
   create(vaultId: string, title: string, type: 'document' | 'drawing' = 'document'): Document {
-    const documentsPath = path.join(getVaultsPath(), vaultId, 'documents')
+    const documentsPath = getDocumentsPath(vaultId)
     ensureDir(documentsPath)
     
     const id = uuidv4()
@@ -161,13 +173,13 @@ export const documentStore = {
     }
     
     fs.writeFileSync(
-      path.join(documentsPath, `${id}.json`),
+      resolveInside(documentsPath, `${id}.json`),
       JSON.stringify(doc, null, 2),
       'utf-8'
     )
     
     // 更新 Vault meta
-    const metaPath = path.join(getVaultsPath(), vaultId, 'meta.json')
+    const metaPath = resolveInside(getVaultPath(vaultId), 'meta.json')
     if (fs.existsSync(metaPath)) {
       const meta: VaultMeta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'))
       meta.documents.push(id)
@@ -179,7 +191,7 @@ export const documentStore = {
 
   // 更新文档
   update(vaultId: string, docId: string, data: Partial<Pick<Document, 'title' | 'content'>>): Document | null {
-    const docPath = path.join(getVaultsPath(), vaultId, 'documents', `${docId}.json`)
+    const docPath = getDocumentPath(vaultId, docId)
     
     if (fs.existsSync(docPath)) {
       const doc: Document = JSON.parse(fs.readFileSync(docPath, 'utf-8'))
@@ -196,27 +208,39 @@ export const documentStore = {
 
   // 删除文档
   delete(vaultId: string, docId: string): boolean {
-    const docPath = path.join(getVaultsPath(), vaultId, 'documents', `${docId}.json`)
-    
-    if (fs.existsSync(docPath)) {
-      fs.unlinkSync(docPath)
-      
-      // 更新 Vault meta
-      const metaPath = path.join(getVaultsPath(), vaultId, 'meta.json')
-      if (fs.existsSync(metaPath)) {
-        const meta: VaultMeta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'))
-        meta.documents = meta.documents.filter(id => id !== docId)
+    const docPath = getDocumentPath(vaultId, docId)
+    if (!fs.existsSync(docPath)) return false
+
+    const documentsPath = getDocumentsPath(vaultId)
+    const stagedPath = resolveInside(
+      documentsPath,
+      `.${docId}.${process.pid}.${Date.now()}.deleting`,
+    )
+    const metaPath = resolveInside(getVaultPath(vaultId), 'meta.json')
+    const originalMeta = fs.existsSync(metaPath) ? fs.readFileSync(metaPath, 'utf-8') : null
+
+    try {
+      // 在结构条目和旧版元数据完成更新前，内容文件始终可恢复。
+      fs.renameSync(docPath, stagedPath)
+      if (originalMeta !== null) {
+        const meta: VaultMeta = JSON.parse(originalMeta)
+        meta.documents = meta.documents.filter((id) => id !== docId)
         fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2), 'utf-8')
       }
-      
+      fs.unlinkSync(stagedPath)
       return true
+    } catch (error) {
+      if (fs.existsSync(stagedPath) && !fs.existsSync(docPath)) {
+        fs.renameSync(stagedPath, docPath)
+      }
+      if (originalMeta !== null) fs.writeFileSync(metaPath, originalMeta, 'utf-8')
+      throw error
     }
-    return false
   },
 
   // 搜索文档
   search(vaultId: string, query: string): Document[] {
-    const documents = this.list(vaultId)
+    const documents = readDocuments(vaultId)
     const lowerQuery = query.toLowerCase()
     
     return documents.filter(doc => {

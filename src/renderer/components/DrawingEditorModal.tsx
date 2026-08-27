@@ -1,10 +1,27 @@
-import { useState, useCallback, useRef, lazy, Suspense } from 'react'
+import { useState, useCallback, useRef, lazy, Suspense, type ComponentProps } from 'react'
 import { cleanExcalidrawData } from '../utils/canvasUtils'
 
 // 懒加载 Excalidraw
 const Excalidraw = lazy(async () => {
   const module = await import('@excalidraw/excalidraw')
-  return { default: module.Excalidraw }
+  const Component = module.Excalidraw
+  const MainMenu = module.MainMenu
+  return {
+    default: (props: ComponentProps<typeof Component>) => (
+      <Component {...props}>
+        <MainMenu>
+          <MainMenu.DefaultItems.LoadScene />
+          <MainMenu.DefaultItems.SaveToActiveFile />
+          <MainMenu.DefaultItems.SearchMenu />
+          <MainMenu.DefaultItems.Help />
+          <MainMenu.DefaultItems.ClearCanvas />
+          <MainMenu.Separator />
+          <MainMenu.DefaultItems.ToggleTheme />
+          <MainMenu.DefaultItems.ChangeCanvasBackground />
+        </MainMenu>
+      </Component>
+    ),
+  }
 })
 
 interface DrawingEditorModalProps {
