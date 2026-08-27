@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { BubbleMenu, Editor } from '@tiptap/react'
 import type { NodeSelection } from '@tiptap/pm/state'
+import { CellSelection } from '@tiptap/pm/tables'
 import {
   ALargeSmall,
   AlignCenter,
@@ -800,6 +801,7 @@ function EditorBubbleMenu({ editor, onEditCanvas, onEditMindMap, onPolish, onExp
       shouldShow={({ state }) => {
         if (hidden) return false
         const { selection } = state
+        if (selection instanceof CellSelection) return false
         const node = (selection as NodeSelection).node
         if (node?.type.name === 'mindmap') return true
         if (selection.$anchor.parent.type.name === 'mindmap') return true

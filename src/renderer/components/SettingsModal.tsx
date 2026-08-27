@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import type { AISettings, HotkeyConfig } from '@shared/types'
 import { DEFAULT_HOTKEYS } from '@shared/types'
 import { useAppStore } from '../stores/appStore'
+import { formatHotkeyDisplay, getModifiersFromEvent, hasSameHotkey } from '../utils/hotkeys'
 
 interface SettingsModalProps {
   isOpen: boolean
@@ -157,8 +158,7 @@ function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const checkHotkeyConflict = useCallback((hotkey: HotkeyConfig, excludeId?: string): string | null => {
     for (const hk of hotkeys) {
       if (hk.id === excludeId) continue
-      if (hk.key.toLowerCase() === hotkey.key.toLowerCase() && 
-          JSON.stringify(hk.modifiers.sort()) === JSON.stringify(hotkey.modifiers.sort())) {
+      if (hasSameHotkey(hk, hotkey)) {
         return hk.name
       }
     }
@@ -179,10 +179,7 @@ function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       return
     }
 
-    const modifiers: string[] = []
-    if (e.ctrlKey) modifiers.push('ctrl')
-    if (e.altKey) modifiers.push('alt')
-    if (e.shiftKey) modifiers.push('shift')
+    const modifiers = getModifiersFromEvent(e)
 
     if (['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) {
       return
@@ -194,7 +191,7 @@ function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       ...hotkey,
       key,
       modifiers,
-      display: [...modifiers.map(m => m === 'ctrl' ? 'Ctrl' : m === 'alt' ? 'Alt' : 'Shift'), key.toUpperCase()].join('+'),
+      display: formatHotkeyDisplay({ key, modifiers }),
     }
 
     const conflict = checkHotkeyConflict(newHotkey, hotkeyId)
@@ -403,7 +400,7 @@ function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     <div className="flex items-center gap-3">
                       <span className="px-3 py-1 text-sm rounded font-mono w-28 text-center"
                         style={{ backgroundColor: 'var(--bg-secondary)', color: 'var(--text-secondary)' }}>
-                        {hotkey.display}
+                        {formatHotkeyDisplay(hotkey)}
                       </span>
                       {!hotkey.readonly && (
                         <>

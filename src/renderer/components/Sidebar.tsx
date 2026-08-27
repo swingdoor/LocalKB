@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { useAppStore } from '../stores/appStore'
+import { formatHotkeyDisplay } from '../utils/hotkeys'
 import type { Document } from '@shared/types'
 
 interface HoveredDocInfo {
@@ -36,7 +37,7 @@ function Sidebar() {
 
   // 获取搜索快捷键显示文本
   const searchHotkey = hotkeys.find(h => h.id === 'search')
-  const searchHotkeyDisplay = searchHotkey?.display || 'Ctrl+K'
+  const searchHotkeyDisplay = searchHotkey ? formatHotkeyDisplay(searchHotkey) : formatHotkeyDisplay({ key: 'k', modifiers: ['ctrl'] })
 
   // 本地 UI 状态
   const [isVaultDropdownOpen, setIsVaultDropdownOpen] = useState(false)

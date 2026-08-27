@@ -22,6 +22,7 @@ import { HeadingNumbers } from '../extensions/HeadingNumbers'
 import CodeBlockComponent from './CodeBlockComponent'
 import CommandMenu from './CommandMenu'
 import EditorBubbleMenu from './BubbleMenu'
+import TableMenu from './TableMenu'
 import DrawingEditorModal from './DrawingEditorModal'
 import MindMapEditorModal from './MindMapEditorModal'
 import PolishConfirmModal from './PolishConfirmModal'
@@ -35,6 +36,7 @@ import { useToc } from '../hooks/useToc'
 import { useAppStore } from '../stores/appStore'
 import { addNumbersToHTML } from '../utils/pdfExport'
 import { handleRichPaste } from '../utils/richPaste'
+import { eventMatchesHotkey } from '../utils/hotkeys'
 import type { Document, HotkeyConfig } from '@shared/types'
 
 interface EditorProps {
@@ -171,14 +173,7 @@ function Editor({ document, vaultId: _vaultId, onUpdate }: EditorProps) {
         }
         // 全局快捷键（从配置读取）
         for (const hotkey of hotkeysRef.current) {
-          let matches = true
-          if (hotkey.modifiers.includes('ctrl') && !event.ctrlKey && !event.metaKey) matches = false
-          if (hotkey.modifiers.includes('alt') && !event.altKey) matches = false
-          if (hotkey.modifiers.includes('shift') && !event.shiftKey) matches = false
-          if (hotkey.key.toLowerCase() !== event.key.toLowerCase()) matches = false
-          if (hotkey.readonly) matches = false // 跳过只读快捷键
-          
-          if (matches) {
+          if (!hotkey.readonly && eventMatchesHotkey(event, hotkey)) {
             event.preventDefault()
             switch (hotkey.id) {
               case 'canvasCommand':
@@ -369,6 +364,10 @@ function Editor({ document, vaultId: _vaultId, onUpdate }: EditorProps) {
                 onEditMindMap={mindMapEdit.handleEditMindMap}
                 onPolish={handlePolish}
                 onExpand={handleExpand}
+                hidden={aiProcess.showPolishModal || !!canvasEdit.editingCanvas || !!mindMapEdit.editingMindMap}
+              />
+              <TableMenu
+                editor={editor}
                 hidden={aiProcess.showPolishModal || !!canvasEdit.editingCanvas || !!mindMapEdit.editingMindMap}
               />
               <EditorContent editor={editor} className="prose max-w-none" />

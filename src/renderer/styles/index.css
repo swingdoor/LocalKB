@@ -720,6 +720,117 @@ body {
   flex-shrink: 0;
 }
 
+/* 表格操作菜单 */
+.table-menu-control {
+  position: relative;
+}
+
+.table-menu-trigger {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  height: 2rem;
+  padding: 0 0.625rem;
+  color: #475569;
+  background: white;
+  border: 1px solid #E2E8F0;
+  border-radius: 0.375rem;
+  box-shadow: 0 2px 5px rgba(15, 23, 42, 0.12);
+  cursor: pointer;
+  font-size: 0.8125rem;
+}
+
+.table-menu-trigger:hover,
+.table-menu-trigger[aria-expanded="true"] {
+  color: #1E293B;
+  background: #F8FAFC;
+}
+
+.table-menu-trigger svg {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+.table-actions-menu {
+  position: absolute;
+  top: calc(100% + 0.375rem);
+  left: 0;
+  z-index: 100;
+  width: 224px;
+  max-height: min(460px, calc(100vh - 16px));
+  padding: 0.375rem;
+  overflow-y: auto;
+  color: #1E293B;
+  background: white;
+  border: 1px solid #E2E8F0;
+  border-radius: 0.5rem;
+  box-shadow: 0 10px 25px rgba(15, 23, 42, 0.16);
+}
+
+.table-context-menu {
+  position: fixed;
+}
+
+.table-actions-heading {
+  padding: 0.25rem 0.5rem 0.125rem;
+  color: #94A3B8;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+.table-action {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  width: 100%;
+  height: 1.875rem;
+  padding: 0 0.5rem;
+  color: #334155;
+  background: transparent;
+  border: none;
+  border-radius: 0.3rem;
+  cursor: pointer;
+  font-size: 0.8125rem;
+  text-align: left;
+}
+
+.table-action:hover {
+  color: #0F172A;
+  background: #F1F5F9;
+}
+
+.table-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+
+.table-action:disabled:hover {
+  color: #334155;
+  background: transparent;
+}
+
+.table-action.is-danger {
+  color: #DC2626;
+}
+
+.table-action.is-danger:hover {
+  color: #B91C1C;
+  background: #FEF2F2;
+}
+
+.table-action svg {
+  width: 1rem;
+  height: 1rem;
+  flex-shrink: 0;
+}
+
+.table-actions-separator {
+  height: 1px;
+  margin: 0.25rem 0.25rem 0.125rem;
+  background: #E2E8F0;
+}
+
 /* 命令菜单样式 */
 .command-menu {
   position: absolute;

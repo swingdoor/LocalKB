@@ -126,6 +126,9 @@ export function useCommandMenu(editor: Editor | null, options: UseCommandMenuOpt
       case 'divider':
         editor.chain().focus().setHorizontalRule().run()
         break
+      case 'table':
+        editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
+        break
       case 'image':
         if (options.onSelectImage) {
           const result = await options.onSelectImage()

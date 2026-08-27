@@ -5,6 +5,16 @@ import { vaultStore, documentStore, imageStore, settingsStore } from './store'
 import { IPC_CHANNELS } from '../shared/ipc-channels'
 import type { AISettings, PolishResult, HotkeyConfig } from '../shared/types'
 
+let mainWindowRef: BrowserWindow | null = null
+let ipcHandlersRegistered = false
+
+function getMainWindow(): BrowserWindow | undefined {
+  if (!mainWindowRef || mainWindowRef.isDestroyed()) {
+    return undefined
+  }
+  return mainWindowRef
+}
+
 /**
  * 通用 AI 调用函数
  * 消除 polish 和 expand 的重复代码
@@ -58,6 +68,13 @@ async function callAI(text: string, mode: 'polish' | 'expand'): Promise<PolishRe
 }
 
 export function setupIpcHandlers(mainWindow: BrowserWindow) {
+  mainWindowRef = mainWindow
+
+  if (ipcHandlersRegistered) {
+    return
+  }
+  ipcHandlersRegistered = true
+
   // ========== Vault 操作 ==========
   ipcMain.handle(IPC_CHANNELS.VAULT.LIST, async () => {
     return vaultStore.list()
@@ -102,12 +119,16 @@ export function setupIpcHandlers(mainWindow: BrowserWindow) {
 
   // ========== 文件操作 ==========
   ipcMain.handle(IPC_CHANNELS.FILE.SELECT_IMAGE, async () => {
-    const result = await dialog.showOpenDialog(mainWindow, {
+    const options = {
       properties: ['openFile'],
       filters: [
         { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'] }
       ]
-    })
+    } satisfies Electron.OpenDialogOptions
+    const owner = getMainWindow()
+    const result = owner
+      ? await dialog.showOpenDialog(owner, options)
+      : await dialog.showOpenDialog(options)
 
     if (!result.canceled && result.filePaths.length > 0) {
       const filePath = result.filePaths[0]
@@ -131,12 +152,16 @@ export function setupIpcHandlers(mainWindow: BrowserWindow) {
   })
 
   ipcMain.handle(IPC_CHANNELS.FILE.DOWNLOAD_IMAGE, async (_, imageData: string, defaultName: string) => {
-    const result = await dialog.showSaveDialog(mainWindow, {
+    const options = {
       defaultPath: defaultName,
       filters: [
         { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp'] }
       ]
-    })
+    } satisfies Electron.SaveDialogOptions
+    const owner = getMainWindow()
+    const result = owner
+      ? await dialog.showSaveDialog(owner, options)
+      : await dialog.showSaveDialog(options)
 
     if (!result.canceled && result.filePath) {
       const base64Data = imageData.replace(/^data:image\/[^;]+;base64,/, '')
@@ -154,12 +179,16 @@ export function setupIpcHandlers(mainWindow: BrowserWindow) {
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
 
-    const result = await dialog.showSaveDialog(mainWindow, {
+    const options = {
       defaultPath: `${title || '文档'}.pdf`,
       filters: [
         { name: 'PDF', extensions: ['pdf'] }
       ]
-    })
+    } satisfies Electron.SaveDialogOptions
+    const owner = getMainWindow()
+    const result = owner
+      ? await dialog.showSaveDialog(owner, options)
+      : await dialog.showSaveDialog(options)
 
     if (!result.canceled && result.filePath) {
       // 创建隐藏窗口用于渲染 PDF

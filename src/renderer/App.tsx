@@ -7,6 +7,7 @@ import SearchModal from './components/SearchModal'
 import SettingsModal from './components/SettingsModal'
 import { useAppStore } from './stores/appStore'
 import { loadXiaolaiFont } from './utils/loadFonts'
+import { eventMatchesHotkey, formatHotkeyDisplay } from './utils/hotkeys'
 import type { Document } from '@shared/types'
 
 function App() {
@@ -39,19 +40,7 @@ function App() {
     const handleKeyDown = (e: KeyboardEvent) => {
       // 遍历保存的快捷键配置
       for (const hotkey of hotkeys) {
-        let matches = true
-        
-        // 检查修饰键
-        if (hotkey.modifiers.includes('ctrl') && !e.ctrlKey && !e.metaKey) matches = false
-        if (hotkey.modifiers.includes('alt') && !e.altKey) matches = false
-        if (hotkey.modifiers.includes('shift') && !e.shiftKey) matches = false
-        
-        // 检查主键
-        const expectedKey = hotkey.key.toLowerCase()
-        const actualKey = e.key.toLowerCase()
-        if (expectedKey !== actualKey) matches = false
-        
-        if (matches) {
+        if (!hotkey.readonly && eventMatchesHotkey(e, hotkey)) {
           e.preventDefault()
           
           // 根据 hotkey.id 执行对应操作
@@ -84,6 +73,8 @@ function App() {
     selectDocument(doc)
     setSearchOpen(false)
   }
+  const searchHotkey = hotkeys.find(h => h.id === 'search')
+  const searchHotkeyDisplay = searchHotkey ? formatHotkeyDisplay(searchHotkey) : formatHotkeyDisplay({ key: 'k', modifiers: ['ctrl'] })
 
   return (
     <div 
@@ -114,7 +105,7 @@ function App() {
               {currentVault ? (
                 <div className="text-center">
                   <p className="text-lg mb-2">选择或创建一个文档开始编辑</p>
-                  <p className="text-sm">按 {hotkeys.find(h => h.id === 'search')?.display || 'Ctrl+K'} 快速搜索</p>
+                  <p className="text-sm">按 {searchHotkeyDisplay} 快速搜索</p>
                 </div>
               ) : (
                 <div className="text-center">
