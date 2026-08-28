@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { BubbleMenu, Editor } from '@tiptap/react'
-import type { NodeSelection } from '@tiptap/pm/state'
+import { NodeSelection } from '@tiptap/pm/state'
 import { CellSelection } from '@tiptap/pm/tables'
 import {
   ALargeSmall,
@@ -26,7 +26,9 @@ import {
 
 interface BubbleMenuProps {
   editor: Editor
-  onEditCanvas?: (canvasId: string, imageData: string) => void
+  vaultId: string
+  documentId: string
+  onEditCanvas?: (canvasId: string) => void
   onEditMindMap?: (mindmapId: string) => void
   onPolish?: (text: string) => void
   onExpand?: (text: string) => void
@@ -87,7 +89,9 @@ const DROPDOWN_TRIGGER_STYLE: React.CSSProperties = {
   border: 'none',
 }
 
-function EditorBubbleMenu({ editor, onEditCanvas, onEditMindMap, onPolish, onExpand, hidden = false }: BubbleMenuProps) {
+function EditorBubbleMenu({
+  editor, vaultId, documentId, onEditCanvas, onEditMindMap, onPolish, onExpand, hidden = false,
+}: BubbleMenuProps) {
   const [linkUrl, setLinkUrl] = useState('')
   const [showLinkInput, setShowLinkInput] = useState(false)
   const [linkProtocol, setLinkProtocol] = useState('https://')
@@ -147,10 +151,10 @@ function EditorBubbleMenu({ editor, onEditCanvas, onEditMindMap, onPolish, onExp
   const getSelectedImageNode = useCallback(() => {
     const { selection } = editor.state
     const node = (selection as NodeSelection).node
-    if (node?.type.name === 'image') {
+    if (node?.type.name === 'image' || node?.type.name === 'assetImage') {
       return node
     }
-    if (selection.$anchor.parent.type.name === 'image') {
+    if (selection.$anchor.parent.type.name === 'image' || selection.$anchor.parent.type.name === 'assetImage') {
       return selection.$anchor.parent
     }
     return null
@@ -161,20 +165,22 @@ function EditorBubbleMenu({ editor, onEditCanvas, onEditMindMap, onPolish, onExp
     return getSelectedImageNode() !== null
   }, [getSelectedImageNode])
 
-  // 判断是否选中画布
-  const isCanvasSelected = useCallback(() => {
-    const node = getSelectedImageNode()
-    return node?.type.name === 'image' && node.attrs.alt?.startsWith('canvas-')
-  }, [getSelectedImageNode])
+  const getSelectedCanvasNode = useCallback(() => {
+    const { selection } = editor.state
+    const node = (selection as NodeSelection).node
+    return node?.type.name === 'canvasReference' ? node : null
+  }, [editor])
+
+  const isCanvasSelected = useCallback(() => getSelectedCanvasNode() !== null, [getSelectedCanvasNode])
 
   // 获取选中的思维导图节点
   const getSelectedMindMapNode = useCallback(() => {
     const { selection } = editor.state
     const node = (selection as NodeSelection).node
-    if (node?.type.name === 'mindmap') {
+    if (node?.type.name === 'mindmapReference') {
       return node
     }
-    if (selection.$anchor.parent.type.name === 'mindmap') {
+    if (selection.$anchor.parent.type.name === 'mindmapReference') {
       return selection.$anchor.parent
     }
     return null
@@ -185,63 +191,78 @@ function EditorBubbleMenu({ editor, onEditCanvas, onEditMindMap, onPolish, onExp
     return getSelectedMindMapNode() !== null
   }, [getSelectedMindMapNode])
 
+  const setSelectedNodeAlign = useCallback((textAlign: 'left' | 'center' | 'right') => {
+    const { state, view } = editor
+    const { selection } = state
+    const node = (selection as NodeSelection).node
+    if (!node || !['image', 'assetImage', 'canvasReference', 'mindmapReference'].includes(node.type.name)) return
+    const transaction = state.tr.setNodeMarkup(selection.from, undefined, {
+      ...node.attrs,
+      textAlign,
+    })
+    transaction.setSelection(NodeSelection.create(transaction.doc, selection.from))
+    view.dispatch(transaction)
+    view.focus()
+  }, [editor])
+
+  const alignmentHandlers = useCallback((textAlign: 'left' | 'center' | 'right') => ({
+    type: 'button' as const,
+    onClick: () => setSelectedNodeAlign(textAlign),
+  }), [setSelectedNodeAlign])
+
   // 下载图片
   const downloadImage = useCallback(async () => {
     const node = getSelectedImageNode()
-    if (node?.attrs.src) {
-      if (node.attrs.title) {
-        try {
-          const excalidrawData = JSON.parse(decodeURIComponent(atob(node.attrs.title)))
-          const { exportToBlob } = await import('@excalidraw/excalidraw')
-          const blob = await exportToBlob({
-            elements: excalidrawData.elements,
-            appState: { ...excalidrawData.appState, exportBackground: true },
-            files: excalidrawData.files,
-            exportPadding: 20,
-            quality: 1,
-            mimeType: 'image/png',
-            getDimensions: (width: number, height: number) => ({
-              width: width * 4,
-              height: height * 4,
-              scale: 4,
-            }),
-          })
-          const reader = new FileReader()
-          reader.onloadend = async () => {
-            await window.electronAPI.file.downloadImage(reader.result as string, '画布.png')
-          }
-          reader.readAsDataURL(blob)
-          return
-        } catch {
-          // 静默失败
-        }
-      }
-      await window.electronAPI.file.downloadImage(node.attrs.src, 'image.png')
+    if (!node) return
+    const src = node.type.name === 'assetImage'
+      ? `localkb-resource://asset/${encodeURIComponent(vaultId)}/${encodeURIComponent(documentId)}/${encodeURIComponent(node.attrs.assetId)}`
+      : node.attrs.src
+    if (!src) return
+    if (/^data:/.test(src)) {
+      await window.electronAPI.file.downloadImage(src, 'image.png')
+      return
     }
-  }, [getSelectedImageNode])
+    const blob = await (await fetch(src)).blob()
+    const reader = new FileReader()
+    reader.onloadend = () => { void window.electronAPI.file.downloadImage(reader.result as string, 'image.png') }
+    reader.readAsDataURL(blob)
+  }, [documentId, getSelectedImageNode, vaultId])
 
   // 编辑画布
   const editCanvas = useCallback(() => {
-    const node = getSelectedImageNode()
-    if (node?.type.name === 'image' && node.attrs.alt?.startsWith('canvas-')) {
-      onEditCanvas?.(node.attrs.alt, node.attrs.src || '')
-    }
-  }, [getSelectedImageNode, onEditCanvas])
+    const node = getSelectedCanvasNode()
+    if (node?.attrs.canvasId) onEditCanvas?.(node.attrs.canvasId)
+  }, [getSelectedCanvasNode, onEditCanvas])
 
   // 编辑思维导图
   const editMindMap = useCallback(() => {
     const node = getSelectedMindMapNode()
-    if (node?.type.name === 'mindmap' && node.attrs.alt) {
-      onEditMindMap?.(node.attrs.alt)
+    if (node?.type.name === 'mindmapReference' && node.attrs.mindmapId) {
+      onEditMindMap?.(node.attrs.mindmapId)
     }
   }, [getSelectedMindMapNode, onEditMindMap])
 
   // 适应窗口 - 已移除
 
-  // 下载思维导图 - 从存储的数据中提取原始数据并导出PNG
+  const downloadCanvas = useCallback(async () => {
+    const node = getSelectedCanvasNode()
+    if (!node?.attrs.canvasId) return
+    const result = await window.electronAPI.knowledge.getCanvas(vaultId, node.attrs.canvasId, documentId)
+    if (!result.ok) return
+    const scene = result.data as any
+    const { exportToBlob } = await import('@excalidraw/excalidraw')
+    const blob = await exportToBlob({
+      elements: scene.elements, appState: { ...scene.appState, exportBackground: true },
+      files: scene.files, exportPadding: 20, mimeType: 'image/png',
+    })
+    const reader = new FileReader()
+    reader.onloadend = () => { void window.electronAPI.file.downloadImage(reader.result as string, '画布.png') }
+    reader.readAsDataURL(blob)
+  }, [documentId, getSelectedCanvasNode, vaultId])
+
   const downloadMindMap = useCallback(async () => {
     const node = getSelectedMindMapNode()
-    if (!node || node.type.name !== 'mindmap' || !node.attrs.data) return
+    if (!node?.attrs.mindmapId) return
 
     try {
       // Dynamically import MindElixir
@@ -261,10 +282,14 @@ function EditorBubbleMenu({ editor, onEditCanvas, onEditMindMap, onPolish, onExp
         theme: isDark ? DARK_THEME : THEME,
       })
 
-      // Parse stored data - format is { svg, data }
-      const storedData = JSON.parse(node.attrs.data)
-      const rawData = storedData.data || storedData
-      mind.init(rawData)
+      const result = await window.electronAPI.knowledge.getMindMap(
+        vaultId, documentId, node.attrs.mindmapId,
+      )
+      if (!result.ok) {
+        document.body.removeChild(container)
+        return
+      }
+      mind.init(result.data as any)
 
       // Wait for render then export
       setTimeout(async () => {
@@ -291,7 +316,7 @@ function EditorBubbleMenu({ editor, onEditCanvas, onEditMindMap, onPolish, onExp
     } catch (err) {
       console.error('Failed to download mind map:', err)
     }
-  }, [getSelectedMindMapNode])
+  }, [documentId, getSelectedMindMapNode, vaultId])
 
   // 解析已有链接
   const parseExistingHref = useCallback((href: string) => {
@@ -379,34 +404,25 @@ function EditorBubbleMenu({ editor, onEditCanvas, onEditMindMap, onPolish, onExp
 
   // 渲染图片菜单
   const renderImageMenu = () => {
-    const isCanvas = isCanvasSelected()
     const imageNode = getSelectedImageNode()
     return (
       <>
-        {isCanvas && (
-          <>
-            <button onClick={editCanvas} title="编辑画布">
-              <Pencil className="w-4 h-4" />
-            </button>
-            <div className="divider" />
-          </>
-        )}
         <button
-          onClick={() => editor.chain().focus().setImageAlign('left').run()}
+          {...alignmentHandlers('left')}
           className={imageNode?.attrs.textAlign === 'left' ? 'is-active' : ''}
           title="左对齐"
         >
           <AlignLeft className="w-4 h-4" />
         </button>
         <button
-          onClick={() => editor.chain().focus().setImageAlign('center').run()}
+          {...alignmentHandlers('center')}
           className={imageNode?.attrs.textAlign === 'center' ? 'is-active' : ''}
           title="居中"
         >
           <AlignCenter className="w-4 h-4" />
         </button>
         <button
-          onClick={() => editor.chain().focus().setImageAlign('right').run()}
+          {...alignmentHandlers('right')}
           className={imageNode?.attrs.textAlign === 'right' ? 'is-active' : ''}
           title="右对齐"
         >
@@ -416,6 +432,30 @@ function EditorBubbleMenu({ editor, onEditCanvas, onEditMindMap, onPolish, onExp
         <button onClick={downloadImage} title="下载图片">
           <Download className="w-4 h-4" />
         </button>
+      </>
+    )
+  }
+
+  const renderCanvasMenu = () => {
+    const node = getSelectedCanvasNode()
+    return (
+      <>
+        <button onClick={editCanvas} title="编辑画布"><Pencil className="w-4 h-4" /></button>
+        <div className="divider" />
+        {(['left', 'center', 'right'] as const).map((align) => (
+          <button
+            key={align}
+            {...alignmentHandlers(align)}
+            className={node?.attrs.textAlign === align ? 'is-active' : ''}
+            title={align === 'left' ? '左对齐' : align === 'center' ? '居中' : '右对齐'}
+          >
+            {align === 'left' ? <AlignLeft className="w-4 h-4" />
+              : align === 'center' ? <AlignCenter className="w-4 h-4" />
+                : <AlignRight className="w-4 h-4" />}
+          </button>
+        ))}
+        <div className="divider" />
+        <button onClick={() => void downloadCanvas()} title="下载画布"><Download className="w-4 h-4" /></button>
       </>
     )
   }
@@ -430,21 +470,21 @@ function EditorBubbleMenu({ editor, onEditCanvas, onEditMindMap, onPolish, onExp
         </button>
         <div className="divider" />
         <button
-          onClick={() => editor.chain().focus().setMindMapAlign('left').run()}
+          {...alignmentHandlers('left')}
           className={mindmapNode?.attrs.textAlign === 'left' ? 'is-active' : ''}
           title="左对齐"
         >
           <AlignLeft className="w-4 h-4" />
         </button>
         <button
-          onClick={() => editor.chain().focus().setMindMapAlign('center').run()}
+          {...alignmentHandlers('center')}
           className={mindmapNode?.attrs.textAlign === 'center' ? 'is-active' : ''}
           title="居中"
         >
           <AlignCenter className="w-4 h-4" />
         </button>
         <button
-          onClick={() => editor.chain().focus().setMindMapAlign('right').run()}
+          {...alignmentHandlers('right')}
           className={mindmapNode?.attrs.textAlign === 'right' ? 'is-active' : ''}
           title="右对齐"
         >
@@ -785,6 +825,7 @@ function EditorBubbleMenu({ editor, onEditCanvas, onEditMindMap, onPolish, onExp
 
   const renderMenuContent = () => {
     if (showLinkInput) return renderLinkInput()
+    if (isCanvasSelected()) return renderCanvasMenu()
     if (isMindMapSelected()) return renderMindMapMenu()
     if (isImageSelected()) return renderImageMenu()
     return renderTextMenu()
@@ -793,8 +834,9 @@ function EditorBubbleMenu({ editor, onEditCanvas, onEditMindMap, onPolish, onExp
   return (
     <BubbleMenu
       editor={editor}
+      updateDelay={0}
       tippyOptions={{
-        duration: 100,
+        duration: 0,
         maxWidth: 'none',
         ...(hidden && { getReferenceClientRect: null })
       }}
@@ -803,10 +845,9 @@ function EditorBubbleMenu({ editor, onEditCanvas, onEditMindMap, onPolish, onExp
         const { selection } = state
         if (selection instanceof CellSelection) return false
         const node = (selection as NodeSelection).node
-        if (node?.type.name === 'mindmap') return true
-        if (selection.$anchor.parent.type.name === 'mindmap') return true
-        if (node?.type.name === 'image') return true
-        if (selection.$anchor.parent.type.name === 'image') return true
+        if (node?.type.name === 'mindmapReference' || node?.type.name === 'canvasReference') return true
+        if (node?.type.name === 'image' || node?.type.name === 'assetImage') return true
+        if (selection.$anchor.parent.type.name === 'image' || selection.$anchor.parent.type.name === 'assetImage') return true
         const { from, to } = selection
         return from !== to
       }}

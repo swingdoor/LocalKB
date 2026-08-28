@@ -2,16 +2,41 @@ import { contextBridge, ipcRenderer } from 'electron'
 import { IPC_CHANNELS } from '../shared/ipc-channels'
 import type {
   AISettings,
-  Document,
-  DocumentSummary,
   HotkeyConfig,
   ImageFile,
   PolishResult,
-  StructureMoveInput,
-  StructureResult,
-  Vault,
-  VaultStructure,
 } from '../shared/types'
+import type { McpStatus, PublicMcpSettings } from '../shared/mcp-types'
+import type {
+  CanvasElementPatch,
+  ContentSummary,
+  ContentType,
+  DocumentNodePatch,
+  ExcalidrawElement,
+  ExcalidrawScene,
+  JsonObject,
+  KnowledgeChangeEvent,
+  LoadedCanvas,
+  LoadedDocument,
+  MindMapData,
+  MindMapNodeData,
+  MindMapNodePatch,
+  Result,
+  SearchHit,
+  TipTapDocument,
+  TipTapNode,
+  TreeEntryV2,
+  VaultTreeV2,
+  VaultV2,
+} from '../shared/knowledge-types'
+
+const invokeKnowledge = <T>(channel: string, request?: JsonObject) => (
+  request === undefined
+    ? ipcRenderer.invoke(channel)
+    : ipcRenderer.invoke(channel, Object.fromEntries(
+      Object.entries(request).filter(([, value]) => value !== undefined),
+    ))
+) as Promise<Result<T>>
 
 // 暴露给渲染进程的 API
 const electronAPI = {
@@ -20,6 +45,12 @@ const electronAPI = {
     minimize: () => ipcRenderer.send(IPC_CHANNELS.WINDOW.MINIMIZE),
     maximize: () => ipcRenderer.send(IPC_CHANNELS.WINDOW.MAXIMIZE),
     close: () => ipcRenderer.send(IPC_CHANNELS.WINDOW.CLOSE),
+    completeClose: () => ipcRenderer.send(IPC_CHANNELS.WINDOW.CLOSE_READY),
+    onCloseRequested: (callback: () => void) => {
+      const listener = () => callback()
+      ipcRenderer.on(IPC_CHANNELS.WINDOW.CLOSE_REQUESTED, listener)
+      return () => { ipcRenderer.removeListener(IPC_CHANNELS.WINDOW.CLOSE_REQUESTED, listener) }
+    },
     isMaximized: () => ipcRenderer.invoke(IPC_CHANNELS.WINDOW.IS_MAXIMIZED) as Promise<boolean>,
     onMaximizedChange: (callback: (isMaximized: boolean) => void) => {
       ipcRenderer.on(IPC_CHANNELS.WINDOW.MAXIMIZED_CHANGE, (_, isMaximized) => callback(isMaximized))
@@ -29,83 +60,223 @@ const electronAPI = {
     },
   },
 
-  // Vault 操作
-  vault: {
-    list: () => ipcRenderer.invoke(IPC_CHANNELS.VAULT.LIST) as Promise<Vault[]>,
-    create: (name: string) => ipcRenderer.invoke(IPC_CHANNELS.VAULT.CREATE, name) as Promise<Vault>,
-    delete: (vaultId: string) => ipcRenderer.invoke(IPC_CHANNELS.VAULT.DELETE, vaultId) as Promise<boolean>,
-    rename: (vaultId: string, newName: string) => 
-      ipcRenderer.invoke(IPC_CHANNELS.VAULT.RENAME, vaultId, newName) as Promise<Vault | null>,
-  },
-
-  // Document 操作
-  document: {
-    list: (vaultId: string) => 
-      ipcRenderer.invoke(IPC_CHANNELS.DOCUMENT.LIST, vaultId) as Promise<DocumentSummary[]>,
-    get: (vaultId: string, docId: string) => 
-      ipcRenderer.invoke(IPC_CHANNELS.DOCUMENT.GET, vaultId, docId) as Promise<Document | null>,
-    create: (
+  knowledge: {
+    listVaults: () => invokeKnowledge<VaultV2[]>(IPC_CHANNELS.KNOWLEDGE.VAULT_LIST),
+    getVault: (vaultId: string) => invokeKnowledge<VaultV2>(
+      IPC_CHANNELS.KNOWLEDGE.VAULT_GET, { vaultId },
+    ),
+    createVault: (name: string) => invokeKnowledge<VaultV2>(
+      IPC_CHANNELS.KNOWLEDGE.VAULT_CREATE, { name },
+    ),
+    renameVault: (vaultId: string, name: string) => invokeKnowledge<VaultV2>(
+      IPC_CHANNELS.KNOWLEDGE.VAULT_RENAME, { vaultId, name },
+    ),
+    deleteVault: (vaultId: string) => invokeKnowledge<void>(
+      IPC_CHANNELS.KNOWLEDGE.VAULT_DELETE, { vaultId },
+    ),
+    getTree: (vaultId: string) => invokeKnowledge<VaultTreeV2>(
+      IPC_CHANNELS.KNOWLEDGE.TREE_GET, { vaultId },
+    ),
+    createGroup: (vaultId: string, parentId: string | null, name: string, index?: number) => (
+      invokeKnowledge<TreeEntryV2>(IPC_CHANNELS.KNOWLEDGE.GROUP_CREATE, {
+        vaultId, parentId, name, index,
+      })
+    ),
+    renameGroup: (vaultId: string, groupId: string, name: string) => (
+      invokeKnowledge<TreeEntryV2>(IPC_CHANNELS.KNOWLEDGE.GROUP_RENAME, {
+        vaultId, groupId, name,
+      })
+    ),
+    deleteGroup: (vaultId: string, groupId: string) => invokeKnowledge<void>(
+      IPC_CHANNELS.KNOWLEDGE.GROUP_DELETE, { vaultId, groupId },
+    ),
+    moveTreeEntry: (
+      vaultId: string, entryId: string, parentId: string | null, index: number,
+    ) => invokeKnowledge<TreeEntryV2>(IPC_CHANNELS.KNOWLEDGE.TREE_MOVE, {
+      vaultId, entryId, parentId, index,
+    }),
+    listContent: (vaultId: string) => invokeKnowledge<ContentSummary[]>(
+      IPC_CHANNELS.KNOWLEDGE.CONTENT_LIST, { vaultId },
+    ),
+    createContent: (
       vaultId: string,
+      contentType: ContentType,
       title: string,
-      type: 'document' | 'drawing' = 'document',
-      parentId: string | null = null,
+      parentId: string | null,
       index?: number,
-    ) => ipcRenderer.invoke(
-      IPC_CHANNELS.DOCUMENT.CREATE,
-      vaultId,
-      title,
-      type,
-      parentId,
-      index,
-    ) as Promise<Document>,
-    update: (vaultId: string, docId: string, data: { title?: string; content?: string }) => 
-      ipcRenderer.invoke(IPC_CHANNELS.DOCUMENT.UPDATE, vaultId, docId, data) as Promise<Document | null>,
-    delete: (vaultId: string, docId: string) => 
-      ipcRenderer.invoke(IPC_CHANNELS.DOCUMENT.DELETE, vaultId, docId) as Promise<boolean>,
-    search: (vaultId: string, query: string) => 
-      ipcRenderer.invoke(IPC_CHANNELS.DOCUMENT.SEARCH, vaultId, query) as Promise<Document[]>,
-  },
-
-  // 文档组织结构操作。所有失败均返回稳定的领域错误，不暴露 ipcRenderer。
-  structure: {
-    get: (vaultId: string) =>
-      ipcRenderer.invoke(IPC_CHANNELS.STRUCTURE.GET, vaultId) as Promise<StructureResult<VaultStructure>>,
-    createGroup: (vaultId: string, parentId: string | null, name: string, index?: number) =>
-      ipcRenderer.invoke(
-        IPC_CHANNELS.STRUCTURE.CREATE_GROUP,
-        vaultId,
-        parentId,
-        name,
-        index,
-      ) as Promise<StructureResult<VaultStructure>>,
-    renameGroup: (vaultId: string, groupId: string, name: string) =>
-      ipcRenderer.invoke(
-        IPC_CHANNELS.STRUCTURE.RENAME_GROUP,
-        vaultId,
-        groupId,
-        name,
-      ) as Promise<StructureResult<VaultStructure>>,
-    move: (vaultId: string, input: StructureMoveInput) =>
-      ipcRenderer.invoke(
-        IPC_CHANNELS.STRUCTURE.MOVE,
-        vaultId,
-        input,
-      ) as Promise<StructureResult<VaultStructure>>,
-    deleteGroup: (vaultId: string, groupId: string) =>
-      ipcRenderer.invoke(
-        IPC_CHANNELS.STRUCTURE.DELETE_GROUP,
-        vaultId,
-        groupId,
-      ) as Promise<StructureResult<VaultStructure>>,
+    ) => invokeKnowledge<ContentSummary>(IPC_CHANNELS.KNOWLEDGE.CONTENT_CREATE, {
+      vaultId, contentType, title, parentId, index,
+    }),
+    renameContent: (vaultId: string, contentId: string, title: string) => (
+      invokeKnowledge<ContentSummary>(IPC_CHANNELS.KNOWLEDGE.CONTENT_RENAME, {
+        vaultId, contentId, title,
+      })
+    ),
+    deleteContent: (vaultId: string, contentId: string) => invokeKnowledge<void>(
+      IPC_CHANNELS.KNOWLEDGE.CONTENT_DELETE, { vaultId, contentId },
+    ),
+    getDocument: (vaultId: string, documentId: string) => invokeKnowledge<LoadedDocument>(
+      IPC_CHANNELS.KNOWLEDGE.DOCUMENT_GET, { vaultId, documentId },
+    ),
+    updateDocument: (
+      vaultId: string,
+      documentId: string,
+      patch: { title?: string; content?: TipTapDocument },
+    ) => invokeKnowledge<LoadedDocument>(IPC_CHANNELS.KNOWLEDGE.DOCUMENT_UPDATE, {
+      vaultId, documentId, title: patch.title, content: patch.content,
+    }),
+    replaceDocument: (vaultId: string, documentId: string, content: TipTapDocument) => (
+      invokeKnowledge<LoadedDocument>(IPC_CHANNELS.KNOWLEDGE.DOCUMENT_REPLACE, {
+        vaultId, documentId, content,
+      })
+    ),
+    insertDocumentNodes: (
+      vaultId: string, documentId: string, parentNodeId: string | null,
+      index: number | undefined, nodes: TipTapNode[],
+    ) => invokeKnowledge<LoadedDocument>(IPC_CHANNELS.KNOWLEDGE.DOCUMENT_NODES_INSERT, {
+      vaultId, documentId, parentNodeId, index, nodes,
+    }),
+    appendDocumentNodes: (
+      vaultId: string, documentId: string, parentNodeId: string | null, nodes: TipTapNode[],
+    ) => invokeKnowledge<LoadedDocument>(IPC_CHANNELS.KNOWLEDGE.DOCUMENT_NODES_APPEND, {
+      vaultId, documentId, parentNodeId, nodes,
+    }),
+    replaceDocumentNode: (
+      vaultId: string, documentId: string, nodeId: string, node: TipTapNode,
+    ) => invokeKnowledge<LoadedDocument>(IPC_CHANNELS.KNOWLEDGE.DOCUMENT_NODE_REPLACE, {
+      vaultId, documentId, nodeId, node,
+    }),
+    patchDocumentNode: (
+      vaultId: string, documentId: string, nodeId: string, patch: DocumentNodePatch,
+    ) => invokeKnowledge<LoadedDocument>(IPC_CHANNELS.KNOWLEDGE.DOCUMENT_NODE_PATCH, {
+      vaultId, documentId, nodeId, patch: patch as unknown as JsonObject,
+    }),
+    replaceDocumentText: (
+      vaultId: string, documentId: string, nodeId: string,
+      from: number, to: number, replacement: string,
+    ) => invokeKnowledge<LoadedDocument>(IPC_CHANNELS.KNOWLEDGE.DOCUMENT_TEXT_REPLACE, {
+      vaultId, documentId, nodeId, from, to, replacement,
+    }),
+    deleteDocumentNodes: (vaultId: string, documentId: string, nodeIds: string[]) => (
+      invokeKnowledge<LoadedDocument>(IPC_CHANNELS.KNOWLEDGE.DOCUMENT_NODES_DELETE, {
+        vaultId, documentId, nodeIds,
+      })
+    ),
+    getCanvas: (vaultId: string, canvasId: string, documentId?: string) => (
+      invokeKnowledge<LoadedCanvas | ExcalidrawScene>(IPC_CHANNELS.KNOWLEDGE.CANVAS_GET, {
+        vaultId, canvasId, documentId,
+      })
+    ),
+    createEmbeddedCanvas: (
+      vaultId: string, documentId: string, content: ExcalidrawScene,
+    ) => invokeKnowledge<{ id: string; content: ExcalidrawScene }>(
+      IPC_CHANNELS.KNOWLEDGE.CANVAS_EMBEDDED_CREATE, { vaultId, documentId, content },
+    ),
+    replaceCanvas: (
+      vaultId: string, canvasId: string, content: ExcalidrawScene, documentId?: string,
+    ) => invokeKnowledge<ExcalidrawScene>(IPC_CHANNELS.KNOWLEDGE.CANVAS_REPLACE, {
+      vaultId, canvasId, content, documentId,
+    }),
+    upsertCanvasElements: (
+      vaultId: string, canvasId: string, elements: ExcalidrawElement[], documentId?: string,
+    ) => invokeKnowledge<ExcalidrawScene>(IPC_CHANNELS.KNOWLEDGE.CANVAS_ELEMENTS_UPSERT, {
+      vaultId, canvasId, elements, documentId,
+    }),
+    patchCanvasElements: (
+      vaultId: string, canvasId: string, patches: CanvasElementPatch[], documentId?: string,
+    ) => invokeKnowledge<ExcalidrawScene>(IPC_CHANNELS.KNOWLEDGE.CANVAS_ELEMENTS_PATCH, {
+      vaultId, canvasId, patches: patches as unknown as JsonObject[], documentId,
+    }),
+    deleteCanvasElements: (
+      vaultId: string, canvasId: string, elementIds: string[], documentId?: string,
+    ) => invokeKnowledge<ExcalidrawScene>(IPC_CHANNELS.KNOWLEDGE.CANVAS_ELEMENTS_DELETE, {
+      vaultId, canvasId, elementIds, documentId,
+    }),
+    reorderCanvasElements: (
+      vaultId: string, canvasId: string, orderedIds: string[], documentId?: string,
+    ) => invokeKnowledge<ExcalidrawScene>(IPC_CHANNELS.KNOWLEDGE.CANVAS_ELEMENTS_REORDER, {
+      vaultId, canvasId, orderedIds, documentId,
+    }),
+    upsertCanvasFiles: (
+      vaultId: string, canvasId: string, files: Record<string, JsonObject>, documentId?: string,
+    ) => invokeKnowledge<ExcalidrawScene>(IPC_CHANNELS.KNOWLEDGE.CANVAS_FILES_UPSERT, {
+      vaultId, canvasId, files, documentId,
+    }),
+    deleteCanvasFiles: (
+      vaultId: string, canvasId: string, fileIds: string[], documentId?: string,
+    ) => invokeKnowledge<ExcalidrawScene>(IPC_CHANNELS.KNOWLEDGE.CANVAS_FILES_DELETE, {
+      vaultId, canvasId, fileIds, documentId,
+    }),
+    deleteEmbeddedCanvas: (vaultId: string, documentId: string, canvasId: string) => (
+      invokeKnowledge<void>(IPC_CHANNELS.KNOWLEDGE.CANVAS_EMBEDDED_DELETE, {
+        vaultId, documentId, canvasId,
+      })
+    ),
+    getMindMap: (vaultId: string, documentId: string, mindMapId: string) => (
+      invokeKnowledge<MindMapData>(IPC_CHANNELS.KNOWLEDGE.MINDMAP_GET, {
+        vaultId, documentId, mindMapId,
+      })
+    ),
+    createMindMap: (vaultId: string, documentId: string, content: MindMapData) => (
+      invokeKnowledge<{ id: string; content: MindMapData }>(IPC_CHANNELS.KNOWLEDGE.MINDMAP_CREATE, {
+        vaultId, documentId, content,
+      })
+    ),
+    replaceMindMap: (
+      vaultId: string, documentId: string, mindMapId: string, content: MindMapData,
+    ) => invokeKnowledge<MindMapData>(IPC_CHANNELS.KNOWLEDGE.MINDMAP_REPLACE, {
+      vaultId, documentId, mindMapId, content,
+    }),
+    insertMindMapNode: (
+      vaultId: string, documentId: string, mindMapId: string,
+      parentId: string, index: number | undefined, node: MindMapNodeData,
+    ) => invokeKnowledge<MindMapData>(IPC_CHANNELS.KNOWLEDGE.MINDMAP_NODE_INSERT, {
+      vaultId, documentId, mindMapId, parentId, index, node,
+    }),
+    patchMindMapNode: (
+      vaultId: string, documentId: string, mindMapId: string, patch: MindMapNodePatch,
+    ) => invokeKnowledge<MindMapData>(IPC_CHANNELS.KNOWLEDGE.MINDMAP_NODE_PATCH, {
+      vaultId, documentId, mindMapId, patch: patch as unknown as JsonObject,
+    }),
+    moveMindMapNode: (
+      vaultId: string, documentId: string, mindMapId: string,
+      nodeId: string, parentId: string, index?: number,
+    ) => invokeKnowledge<MindMapData>(IPC_CHANNELS.KNOWLEDGE.MINDMAP_NODE_MOVE, {
+      vaultId, documentId, mindMapId, nodeId, parentId, index,
+    }),
+    deleteMindMapNode: (
+      vaultId: string, documentId: string, mindMapId: string, nodeId: string,
+    ) => invokeKnowledge<MindMapData>(IPC_CHANNELS.KNOWLEDGE.MINDMAP_NODE_DELETE, {
+      vaultId, documentId, mindMapId, nodeId,
+    }),
+    deleteMindMap: (vaultId: string, documentId: string, mindMapId: string) => (
+      invokeKnowledge<void>(IPC_CHANNELS.KNOWLEDGE.MINDMAP_DELETE, {
+        vaultId, documentId, mindMapId,
+      })
+    ),
+    importAsset: (
+      vaultId: string, documentId: string, mimeType: string, bytes: Uint8Array,
+    ) => invokeKnowledge<{ id: string; mimeType: string }>(IPC_CHANNELS.KNOWLEDGE.ASSET_IMPORT, {
+      vaultId, documentId, mimeType, bytes: [...bytes],
+    }),
+    deleteAsset: (vaultId: string, documentId: string, assetId: string) => (
+      invokeKnowledge<void>(IPC_CHANNELS.KNOWLEDGE.ASSET_DELETE, {
+        vaultId, documentId, assetId,
+      })
+    ),
+    search: (vaultId: string, query: string, limit?: number) => invokeKnowledge<SearchHit[]>(
+      IPC_CHANNELS.KNOWLEDGE.SEARCH, { vaultId, query, limit },
+    ),
+    onChanged: (callback: (event: KnowledgeChangeEvent) => void) => {
+      const listener = (_event: unknown, value: KnowledgeChangeEvent) => callback(value)
+      ipcRenderer.on(IPC_CHANNELS.KNOWLEDGE.CHANGED, listener)
+      return () => { ipcRenderer.removeListener(IPC_CHANNELS.KNOWLEDGE.CHANGED, listener) }
+    },
   },
 
   // 文件操作
   file: {
     selectImage: () => ipcRenderer.invoke(IPC_CHANNELS.FILE.SELECT_IMAGE) as Promise<ImageFile | null>,
-    saveImage: (vaultId: string, imageData: string, fileName: string) => 
-      ipcRenderer.invoke(IPC_CHANNELS.FILE.SAVE_IMAGE, vaultId, imageData, fileName) as Promise<string>,
-    readImage: (imagePath: string) => 
-      ipcRenderer.invoke(IPC_CHANNELS.FILE.READ_IMAGE, imagePath) as Promise<string | null>,
     downloadImage: (imageData: string, defaultName: string) => 
       ipcRenderer.invoke(IPC_CHANNELS.FILE.DOWNLOAD_IMAGE, imageData, defaultName) as Promise<boolean>,
     exportPDF: (title: string, htmlContent: string) =>
@@ -121,12 +292,19 @@ const electronAPI = {
       ipcRenderer.invoke(IPC_CHANNELS.SETTINGS.SAVE_AI, settings) as Promise<AISettings>,
     getTheme: () => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS.GET_THEME) as Promise<string>,
     saveTheme: (theme: string) => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS.SAVE_THEME, theme) as Promise<string>,
-    getDefaults: () => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS.GET_DEFAULTS) as Promise<Record<string, unknown>>,
-    saveDefaults: (config: Record<string, unknown>) =>
-      ipcRenderer.invoke(IPC_CHANNELS.SETTINGS.SAVE_DEFAULTS, config) as Promise<Record<string, unknown>>,
     getHotkeys: () => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS.GET_HOTKEYS) as Promise<HotkeyConfig[]>,
     saveHotkeys: (hotkeys: HotkeyConfig[]) => 
       ipcRenderer.invoke(IPC_CHANNELS.SETTINGS.SAVE_HOTKEYS, hotkeys) as Promise<HotkeyConfig[]>,
+    getMcp: () => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS.GET_MCP) as Promise<PublicMcpSettings>,
+    saveMcp: (enabled: boolean) => (
+      ipcRenderer.invoke(IPC_CHANNELS.SETTINGS.SAVE_MCP, enabled) as Promise<PublicMcpSettings>
+    ),
+    getMcpStatus: () => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS.GET_MCP_STATUS) as Promise<McpStatus>,
+    getMcpUrl: () => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS.GET_MCP_URL) as Promise<string>,
+    resetMcpToken: () => (
+      ipcRenderer.invoke(IPC_CHANNELS.SETTINGS.RESET_MCP_TOKEN) as Promise<PublicMcpSettings>
+    ),
+    copyMcpUrl: () => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS.COPY_MCP_URL) as Promise<boolean>,
   },
 
   // AI 功能

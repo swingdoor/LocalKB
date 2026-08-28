@@ -1,94 +1,60 @@
-import { useState, useCallback } from 'react'
+import { useCallback, useState } from 'react'
 import type { Editor } from '@tiptap/react'
+import type { ExcalidrawScene } from '@shared/knowledge-types'
 
 interface EditingCanvas {
-  id: string
-  data: string
-  isEditing?: boolean
+  id: string | null
+  data: ExcalidrawScene | null
+  loading: boolean
+  error: string | null
 }
 
-export function useCanvasEdit(editor: Editor | null) {
+export function useCanvasEdit(editor: Editor | null, vaultId: string, documentId: string) {
   const [editingCanvas, setEditingCanvas] = useState<EditingCanvas | null>(null)
 
-  /**
-   * 创建新画布
-   */
   const createCanvas = useCallback(() => {
-    setEditingCanvas({ id: `canvas-${Date.now()}`, data: '' })
+    setEditingCanvas({ id: null, data: null, loading: false, error: null })
   }, [])
 
-  /**
-   * 保存画布
-   * 将 Excalidraw 数据编码存储在 title 属性中
-   */
-  const handleSaveCanvas = useCallback((imageData: string, excalidrawData: string) => {
+  const handleEditCanvas = useCallback(async (canvasId: string) => {
+    setEditingCanvas({ id: canvasId, data: null, loading: true, error: null })
+    const result = await window.electronAPI.knowledge.getCanvas(vaultId, canvasId, documentId)
+    if (!result.ok) {
+      setEditingCanvas({ id: canvasId, data: null, loading: false, error: result.error.message })
+      return
+    }
+    setEditingCanvas({
+      id: canvasId, data: result.data as ExcalidrawScene, loading: false, error: null,
+    })
+  }, [documentId, vaultId])
+
+  const handleSaveCanvas = useCallback(async (content: ExcalidrawScene) => {
     if (!editor || !editingCanvas) return
-
-    // 将 Excalidraw 数据编码存储在 title 属性中
-    const encodedData = btoa(encodeURIComponent(excalidrawData))
-
-    // 如果是编辑现有画布，需要更新对应的图片节点
-    if (editingCanvas.isEditing) {
-      // 查找并更新现有画布
-      const { state } = editor
-      let foundPos: number | null = null
-
-      state.doc.descendants((node, pos) => {
-        if (node.type.name === 'image' && node.attrs.alt === editingCanvas.id) {
-          foundPos = pos
-          return false
-        }
-        return true
-      })
-
-      if (foundPos !== null) {
-        editor.chain().focus()
-          .setNodeSelection(foundPos)
-          .setImage({ src: imageData, alt: editingCanvas.id, title: encodedData })
-          .run()
+    if (editingCanvas.id) {
+      const result = await window.electronAPI.knowledge.replaceCanvas(
+        vaultId, editingCanvas.id, content, documentId,
+      )
+      if (!result.ok) {
+        setEditingCanvas((current) => current ? { ...current, error: result.error.message } : null)
+        return
       }
     } else {
-      // 新建画布
-      editor.chain().focus().setImage({
-        src: imageData,
-        alt: editingCanvas.id,
-        title: encodedData,
+      const result = await window.electronAPI.knowledge.createEmbeddedCanvas(
+        vaultId, documentId, content,
+      )
+      if (!result.ok) {
+        setEditingCanvas((current) => current ? { ...current, error: result.error.message } : null)
+        return
+      }
+      editor.chain().focus().insertContent({
+        type: 'canvasReference',
+        attrs: { canvasId: result.data.id, width: null, textAlign: 'left' },
       }).run()
     }
-
     setEditingCanvas(null)
-  }, [editor, editingCanvas])
+  }, [documentId, editingCanvas, editor, vaultId])
 
-  /**
-   * 编辑已有画布
-   */
-  const handleEditCanvas = useCallback((canvasId: string, _imageData: string) => {
-    if (!editor) return
-
-    const { state } = editor
-    let excalidrawData = ''
-
-    state.doc.descendants((node) => {
-      if (node.type.name === 'image' && node.attrs.alt === canvasId && node.attrs.title) {
-        try {
-          excalidrawData = decodeURIComponent(atob(node.attrs.title))
-        } catch {
-          excalidrawData = ''
-        }
-        return false
-      }
-      return true
-    })
-
-    setEditingCanvas({ id: canvasId, data: excalidrawData, isEditing: true })
-  }, [editor])
-
-  /**
-   * 关闭画布编辑器
-   */
-  const closeCanvasEditor = useCallback(() => {
-    setEditingCanvas(null)
-  }, [])
+  const closeCanvasEditor = useCallback(() => setEditingCanvas(null), [])
 
   return {
     editingCanvas,

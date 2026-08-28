@@ -1,18 +1,13 @@
 import { ipcMain, dialog, BrowserWindow, app } from 'electron'
 import * as fs from 'fs'
 import * as path from 'path'
-import { vaultStore, documentStore, imageStore, settingsStore } from './store'
-import { structureStore } from './structure-store'
+import { settingsStore } from './settings-store'
 import { IPC_CHANNELS } from '../shared/ipc-channels'
 import type {
   AISettings,
   HotkeyConfig,
   PolishResult,
-  StructureMoveInput,
-  StructureResult,
-  VaultStructure,
 } from '../shared/types'
-import { toStructureError } from './validation'
 
 let mainWindowRef: BrowserWindow | null = null
 let ipcHandlersRegistered = false
@@ -76,14 +71,6 @@ async function callAI(text: string, mode: 'polish' | 'expand'): Promise<PolishRe
   }
 }
 
-function structureResult(action: () => VaultStructure): StructureResult<VaultStructure> {
-  try {
-    return { success: true, data: action() }
-  } catch (error) {
-    return { success: false, error: toStructureError(error) }
-  }
-}
-
 export function setupIpcHandlers(mainWindow: BrowserWindow) {
   mainWindowRef = mainWindow
 
@@ -91,112 +78,6 @@ export function setupIpcHandlers(mainWindow: BrowserWindow) {
     return
   }
   ipcHandlersRegistered = true
-
-  // ========== Vault 操作 ==========
-  ipcMain.handle(IPC_CHANNELS.VAULT.LIST, async () => {
-    return vaultStore.list()
-  })
-
-  ipcMain.handle(IPC_CHANNELS.VAULT.CREATE, async (_, name: string) => {
-    return vaultStore.create(name)
-  })
-
-  ipcMain.handle(IPC_CHANNELS.VAULT.DELETE, async (_, vaultId: string) => {
-    return vaultStore.delete(vaultId)
-  })
-
-  ipcMain.handle(IPC_CHANNELS.VAULT.RENAME, async (_, vaultId: string, newName: string) => {
-    return vaultStore.rename(vaultId, newName)
-  })
-
-  // ========== Document 操作 ==========
-  ipcMain.handle(IPC_CHANNELS.DOCUMENT.LIST, async (_, vaultId: string) => {
-    return documentStore.list(vaultId)
-  })
-
-  ipcMain.handle(IPC_CHANNELS.DOCUMENT.GET, async (_, vaultId: string, docId: string) => {
-    return documentStore.get(vaultId, docId)
-  })
-
-  ipcMain.handle(
-    IPC_CHANNELS.DOCUMENT.CREATE,
-    async (
-      _,
-      vaultId: string,
-      title: string,
-      type: 'document' | 'drawing',
-      parentId: string | null = null,
-      index?: number,
-    ) => {
-      // 先完成首次迁移，避免新建文件在 attach 时被误认为孤儿并自动放到根层。
-      structureStore.get(vaultId)
-      const document = documentStore.create(vaultId, title, type)
-      try {
-        structureStore.attachDocument(vaultId, document.id, parentId, index)
-        return document
-      } catch (error) {
-        documentStore.delete(vaultId, document.id)
-        throw error
-      }
-    },
-  )
-
-  ipcMain.handle(IPC_CHANNELS.DOCUMENT.UPDATE, async (_, vaultId: string, docId: string, data: { title?: string; content?: string }) => {
-    return documentStore.update(vaultId, docId, data)
-  })
-
-  ipcMain.handle(IPC_CHANNELS.DOCUMENT.DELETE, async (_, vaultId: string, docId: string) => {
-    const structure = structureStore.get(vaultId)
-    const placement = structure.entries.find(
-      (entry) => entry.kind === 'document' && entry.id === docId,
-    )
-    if (!placement) return documentStore.delete(vaultId, docId)
-
-    structureStore.detachDocument(vaultId, docId)
-    try {
-      const deleted = documentStore.delete(vaultId, docId)
-      if (!deleted) {
-        structureStore.attachDocument(vaultId, docId, placement.parentId, placement.order)
-      }
-      return deleted
-    } catch (error) {
-      structureStore.attachDocument(vaultId, docId, placement.parentId, placement.order)
-      throw error
-    }
-  })
-
-  ipcMain.handle(IPC_CHANNELS.DOCUMENT.SEARCH, async (_, vaultId: string, query: string) => {
-    return documentStore.search(vaultId, query)
-  })
-
-  // ========== 文档组织结构 ==========
-  ipcMain.handle(IPC_CHANNELS.STRUCTURE.GET, async (_, vaultId: string) =>
-    structureResult(() => structureStore.get(vaultId)),
-  )
-
-  ipcMain.handle(
-    IPC_CHANNELS.STRUCTURE.CREATE_GROUP,
-    async (_, vaultId: string, parentId: string | null, name: string, index?: number) =>
-      structureResult(() => structureStore.createGroup(vaultId, parentId, name, index)),
-  )
-
-  ipcMain.handle(
-    IPC_CHANNELS.STRUCTURE.RENAME_GROUP,
-    async (_, vaultId: string, groupId: string, name: string) =>
-      structureResult(() => structureStore.renameGroup(vaultId, groupId, name)),
-  )
-
-  ipcMain.handle(
-    IPC_CHANNELS.STRUCTURE.MOVE,
-    async (_, vaultId: string, input: StructureMoveInput) =>
-      structureResult(() => structureStore.move(vaultId, input)),
-  )
-
-  ipcMain.handle(
-    IPC_CHANNELS.STRUCTURE.DELETE_GROUP,
-    async (_, vaultId: string, groupId: string) =>
-      structureResult(() => structureStore.deleteGroup(vaultId, groupId)),
-  )
 
   // ========== 文件操作 ==========
   ipcMain.handle(IPC_CHANNELS.FILE.SELECT_IMAGE, async () => {
@@ -222,14 +103,6 @@ export function setupIpcHandlers(mainWindow: BrowserWindow) {
       }
     }
     return null
-  })
-
-  ipcMain.handle(IPC_CHANNELS.FILE.SAVE_IMAGE, async (_, vaultId: string, imageData: string, fileName: string) => {
-    return imageStore.save(vaultId, imageData, fileName)
-  })
-
-  ipcMain.handle(IPC_CHANNELS.FILE.READ_IMAGE, async (_, imagePath: string) => {
-    return imageStore.read(imagePath)
   })
 
   ipcMain.handle(IPC_CHANNELS.FILE.DOWNLOAD_IMAGE, async (_, imageData: string, defaultName: string) => {

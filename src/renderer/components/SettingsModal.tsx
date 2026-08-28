@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import type { AISettings, HotkeyConfig } from '@shared/types'
+import type { McpStatus, PublicMcpSettings } from '@shared/mcp-types'
 import { DEFAULT_HOTKEYS } from '@shared/types'
 import { useAppStore } from '../stores/appStore'
 import { formatHotkeyDisplay, getModifiersFromEvent, hasSameHotkey } from '../utils/hotkeys'
@@ -9,7 +10,7 @@ interface SettingsModalProps {
   onClose: () => void
 }
 
-type TabType = 'ai' | 'hotkey'
+type TabType = 'ai' | 'hotkey' | 'mcp'
 
 // 自定义下拉组件
 interface CustomSelectProps {
@@ -109,6 +110,15 @@ function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [editingHotkeyId, setEditingHotkeyId] = useState<string | null>(null)
   const [hotkeyConflict, setHotkeyConflict] = useState<string | null>(null)
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
+  const [mcpSettings, setMcpSettings] = useState<PublicMcpSettings>({
+    enabled: false, port: 17890, maskedToken: '',
+  })
+  const [mcpStatus, setMcpStatus] = useState<McpStatus>({
+    state: 'disabled', port: 0, endpoint: '',
+  })
+  const [mcpUrl, setMcpUrl] = useState('')
+  const [mcpBusy, setMcpBusy] = useState(false)
+  const [mcpNotice, setMcpNotice] = useState<string | null>(null)
 
   useEffect(() => {
     if (isOpen) {
@@ -118,11 +128,18 @@ function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
   const loadAllSettings = async () => {
     try {
-      const ai = await window.electronAPI.settings.getAI()
+      const [ai, hks, mcp, status, url] = await Promise.all([
+        window.electronAPI.settings.getAI(),
+        window.electronAPI.settings.getHotkeys(),
+        window.electronAPI.settings.getMcp(),
+        window.electronAPI.settings.getMcpStatus(),
+        window.electronAPI.settings.getMcpUrl(),
+      ])
       setAiSettings(ai)
-      
-      const hks = await window.electronAPI.settings.getHotkeys()
       setHotkeys(hks)
+      setMcpSettings(mcp)
+      setMcpStatus(status)
+      setMcpUrl(url)
     } catch (error) {
       console.error('Failed to load settings:', error)
     }
@@ -143,15 +160,51 @@ function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       updateHotkeys(hotkeys)
       
       setSaveMessage('保存成功')
-      setTimeout(() => {
-        onClose()
-      }, 500)
+      setTimeout(onClose, 500)
     } catch (error) {
       console.error('Failed to save settings:', error)
       setSaveMessage('保存失败')
     } finally {
       setIsSaving(false)
     }
+  }
+
+  const handleMcpToggle = async (enabled: boolean) => {
+    setMcpBusy(true)
+    setMcpNotice(null)
+    try {
+      setMcpSettings(await window.electronAPI.settings.saveMcp(enabled))
+      setMcpStatus(await window.electronAPI.settings.getMcpStatus())
+      setMcpNotice(enabled ? '服务已启动' : '服务已停止')
+    } catch (error) {
+      console.error('Failed to update MCP service:', error)
+      setMcpStatus(await window.electronAPI.settings.getMcpStatus())
+      setMcpNotice('服务状态更新失败')
+    } finally {
+      setMcpBusy(false)
+    }
+  }
+
+  const handleMcpRefresh = async () => {
+    if (!window.confirm('刷新后，之前复制的 MCP 地址会立即失效。确认刷新？')) return
+    setMcpBusy(true)
+    setMcpNotice(null)
+    try {
+      setMcpSettings(await window.electronAPI.settings.resetMcpToken())
+      setMcpUrl(await window.electronAPI.settings.getMcpUrl())
+      setMcpStatus(await window.electronAPI.settings.getMcpStatus())
+      setMcpNotice('连接地址已刷新')
+    } catch (error) {
+      console.error('Failed to refresh MCP URL:', error)
+      setMcpNotice('连接地址刷新失败')
+    } finally {
+      setMcpBusy(false)
+    }
+  }
+
+  const handleMcpCopy = async () => {
+    await window.electronAPI.settings.copyMcpUrl()
+    setMcpNotice('连接地址已复制')
   }
 
   // 快捷键冲突检测
@@ -247,6 +300,7 @@ function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             {[
               { key: 'ai' as TabType, label: 'AI 设置' },
               { key: 'hotkey' as TabType, label: '快捷键' },
+              { key: 'mcp' as TabType, label: 'MCP 服务' },
             ].map(tab => (
               <button
                 key={tab.key}
@@ -319,7 +373,6 @@ function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   className="flex-1 max-w-sm"
                 />
               </div>
-
               {/* 模型 */}
               <div className="flex items-center gap-4">
                 <span className="w-24 text-sm" style={{ color: 'var(--text-secondary)' }}>模型</span>
@@ -363,6 +416,120 @@ function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     className="w-full px-3 py-2 text-sm border rounded focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary resize-none"
                     style={{ borderColor: 'var(--border-color)', backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)' }}
                   />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'mcp' && (
+            <div className="w-full">
+              <div className="flex items-center justify-between gap-6 py-1">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+                      本地 MCP 服务
+                    </h2>
+                    <span
+                      className="h-2 w-2 rounded-full transition-colors duration-200"
+                      style={{
+                        backgroundColor: mcpStatus.state === 'running'
+                          ? 'var(--success-color, #22C55E)'
+                          : mcpStatus.state === 'error'
+                            ? 'var(--error-color, #EF4444)'
+                            : '#A3A3A3',
+                      }}
+                    />
+                    <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                      {{ disabled: '已停止', starting: '启动中', running: '运行中', error: '启动失败' }[mcpStatus.state]}
+                    </span>
+                  </div>
+                  <p className="mt-1.5 text-xs leading-5" style={{ color: 'var(--text-secondary)' }}>
+                    仅本机 Agent 可访问，极简笔记退出后服务停止
+                  </p>
+                  {mcpStatus.error && (
+                    <p className="mt-1 text-xs" style={{ color: 'var(--error-color, #EF4444)' }}>
+                      {mcpStatus.error}
+                    </p>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  role="switch"
+                  aria-label="启用本地 MCP 服务"
+                  aria-checked={mcpSettings.enabled}
+                  aria-busy={mcpBusy}
+                  disabled={mcpBusy}
+                  onClick={() => void handleMcpToggle(!mcpSettings.enabled)}
+                  className="relative inline-flex h-6 w-11 shrink-0 rounded-full border transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary/25 disabled:cursor-not-allowed disabled:opacity-50"
+                  style={{
+                    backgroundColor: mcpSettings.enabled ? 'var(--primary-color)' : 'var(--bg-secondary)',
+                    borderColor: mcpSettings.enabled ? 'var(--primary-color)' : 'var(--border-color)',
+                  }}
+                >
+                  <span
+                    aria-hidden="true"
+                    className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-200 ${
+                      mcpSettings.enabled ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              <div className="mt-5 pt-5" style={{ borderColor: 'var(--border-color)', borderTopWidth: '1px' }}>
+                <div className="mb-2 flex items-center justify-between">
+                  <h3 className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>连接地址</h3>
+                  <button
+                    type="button"
+                    aria-label="刷新 MCP 连接地址"
+                    disabled={mcpBusy}
+                    onClick={() => void handleMcpRefresh()}
+                    className="flex items-center gap-1.5 rounded px-2 py-1 text-xs transition-colors hover:bg-black/5 focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
+                    style={{ color: 'var(--text-secondary)' }}
+                  >
+                    <svg className={`h-4 w-4 ${mcpBusy ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 11a8.1 8.1 0 00-15.5-2M4 4v5h5m-5 4a8.1 8.1 0 0015.5 2M20 20v-5h-5" />
+                    </svg>
+                    刷新地址
+                  </button>
+                </div>
+
+                <div className="relative">
+                  <input
+                    aria-label="MCP 连接地址"
+                    readOnly
+                    value={mcpUrl}
+                    className="h-9 w-full rounded border bg-transparent px-3 pr-10 text-sm outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary"
+                    style={{ borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                  />
+                  <button
+                    type="button"
+                    aria-label="复制 MCP 连接地址"
+                    onClick={() => void handleMcpCopy()}
+                    className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-1.5 transition-colors hover:bg-black/5 focus:outline-none focus:ring-1 focus:ring-primary"
+                    style={{ color: 'var(--text-secondary)' }}
+                  >
+                    {mcpNotice === '连接地址已复制' ? (
+                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                    ) : (
+                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <rect x="9" y="9" width="11" height="11" rx="2" strokeWidth="2" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 9V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7a2 2 0 002 2h3" />
+                      </svg>
+                    )}
+                  </button>
+                </div>
+                <div className="mt-2 flex items-center justify-between gap-4">
+                  <p className="text-xs leading-5" style={{ color: 'var(--text-secondary)' }}>
+                    地址包含访问 token。除非主动刷新，否则启停或重启应用后地址保持不变。
+                  </p>
+                  {mcpNotice && (
+                    <span className="shrink-0 text-xs" style={{ color: mcpNotice.includes('失败') ? 'var(--error-color, #EF4444)' : 'var(--success-color, #22C55E)' }}>
+                      {mcpNotice}
+                    </span>
+                  )}
                 </div>
               </div>
             </div>
@@ -448,8 +615,8 @@ function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           )}
         </div>
 
-        {/* 底部按钮 */}
-        <div className="flex justify-between items-center px-6 py-4" style={{ borderColor: 'var(--border-color)', borderTopWidth: '1px' }}>
+        {/* MCP 操作即时生效；其他设置保留统一保存。 */}
+        {activeTab !== 'mcp' && <div className="flex justify-between items-center px-6 py-4" style={{ borderColor: 'var(--border-color)', borderTopWidth: '1px' }}>
           <div className="flex-1">
             {saveMessage && (
               <span className="text-sm" style={{ color: saveMessage === '保存成功' ? 'var(--success-color, #22C55E)' : 'var(--error-color, #EF4444)' }}>
@@ -474,7 +641,7 @@ function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               {isSaving ? '保存中...' : '保存'}
             </button>
           </div>
-        </div>
+        </div>}
       </div>
     </div>
   )

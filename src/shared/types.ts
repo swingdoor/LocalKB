@@ -4,73 +4,6 @@
  */
 
 /**
- * 文档类型
- */
-export interface Document {
-  id: string
-  title: string
-  content: string
-  type: 'document' | 'drawing'
-  createdAt: string
-  updatedAt: string
-}
-
-/** 用于列表和树导航的轻量文档信息，不包含正文。 */
-export type DocumentSummary = Omit<Document, 'content'>
-
-export interface GroupStructureEntry {
-  kind: 'group'
-  id: string
-  name: string
-  parentId: string | null
-  order: number
-}
-
-export interface DocumentStructureEntry {
-  kind: 'document'
-  id: string
-  parentId: string | null
-  order: number
-}
-
-export type StructureEntry = GroupStructureEntry | DocumentStructureEntry
-
-export interface VaultStructure {
-  version: 1
-  entries: StructureEntry[]
-}
-
-export interface StructureMoveInput {
-  kind: StructureEntry['kind']
-  id: string
-  targetParentId: string | null
-  index: number
-}
-
-export type StructureErrorCode =
-  | 'INVALID_ID'
-  | 'INVALID_NAME'
-  | 'INVALID_INDEX'
-  | 'INVALID_PARENT'
-  | 'ITEM_NOT_FOUND'
-  | 'GROUP_CYCLE'
-  | 'GROUP_NOT_EMPTY'
-  | 'CORRUPT_STRUCTURE'
-  | 'UNSUPPORTED_VERSION'
-  | 'PATH_OUTSIDE_VAULT'
-  | 'PERSISTENCE_ERROR'
-
-export interface StructureError {
-  code: StructureErrorCode
-  message: string
-  contentCount?: number
-}
-
-export type StructureResult<T> =
-  | { success: true; data: T }
-  | { success: false; error: StructureError }
-
-/**
  * Hotkey configuration
  */
 export interface HotkeyConfig {
@@ -99,23 +32,6 @@ export const DEFAULT_HOTKEYS: HotkeyConfig[] = [
   { id: 'heading5', name: '标题 5', key: '5', modifiers: ['ctrl', 'alt'], display: 'Ctrl+Alt+5', readonly: true },
   { id: 'heading6', name: '标题 6', key: '6', modifiers: ['ctrl', 'alt'], display: 'Ctrl+Alt+6', readonly: true },
 ]
-
-/**
- * 知识库类型
- */
-export interface Vault {
-  id: string
-  name: string
-  createdAt: string
-}
-
-/**
- * 知识库元数据
- */
-export interface VaultMeta {
-  vault: Vault
-  documents: string[] // 文档 ID 列表
-}
 
 /**
  * 图片文件信息

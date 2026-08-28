@@ -111,7 +111,7 @@ function TreeNodeRow({ node, style, dragHandle, openMenu }: TreeNodeRowProps) {
 
       {node.data.kind === 'group' ? (
         <Folder size={16} strokeWidth={1.8} className="mr-2 flex-none text-gray-500" />
-      ) : node.data.documentType === 'drawing' ? (
+      ) : node.data.contentType === 'canvas' ? (
         <ImageIcon size={16} strokeWidth={1.8} className="mr-2 flex-none text-amber-500" />
       ) : (
         <FileText size={16} strokeWidth={1.8} className="mr-2 flex-none text-blue-500" />
@@ -159,24 +159,24 @@ function TreeNodeRow({ node, style, dragHandle, openMenu }: TreeNodeRowProps) {
 function DocumentTree() {
   const {
     currentVault,
-    currentDocument,
-    documents,
+    selectedContent,
+    contents,
     structure,
     structureLoading,
     structureError,
     expandedGroupIds,
-    revealDocumentId,
-    createDocument,
-    selectDocument,
-    deleteDocument,
-    renameDocument,
+    revealContentId,
+    createContent,
+    selectContent,
+    deleteContent,
+    renameContent,
     createGroup,
     renameGroup,
     moveStructure,
     deleteGroup,
     setGroupExpanded,
     setSearchOpen,
-    clearRevealDocument,
+    clearRevealContent,
   } = useAppStore()
   const treeRef = useRef<TreeApi<StructureTreeNode>>()
   const { ref: treeContainerRef, height } = useElementHeight()
@@ -187,8 +187,8 @@ function DocumentTree() {
   const [editAfterCreate, setEditAfterCreate] = useState<string | null>(null)
 
   const data = useMemo(
-    () => buildTreeData(structure, documents),
-    [structure, documents],
+    () => buildTreeData(structure, contents),
+    [structure, contents],
   )
   const initialOpenState = useMemo(
     () => Object.fromEntries(expandedGroupIds.map((id) => [id, true])),
@@ -203,11 +203,11 @@ function DocumentTree() {
 
   useEffect(() => {
     const tree = treeRef.current
-    if (!tree || !revealDocumentId) return
-    tree.select(revealDocumentId)
-    void tree.scrollTo(revealDocumentId, 'center')
-    clearRevealDocument()
-  }, [revealDocumentId, data, clearRevealDocument])
+    if (!tree || !revealContentId) return
+    tree.select(revealContentId)
+    void tree.scrollTo(revealContentId, 'center')
+    clearRevealContent()
+  }, [revealContentId, data, clearRevealContent])
 
   useEffect(() => {
     if (!editAfterCreate) return
@@ -235,7 +235,7 @@ function DocumentTree() {
     setAddMenu({ x: rect.right + 4, y: rect.top, parentId })
   }
 
-  const create = async (kind: 'group' | 'document' | 'drawing', parentId: string | null) => {
+  const create = async (kind: 'group' | 'document' | 'canvas', parentId: string | null) => {
     setAddMenu(null)
     setMenu(null)
     if (kind === 'group') {
@@ -246,7 +246,7 @@ function DocumentTree() {
       }
       return
     }
-    await createDocument(undefined, kind, parentId)
+    await createContent(undefined, kind, parentId)
   }
 
   const contentCount = menu?.kind === 'group'
@@ -301,20 +301,20 @@ function DocumentTree() {
             indent={14}
             paddingBottom={4}
             disableMultiSelection
-            selection={currentDocument?.id}
+            selection={selectedContent?.id}
             initialOpenState={initialOpenState}
             aria-label="文档结构"
             renderCursor={InsertionCursor}
             onActivate={(node) => {
               if (node.data.kind === 'group') node.toggle()
-              else void selectDocument(node.data.summary)
+              else void selectContent(node.data.summary)
             }}
             onToggle={(id) => setGroupExpanded(id, treeRef.current?.isOpen(id) ?? false)}
             onRename={async ({ id, name, node }) => {
               const title = name.trim()
               if (!title) return
               if (node.data.kind === 'group') await renameGroup(id, title)
-              else await renameDocument(id, title)
+              else await renameContent(id, title)
             }}
             onMove={async ({ dragIds, dragNodes, parentId, index }) => {
               const dragged = dragNodes[0]
@@ -325,7 +325,6 @@ function DocumentTree() {
                 .map((entry) => entry.id)
               const adjustedIndex = adjustMoveIndex({ index, dragIds, siblingIds })
               await moveStructure({
-                kind: dragged.data.kind,
                 id: dragged.id,
                 targetParentId: parentId,
                 index: adjustedIndex,
@@ -362,7 +361,7 @@ function DocumentTree() {
         >
           <button role="menuitem" className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50" onClick={() => void create('group', addMenu.parentId)}>新建组</button>
           <button role="menuitem" className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50" onClick={() => void create('document', addMenu.parentId)}>新建文档</button>
-          <button role="menuitem" className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50" onClick={() => void create('drawing', addMenu.parentId)}>新建画布</button>
+          <button role="menuitem" className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50" onClick={() => void create('canvas', addMenu.parentId)}>新建画布</button>
         </div>
       )}
 
@@ -376,7 +375,7 @@ function DocumentTree() {
             <>
               <button role="menuitem" className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50" onClick={() => void create('group', menu.id)}>新建组</button>
               <button role="menuitem" className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50" onClick={() => void create('document', menu.id)}>新建文档</button>
-              <button role="menuitem" className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50" onClick={() => void create('drawing', menu.id)}>新建画布</button>
+              <button role="menuitem" className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50" onClick={() => void create('canvas', menu.id)}>新建画布</button>
             </>
           )}
           <button
@@ -455,7 +454,7 @@ function DocumentTree() {
                 className="flex-1 rounded-lg bg-red-500 px-3 py-2 text-sm text-white hover:bg-red-600"
                 onClick={async () => {
                   if (deleteTarget.kind === 'group') await deleteGroup(deleteTarget.id)
-                  else await deleteDocument(deleteTarget.id)
+                  else await deleteContent(deleteTarget.id)
                   setDeleteTarget(null)
                 }}
               >

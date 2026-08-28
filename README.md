@@ -113,6 +113,14 @@ AI 能力默认需要用户自行配置，且只在明确触发时参与。这�
 - 支持配置 API Key、模型与提示词
 - 当前内置 DeepSeek 相关配置
 
+### 10. 本地 MCP 服务
+
+- 可在「设置 - MCP 服务」中启停仅监听 `127.0.0.1` 的 Streamable HTTP 服务
+- 支持复制带随机令牌的 Agent 连接地址，连接面向整个应用，不绑定单个知识库
+- Agent 与应用页面共享同一个 `KnowledgeService`，不会绕过校验直接读写磁盘
+- 工具输入和结构化输出统一使用原生 JSON，不做 Markdown/HTML 转换，也不使用 ETag
+- 工具按知识库、文档树、TipTap 文档、Excalidraw 画布、MindElixir 思维导图和附件分域
+
 ## 技术栈
 
 ### 桌面端框架
@@ -151,15 +159,24 @@ src/
 
 ## 本地数据说明
 
-应用数据通过 Electron 的 `userData` 目录保存，主要包括：
+应用数据通过 Electron 的 `userData/data` 目录保存。每个知识库采用原生结构：
 
-- 知识库数据
-- 文档与画布内容：每项内容仍以独立 JSON 文件保存在知识库的 `documents/` 目录
-- 组织结构：每个知识库通过独立的 `structure.json` 保存组、父子关系和混合排序，不复制或嵌入正文
-- 图片资源
-- 主题、AI、快捷键等设置
+```text
+vaults/<vaultId>/
+├─ vault.json
+├─ tree.json
+├─ canvases/<canvasId>.json
+└─ documents/<documentId>/
+   ├─ document.json
+   ├─ canvases/<canvasId>.json
+   ├─ mindmaps/<mindMapId>.json
+   └─ assets/<assetId>.<ext>
+```
 
-旧知识库首次打开时会自动生成 `structure.json`，现有文档按原列表顺序放到根层；正文和旧元数据不会被改写。若发现尚未加入结构的有效内容文件，应用会将其恢复到根层，避免内容因结构异常而丢失。
+- `tree.json` 只保存顶层组、文档、独立画布的父子关系和排序
+- 文档直接保存 TipTap JSON，画布直接保存 Excalidraw scene，思维导图直接保存 MindElixir node tree
+- 文档中的画布、思维导图和图片节点只保存稳定资源 ID 与预览属性
+- 主题、AI、快捷键和 MCP 配置保存在应用级 `settings.json`
 
 整体设计偏向本地优先，减少对在线服务的依赖。
 
@@ -167,7 +184,7 @@ src/
 
 ### 环境要求
 
-- Node.js 18 及以上（推荐 20 或更新版本）
+- Node.js 20 及以上
 - npm
 
 **操作系统要求**：
@@ -193,7 +210,7 @@ fnm install 20
 fnm use 20
 ```
 
-项目通过 `package.json` 的 `engines` 字段声明了 Node.js >= 18，低于该版本执行 `npm install` 时会收到警告。
+项目通过 `package.json` 的 `engines` 字段声明了 Node.js >= 20，低于该版本执行 `npm install` 时会收到警告。
 
 ### 安装依赖
 
@@ -251,6 +268,43 @@ AI 功能默认不会自动生效，需要先在应用设置中完成配置：
 - 提示词
 
 目前 AI 更适合作为“改写和辅助整理”工具，而不是替代写作本身。
+
+## MCP 使用说明
+
+1. 打开「设置 - MCP 服务」。
+2. 选择端口并启用服务，保存设置。
+3. 服务显示“运行中”后，点击「复制 Agent 连接地址」。
+4. 将完整 URL 交给支持 Streamable HTTP MCP 的本机 Agent。
+
+连接 URL 中的 token 属于敏感凭据。服务固定监听 loopback，但仍应只把链接交给可信的本机 Agent；怀疑泄露时可在设置中重置令牌。
+
+工具清单：
+
+| 领域 | 工具 |
+| --- | --- |
+| 知识库 | `vault_list`、`vault_create`、`vault_update`、`vault_delete` |
+| 文档树 | `tree_get`、`tree_insert`、`tree_update`、`tree_delete` |
+| 文档 | `document_get`、`document_search`、`document_insert`、`document_update`、`document_delete` |
+| 画布 | `canvas_create`、`canvas_get`、`canvas_search`、`canvas_insert`、`canvas_update`、`canvas_delete`、`canvas_remove` |
+| 思维导图 | `mindmap_create`、`mindmap_get`、`mindmap_search`、`mindmap_insert`、`mindmap_update`、`mindmap_move`、`mindmap_delete`、`mindmap_remove` |
+| 附件 | `asset_import`、`asset_get`、`asset_remove` |
+
+所有资源调用都显式携带 `vaultId`。例如文档节点更新直接提交 TipTap 原生结构：
+
+```json
+{
+  "vaultId": "<vaultId>",
+  "documentId": "<documentId>",
+  "updates": [
+    {
+      "nodeId": "<stableNodeId>",
+      "content": [{ "type": "text", "text": "更新后的内容" }]
+    }
+  ]
+}
+```
+
+省略的 `type` 和 `attrs` 会保留。嵌入画布、思维导图和附件使用显式两步流程：先创建资源，再通过 `document_insert` 插入引用节点；删除时先删除引用节点，再删除资源。
 
 ## 默认快捷键
 

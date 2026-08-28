@@ -8,7 +8,7 @@ interface CommandMenuState {
 }
 
 interface UseCommandMenuOptions {
-  onSelectImage?: () => Promise<{ data: string } | null>
+  onSelectImage?: () => Promise<{ data?: string; assetId?: string } | null>
   onCreateCanvas?: () => void
   onCreateMindMap?: () => void
 }
@@ -132,7 +132,11 @@ export function useCommandMenu(editor: Editor | null, options: UseCommandMenuOpt
       case 'image':
         if (options.onSelectImage) {
           const result = await options.onSelectImage()
-          if (result) {
+          if (result?.assetId) {
+            editor.chain().focus().insertContent({
+              type: 'assetImage', attrs: { assetId: result.assetId, textAlign: 'left' },
+            }).run()
+          } else if (result?.data) {
             editor.chain().focus().setImage({ src: result.data }).run()
           }
         }

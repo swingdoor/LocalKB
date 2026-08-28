@@ -134,7 +134,7 @@ export function parseHeadings(doc: { type: string; content?: unknown[] }): TocNo
  * @param jsonString - editor.getJSON() 返回的 JSON 字符串
  * @param options - 解析选项
  */
-export function parseHeadingsFromJSON(jsonString: string, options: ParseHeadingsOptions = {}): TocNode[] {
+export function parseHeadingsFromJSON(jsonString: string, _options: ParseHeadingsOptions = {}): TocNode[] {
   try {
     const doc = JSON.parse(jsonString)
     return parseHeadings(doc)
@@ -208,7 +208,7 @@ export function addHeadingNumbers(nodes: TocNode[]): TocNode[] {
   // 计数器数组，索引对应标题级别（1-6）
   const counters: number[] = [0, 0, 0, 0, 0, 0]
 
-  function processNode(node: TocNode, parentLevel: number): TocNode {
+  function processNode(node: TocNode, _parentLevel: number): TocNode {
     const level = node.level - 1 // 转换为 0-based 索引
 
     // 重置更深层级的计数器

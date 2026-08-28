@@ -174,6 +174,57 @@ body {
   min-height: 100%;
 }
 
+/* Resource node views need a full editor-width row so left/center/right positions
+   the whole preview container rather than only aligning content inside it. */
+.ProseMirror > .node-canvasReference,
+.ProseMirror > .node-mindmapReference,
+.ProseMirror > .node-assetImage {
+  display: block;
+  width: 100%;
+}
+
+.resource-resize-handle {
+  position: absolute;
+  z-index: 20;
+  display: block;
+  touch-action: none;
+}
+
+.resource-resize-handle-e {
+  top: 10px;
+  right: -5px;
+  bottom: 10px;
+  width: 10px;
+  cursor: ew-resize;
+}
+
+.resource-resize-handle-s {
+  right: 10px;
+  bottom: -5px;
+  left: 10px;
+  height: 10px;
+  cursor: ns-resize;
+}
+
+.resource-resize-handle-se {
+  right: -6px;
+  bottom: -6px;
+  width: 14px;
+  height: 14px;
+  cursor: nwse-resize;
+}
+
+.resource-resize-handle-se::after {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 5px;
+  height: 5px;
+  content: '';
+  background: var(--primary-color);
+  border-radius: 1px;
+}
+
 .ProseMirror > * + * {
   margin-top: 0.5em;
 }

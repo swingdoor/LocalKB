@@ -1,86 +1,56 @@
-import { useState, useCallback } from 'react'
+import { useCallback, useState } from 'react'
 import type { Editor } from '@tiptap/react'
+import type { MindMapData } from '@shared/knowledge-types'
 
 interface EditingMindMap {
-  id: string
-  data: string
-  isEditing?: boolean
+  id: string | null
+  data: MindMapData | null
+  loading: boolean
+  error: string | null
 }
 
-export function useMindMapEdit(editor: Editor | null) {
+export function useMindMapEdit(editor: Editor | null, vaultId: string, documentId: string) {
   const [editingMindMap, setEditingMindMap] = useState<EditingMindMap | null>(null)
 
-  /**
-   * Create new mind map
-   */
   const createMindMap = useCallback(() => {
-    setEditingMindMap({ id: `mindmap-${Date.now()}`, data: '' })
+    setEditingMindMap({ id: null, data: null, loading: false, error: null })
   }, [])
 
-  /**
-   * Save mind map
-   */
-  const handleSaveMindMap = useCallback((data: string) => {
+  const handleEditMindMap = useCallback(async (mindmapId: string) => {
+    setEditingMindMap({ id: mindmapId, data: null, loading: true, error: null })
+    const result = await window.electronAPI.knowledge.getMindMap(vaultId, documentId, mindmapId)
+    if (!result.ok) {
+      setEditingMindMap({ id: mindmapId, data: null, loading: false, error: result.error.message })
+      return
+    }
+    setEditingMindMap({ id: mindmapId, data: result.data, loading: false, error: null })
+  }, [documentId, vaultId])
+
+  const handleSaveMindMap = useCallback(async (content: MindMapData) => {
     if (!editor || !editingMindMap) return
-
-    const jsonData = data
-
-    if (editingMindMap.isEditing) {
-      // Update existing mind map
-      const { state } = editor
-      let foundPos: number | null = null
-
-      state.doc.descendants((node, pos) => {
-        if (node.type.name === 'mindmap' && node.attrs.alt === editingMindMap.id) {
-          foundPos = pos
-          return false
-        }
-        return true
-      })
-
-      if (foundPos !== null) {
-        editor.chain().focus()
-          .setNodeSelection(foundPos)
-          .setMindMap({ data: jsonData, alt: editingMindMap.id })
-          .run()
+    if (editingMindMap.id) {
+      const result = await window.electronAPI.knowledge.replaceMindMap(
+        vaultId, documentId, editingMindMap.id, content,
+      )
+      if (!result.ok) {
+        setEditingMindMap((current) => current ? { ...current, error: result.error.message } : null)
+        return
       }
     } else {
-      // Insert new mind map
-      editor.chain().focus().setMindMap({
-        data: jsonData,
-        alt: editingMindMap.id,
+      const result = await window.electronAPI.knowledge.createMindMap(vaultId, documentId, content)
+      if (!result.ok) {
+        setEditingMindMap((current) => current ? { ...current, error: result.error.message } : null)
+        return
+      }
+      editor.chain().focus().insertContent({
+        type: 'mindmapReference',
+        attrs: { mindmapId: result.data.id, width: null, textAlign: 'left' },
       }).run()
     }
-
     setEditingMindMap(null)
-  }, [editor, editingMindMap])
+  }, [documentId, editingMindMap, editor, vaultId])
 
-  /**
-   * Edit existing mind map
-   */
-  const handleEditMindMap = useCallback((mindmapId: string) => {
-    if (!editor) return
-
-    const { state } = editor
-    let mindmapData = ''
-
-    state.doc.descendants((node) => {
-      if (node.type.name === 'mindmap' && node.attrs.alt === mindmapId && node.attrs.data) {
-        mindmapData = node.attrs.data
-        return false
-      }
-      return true
-    })
-
-    setEditingMindMap({ id: mindmapId, data: mindmapData, isEditing: true })
-  }, [editor])
-
-  /**
-   * Close editor
-   */
-  const closeMindMapEditor = useCallback(() => {
-    setEditingMindMap(null)
-  }, [])
+  const closeMindMapEditor = useCallback(() => setEditingMindMap(null), [])
 
   return {
     editingMindMap,

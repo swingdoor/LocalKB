@@ -1,35 +1,25 @@
 import { useState, useEffect, useRef } from 'react'
-import type { DocumentSummary } from '@shared/types'
-import { useAppStore } from '../stores/appStore'
-import { getDocumentBreadcrumb } from '../utils/structureTree'
+import type { SearchHit } from '@shared/knowledge-types'
 
 interface SearchModalProps {
   vaultId: string
-  onSelect: (doc: DocumentSummary) => void
+  onSelect: (content: SearchHit) => void
   onClose: () => void
 }
 
 function SearchModal({ vaultId, onSelect, onClose }: SearchModalProps) {
   const [query, setQuery] = useState('')
-  const [results, setResults] = useState<DocumentSummary[]>([])
+  const [results, setResults] = useState<SearchHit[]>([])
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [isLoading, setIsLoading] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
-  const structure = useAppStore((state) => state.structure)
 
   // 搜索
   useEffect(() => {
     const search = async () => {
-      if (!query.trim()) {
-        // 空查询时显示所有文档
-        const docs = await window.electronAPI.document.list(vaultId)
-        setResults(docs)
-        return
-      }
-      
       setIsLoading(true)
-      const docs = await window.electronAPI.document.search(vaultId, query)
-      setResults(docs)
+      const result = await window.electronAPI.knowledge.search(vaultId, query)
+      setResults(result.ok ? result.data : [])
       setIsLoading(false)
     }
 
@@ -116,7 +106,7 @@ function SearchModal({ vaultId, onSelect, onClose }: SearchModalProps) {
                     index === selectedIndex ? 'bg-selected' : 'hover:bg-gray-50'
                   }`}
                 >
-                  {doc.type === 'drawing' ? (
+                  {doc.contentType === 'canvas' ? (
                     <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                     </svg>
@@ -128,8 +118,8 @@ function SearchModal({ vaultId, onSelect, onClose }: SearchModalProps) {
                   <div className="flex-1 min-w-0">
                     <div className="font-medium text-text truncate">{doc.title}</div>
                     <div className="truncate text-sm text-gray-400">
-                      {getDocumentBreadcrumb(structure, doc.id)
-                        ? `${getDocumentBreadcrumb(structure, doc.id)} · `
+                      {doc.path.length
+                        ? `${doc.path.join(' / ')} · `
                         : ''}
                       {new Date(doc.updatedAt).toLocaleDateString('zh-CN')}
                     </div>

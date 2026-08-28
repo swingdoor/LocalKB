@@ -1,3 +1,4 @@
+import { AlertCircle, RotateCcw } from 'lucide-react'
 import { useEffect } from 'react'
 import TitleBar from './components/TitleBar'
 import Sidebar from './components/Sidebar'
@@ -8,12 +9,22 @@ import SettingsModal from './components/SettingsModal'
 import { useAppStore } from './stores/appStore'
 import { loadXiaolaiFont } from './utils/loadFonts'
 import { eventMatchesHotkey, formatHotkeyDisplay } from './utils/hotkeys'
-import type { DocumentSummary } from '@shared/types'
+import type { SearchHit } from '@shared/knowledge-types'
+import {
+  discardPendingSaves,
+  flushPendingSaves,
+  hasPendingSaves,
+} from './utils/pendingSaveCoordinator'
+import { finishPendingSavesBeforeClose } from './utils/closeWorkflow'
+import { isExternalEventForVault, shouldReloadExternalChange } from './utils/knowledgeEventPolicy'
 
 function App() {
   const {
     currentVault,
-    currentDocument,
+    selectedContent,
+    contentLoading,
+    contentError,
+    currentContent,
     isSearchOpen,
     isSettingsOpen,
     sidebarOpen,
@@ -21,9 +32,10 @@ function App() {
     loadVaults,
     loadTheme,
     loadHotkeys,
-    selectDocument,
-    revealDocument,
+    selectContent,
+    revealContent,
     updateDocument,
+    replaceCanvas,
     setSearchOpen,
     setSettingsOpen,
   } = useAppStore()
@@ -35,6 +47,55 @@ function App() {
     loadHotkeys()
     loadXiaolaiFont()
   }, [])
+
+  useEffect(() => {
+    let handlingClose = false
+    return window.electronAPI.window.onCloseRequested(() => {
+      if (handlingClose) return
+      handlingClose = true
+      void finishPendingSavesBeforeClose({
+        flush: flushPendingSaves,
+        discard: discardPendingSaves,
+        confirmRetry: () => window.confirm(
+          '最后一次保存失败。点击“确定”重试，点击“取消”选择是否放弃更改。',
+        ),
+        confirmDiscard: () => window.confirm(
+          '确定放弃尚未保存的更改并退出吗？此操作无法撤销。',
+        ),
+        complete: window.electronAPI.window.completeClose,
+      }).finally(() => {
+          handlingClose = false
+      })
+    })
+  }, [])
+
+  useEffect(() => window.electronAPI.knowledge.onChanged((event) => {
+    const state = useAppStore.getState()
+    if (!isExternalEventForVault(event, state.currentVault?.id)) return
+    const selected = state.selectedContent
+    const affectsOpenContent = selected?.id === event.resourceId && (
+      event.resourceType === 'document' || event.resourceType === 'canvas'
+    )
+    if (affectsOpenContent) {
+      if (!shouldReloadExternalChange(hasPendingSaves(), () => window.confirm(
+          '当前内容已被外部工具更新。点击“确定”放弃本地未保存更改并重新加载；点击“取消”保留当前编辑。',
+        ))) return
+      discardPendingSaves()
+      if (event.change === 'deleted') {
+        useAppStore.setState({
+          selectedContent: null, currentContent: null,
+          contentLoading: false, contentError: null,
+        })
+      } else if (selected) {
+        useAppStore.setState({ currentContent: null, contentLoading: true, contentError: null })
+        void state.selectContent(selected)
+      }
+    }
+    if (event.resourceType === 'tree' || event.resourceType === 'document' ||
+        event.resourceType === 'canvas') {
+      void state.loadContents(event.vaultId)
+    }
+  }), [])
 
   // 键盘快捷键
   useEffect(() => {
@@ -70,9 +131,9 @@ function App() {
   }, [hotkeys, isSearchOpen, setSearchOpen])
 
   // 搜索选择文档
-  const handleSearchSelect = (doc: DocumentSummary) => {
-    revealDocument(doc.id)
-    void selectDocument(doc)
+  const handleSearchSelect = (content: SearchHit) => {
+    revealContent(content.id)
+    void selectContent(content)
     setSearchOpen(false)
   }
   const searchHotkey = hotkeys.find(h => h.id === 'search')
@@ -87,17 +148,46 @@ function App() {
       <div className="flex flex-1 overflow-hidden">
         {sidebarOpen && <Sidebar />}
         <main className="flex-1 overflow-hidden" style={{ backgroundColor: 'var(--bg-primary)' }}>
-          {currentDocument ? (
-            currentDocument.type === 'drawing' ? (
+          {contentLoading && !currentContent ? (
+            <div className="grid h-full place-items-center" role="status">
+              <div className="flex items-center gap-3 text-sm" style={{ color: 'var(--text-secondary)' }}>
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                正在加载“{selectedContent?.title}”…
+              </div>
+            </div>
+          ) : contentError && !currentContent ? (
+            <div className="grid h-full place-items-center px-8">
+              <div className="max-w-lg text-center">
+                <AlertCircle className="mx-auto mb-4 text-red-500" size={30} strokeWidth={1.7} />
+                <h2 className="text-lg font-medium" style={{ color: 'var(--text-primary)' }}>
+                  无法打开“{selectedContent?.title || '所选内容'}”
+                </h2>
+                <p className="mt-2 break-words text-sm leading-6" style={{ color: 'var(--text-secondary)' }}>
+                  {contentError}
+                </p>
+                {selectedContent && (
+                  <button
+                    type="button"
+                    className="mt-5 inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm text-white transition-colors hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    onClick={() => void selectContent(selectedContent)}
+                  >
+                    <RotateCcw size={15} />
+                    重试
+                  </button>
+                )}
+              </div>
+            </div>
+          ) : currentContent ? (
+            currentContent.contentType === 'canvas' ? (
               <ExcalidrawCanvas
-                key={currentDocument.id}
-                document={currentDocument}
-                onUpdate={updateDocument}
+                key={currentContent.id}
+                canvas={currentContent}
+                onUpdate={replaceCanvas}
               />
             ) : (
               <Editor
-                key={currentDocument.id}
-                document={currentDocument}
+                key={currentContent.id}
+                document={currentContent}
                 vaultId={currentVault?.id || ''}
                 onUpdate={updateDocument}
               />

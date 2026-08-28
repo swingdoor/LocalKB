@@ -1,7 +1,7 @@
-import React, { act } from 'react'
+import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { DocumentSummary, VaultStructure } from '@shared/types'
+import type { ContentSummary, VaultTreeV2, VaultV2 } from '@shared/knowledge-types'
 import { useAppStore } from '../stores/appStore'
 
 vi.mock('react-arborist', async () => {
@@ -29,7 +29,7 @@ vi.mock('react-arborist', async () => {
               isEditing: false,
               isSelected: false,
               isOpen: true,
-              isLeaf: data.kind === 'document',
+              isLeaf: data.kind === 'content',
               willReceiveDrop: false,
               toggle: vi.fn(),
               open: vi.fn(),
@@ -52,19 +52,23 @@ vi.mock('react-arborist', async () => {
 
 import DocumentTree from './DocumentTree'
 
-const VAULT = {
+const timestamp = '2026-01-01T00:00:00.000Z'
+const VAULT: VaultV2 = {
+  schemaVersion: 2,
   id: '11111111-1111-4111-8111-111111111111',
   name: '测试库',
-  createdAt: '',
+  createdAt: timestamp,
 }
 const GROUP_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
 const DOC_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
-const SUMMARY: DocumentSummary = {
+const SUMMARY: ContentSummary = {
   id: DOC_ID,
   title: '说明',
-  type: 'document',
-  createdAt: '',
-  updatedAt: '',
+  contentType: 'document',
+  parentId: GROUP_ID,
+  order: 0,
+  createdAt: timestamp,
+  updatedAt: timestamp,
 }
 
 describe('DocumentTree', () => {
@@ -72,7 +76,7 @@ describe('DocumentTree', () => {
   let root: Root
 
   beforeEach(() => {
-    globalThis.IS_REACT_ACT_ENVIRONMENT = true
+    ;(globalThis as any).IS_REACT_ACT_ENVIRONMENT = true
     class ResizeObserverMock {
       observe() {}
       disconnect() {}
@@ -83,13 +87,13 @@ describe('DocumentTree', () => {
     root = createRoot(container)
     useAppStore.setState({
       currentVault: VAULT,
-      currentDocument: null,
-      documents: [],
-      structure: { version: 1, entries: [] },
+      currentContent: null,
+      contents: [],
+      structure: { schemaVersion: 2, entries: [] },
       structureLoading: false,
       structureError: null,
       expandedGroupIds: [],
-      revealDocumentId: null,
+      revealContentId: null,
       isSearchOpen: false,
     })
   })
@@ -119,8 +123,8 @@ describe('DocumentTree', () => {
   })
 
   it('shows group creation and maintenance actions in one menu', () => {
-    const structure: VaultStructure = {
-      version: 1,
+    const structure: VaultTreeV2 = {
+      schemaVersion: 2,
       entries: [
         { kind: 'group', id: GROUP_ID, name: '项目', parentId: null, order: 0 },
       ],
@@ -136,14 +140,17 @@ describe('DocumentTree', () => {
   })
 
   it('keeps non-empty group deletion visible, focusable, greyed, and explained', () => {
-    const structure: VaultStructure = {
-      version: 1,
+    const structure: VaultTreeV2 = {
+      schemaVersion: 2,
       entries: [
         { kind: 'group', id: GROUP_ID, name: '项目', parentId: null, order: 0 },
-        { kind: 'document', id: DOC_ID, parentId: GROUP_ID, order: 0 },
+        {
+          kind: 'content', id: DOC_ID, contentType: 'document', title: '说明',
+          parentId: GROUP_ID, order: 0, createdAt: timestamp, metadataUpdatedAt: timestamp,
+        },
       ],
     }
-    useAppStore.setState({ structure, documents: [SUMMARY] })
+    useAppStore.setState({ structure, contents: [SUMMARY] })
     act(() => root.render(<DocumentTree />))
     const more = container.querySelector<HTMLButtonElement>('button[aria-label="项目 的更多操作"]')!
     act(() => more.click())

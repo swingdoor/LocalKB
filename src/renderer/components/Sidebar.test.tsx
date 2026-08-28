@@ -1,4 +1,4 @@
-import React, { act } from 'react'
+import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAppStore } from '../stores/appStore'
@@ -8,6 +8,7 @@ vi.mock('./DocumentTree', () => ({ default: () => null }))
 import Sidebar from './Sidebar'
 
 const VAULT = {
+  schemaVersion: 2 as const,
   id: '11111111-1111-4111-8111-111111111111',
   name: '读书笔记',
   createdAt: '',
@@ -19,7 +20,7 @@ describe('Sidebar vault menu', () => {
   const renameVault = vi.fn(async () => true)
 
   beforeEach(() => {
-    globalThis.IS_REACT_ACT_ENVIRONMENT = true
+    ;(globalThis as any).IS_REACT_ACT_ENVIRONMENT = true
     container = document.createElement('div')
     document.body.appendChild(container)
     root = createRoot(container)

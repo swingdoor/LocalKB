@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import MindElixir, { DARK_THEME, THEME } from 'mind-elixir'
 import 'mind-elixir/style.css'
+import type { MindMapData } from '@shared/knowledge-types'
 
 // Chinese locale for context menu
 const CN_LOCALE = {
@@ -112,13 +113,17 @@ const THEMES: Record<string, ReturnType<typeof createTheme>> = {
 }
 
 interface MindMapEditorModalProps {
-  mindmapData: string
+  mindmapData: MindMapData | null
   isOpen: boolean
-  onSave: (data: string) => void
+  loading?: boolean
+  resourceError?: string | null
+  onSave: (data: MindMapData) => Promise<void>
   onClose: () => void
 }
 
-function MindMapEditorModal({ mindmapData, isOpen, onSave, onClose }: MindMapEditorModalProps) {
+function MindMapEditorModal({
+  mindmapData, isOpen, loading = false, resourceError, onSave, onClose,
+}: MindMapEditorModalProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mindInstanceRef = useRef<InstanceType<typeof MindElixir> | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -158,26 +163,7 @@ function MindMapEditorModal({ mindmapData, isOpen, onSave, onClose }: MindMapEdi
     } as any)
 
     try {
-      if (mindmapData) {
-        // Try to parse as stored format first
-        const parsed = JSON.parse(mindmapData)
-        if (parsed.data) {
-          // New format: { svg, data }
-          mind.init(parsed.data as any)
-          // 如果数据中有主题信息，使用数据中的主题
-          if (parsed.data.theme) {
-            const themeName = parsed.data.theme.name
-            if (THEMES[themeName]) {
-              setCurrentTheme(themeName)
-            }
-          }
-        } else if (parsed.nodeData) {
-          // Already mind-elixir format
-          mind.init(parsed as any)
-        }
-      } else {
-        mind.init(MindElixir.new('中心主题'))
-      }
+      mind.init(mindmapData ? mindmapData as any : MindElixir.new('中心主题'))
     } catch {
       mind.init(MindElixir.new('中心主题'))
     }
@@ -201,29 +187,12 @@ function MindMapEditorModal({ mindmapData, isOpen, onSave, onClose }: MindMapEdi
     setShowThemeMenu(false)
   }, [])
 
-  // Handle save - export SVG preview + save raw data
+  // 只保存 MindElixir 原生数据，预览始终由引用节点按需派生。
   const handleSave = useCallback(async () => {
     if (!mindInstanceRef.current) return
     
     try {
-      // Get raw data (includes theme)
-      const rawData = mindInstanceRef.current.getData()
-      
-      // Export SVG for preview - small padding for less whitespace
-      const svgBlob = mindInstanceRef.current.exportSvg(true, '0')
-      const svgString = svgBlob ? await svgBlob.text() : ''
-      
-      // Create data URL for SVG
-      const svgBase64 = btoa(unescape(encodeURIComponent(svgString)))
-      const svgDataUrl = `data:image/svg+xml;base64,${svgBase64}`
-      
-      // Store both SVG preview and raw data
-      const storedData = {
-        svg: svgDataUrl,
-        data: rawData,
-      }
-      
-      onSave(JSON.stringify(storedData))
+      await onSave(mindInstanceRef.current.getData() as MindMapData)
     } catch (err) {
       console.error('Failed to export mind map:', err)
       setError('导出思维导图失败')
@@ -299,7 +268,7 @@ function MindMapEditorModal({ mindmapData, isOpen, onSave, onClose }: MindMapEdi
           </div>
           
           <div className="flex items-center gap-2">
-            {error && <span className="text-sm text-red-500">{error}</span>}
+            {(error || resourceError) && <span className="text-sm text-red-500">{error || resourceError}</span>}
             <button
               onClick={handleDownloadPng}
               className="px-4 py-1.5 text-sm text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
@@ -307,8 +276,9 @@ function MindMapEditorModal({ mindmapData, isOpen, onSave, onClose }: MindMapEdi
               下载图片
             </button>
             <button
+              disabled={loading || !!resourceError}
               onClick={handleSave}
-              className="px-4 py-1.5 text-sm bg-primary text-white rounded-lg hover:bg-primary-700 transition-colors"
+              className="px-4 py-1.5 text-sm bg-primary text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50"
             >
               保存
             </button>
@@ -323,6 +293,8 @@ function MindMapEditorModal({ mindmapData, isOpen, onSave, onClose }: MindMapEdi
         
         {/* Mind Elixir container */}
         <div className="flex-1 relative overflow-hidden">
+          {loading && <div className="absolute inset-0 z-10 grid place-items-center bg-white text-gray-500">正在加载思维导图…</div>}
+          {resourceError && <div className="absolute inset-0 z-10 grid place-items-center bg-white text-red-500">无法加载源思维导图，请关闭后重试</div>}
           <div
             ref={containerRef}
             style={{

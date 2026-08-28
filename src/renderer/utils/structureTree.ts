@@ -1,9 +1,9 @@
 import type {
-  DocumentSummary,
-  StructureEntry,
-  StructureMoveInput,
-  VaultStructure,
-} from '@shared/types'
+  ContentSummary,
+  TreeEntryV2,
+  VaultTreeV2,
+} from '@shared/knowledge-types'
+import type { TreeMoveInput } from '../stores/appStore'
 
 export interface GroupTreeNode {
   kind: 'group'
@@ -12,58 +12,50 @@ export interface GroupTreeNode {
   children: StructureTreeNode[]
 }
 
-export interface DocumentTreeNode {
-  kind: 'document'
+export interface ContentTreeNode {
+  kind: 'content'
   id: string
   name: string
-  documentType: DocumentSummary['type']
-  summary: DocumentSummary
+  contentType: ContentSummary['contentType']
+  summary: ContentSummary
 }
 
-export type StructureTreeNode = GroupTreeNode | DocumentTreeNode
+export type StructureTreeNode = GroupTreeNode | ContentTreeNode
 
-function orderedChildren(structure: VaultStructure, parentId: string | null): StructureEntry[] {
+function orderedChildren(structure: VaultTreeV2, parentId: string | null): TreeEntryV2[] {
   return structure.entries
     .filter((entry) => entry.parentId === parentId)
     .sort((a, b) => a.order - b.order || a.id.localeCompare(b.id))
 }
 
 export function buildTreeData(
-  structure: VaultStructure | null,
-  documents: DocumentSummary[],
+  structure: VaultTreeV2 | null,
+  contents: ContentSummary[],
 ): StructureTreeNode[] {
   if (!structure) return []
-  const summaries = new Map(documents.map((document) => [document.id, document]))
+  const summaries = new Map(contents.map((content) => [content.id, content]))
   const build = (parentId: string | null): StructureTreeNode[] =>
     orderedChildren(structure, parentId).flatMap((entry): StructureTreeNode[] => {
       if (entry.kind === 'group') {
-        return [{
-          kind: 'group',
-          id: entry.id,
-          name: entry.name,
-          children: build(entry.id),
-        }]
+        return [{ kind: 'group', id: entry.id, name: entry.name, children: build(entry.id) }]
       }
       const summary = summaries.get(entry.id)
       return summary ? [{
-        kind: 'document',
-        id: entry.id,
-        name: summary.title,
-        documentType: summary.type,
-        summary,
+        kind: 'content', id: entry.id, name: summary.title,
+        contentType: summary.contentType, summary,
       }] : []
     })
   return build(null)
 }
 
 export function getAncestorGroupIds(
-  structure: VaultStructure | null,
-  documentId: string,
+  structure: VaultTreeV2 | null,
+  contentId: string,
 ): string[] {
   if (!structure) return []
   const byId = new Map(structure.entries.map((entry) => [entry.id, entry]))
   const ancestors: string[] = []
-  let current = byId.get(documentId)?.parentId ?? null
+  let current = byId.get(contentId)?.parentId ?? null
   const visited = new Set<string>()
   while (current !== null && !visited.has(current)) {
     visited.add(current)
@@ -75,21 +67,21 @@ export function getAncestorGroupIds(
   return ancestors
 }
 
-export function getDocumentBreadcrumb(
-  structure: VaultStructure | null,
-  documentId: string,
+export function getContentBreadcrumb(
+  structure: VaultTreeV2 | null,
+  contentId: string,
 ): string {
   if (!structure) return ''
   const byId = new Map(structure.entries.map((entry) => [entry.id, entry]))
-  return getAncestorGroupIds(structure, documentId)
+  return getAncestorGroupIds(structure, contentId)
     .map((id) => byId.get(id))
-    .filter((entry): entry is Extract<StructureEntry, { kind: 'group' }> => entry?.kind === 'group')
+    .filter((entry): entry is Extract<TreeEntryV2, { kind: 'group' }> => entry?.kind === 'group')
     .map((group) => group.name)
     .join(' / ')
 }
 
 export function countDescendantContent(
-  structure: VaultStructure | null,
+  structure: VaultTreeV2 | null,
   groupId: string,
 ): number {
   if (!structure) return 0
@@ -99,10 +91,8 @@ export function countDescendantContent(
     changed = false
     for (const entry of structure.entries) {
       if (
-        entry.kind === 'group' &&
-        entry.parentId !== null &&
-        groups.has(entry.parentId) &&
-        !groups.has(entry.id)
+        entry.kind === 'group' && entry.parentId !== null &&
+        groups.has(entry.parentId) && !groups.has(entry.id)
       ) {
         groups.add(entry.id)
         changed = true
@@ -110,12 +100,12 @@ export function countDescendantContent(
     }
   }
   return structure.entries.filter(
-    (entry) => entry.kind === 'document' && entry.parentId !== null && groups.has(entry.parentId),
+    (entry) => entry.kind === 'content' && entry.parentId !== null && groups.has(entry.parentId),
   ).length
 }
 
 export function isInvalidMove(
-  structure: VaultStructure | null,
+  structure: VaultTreeV2 | null,
   itemId: string,
   targetParentId: string | null,
 ): boolean {
@@ -123,9 +113,8 @@ export function isInvalidMove(
   const item = structure.entries.find((entry) => entry.id === itemId)
   const target = structure.entries.find((entry) => entry.id === targetParentId)
   if (!item || !target || target.kind !== 'group') return true
-  if (item.kind === 'document') return false
+  if (item.kind === 'content') return false
   if (item.id === targetParentId) return true
-
   let parent: string | null = targetParentId
   const visited = new Set<string>()
   while (parent !== null && !visited.has(parent)) {
@@ -139,26 +128,22 @@ export function isInvalidMove(
 }
 
 export function applyOptimisticMove(
-  structure: VaultStructure,
-  input: StructureMoveInput,
-): VaultStructure {
+  structure: VaultTreeV2,
+  input: TreeMoveInput,
+): VaultTreeV2 {
   const entries = structure.entries.map((entry) => ({ ...entry }))
-  const item = entries.find((entry) => entry.id === input.id && entry.kind === input.kind)
+  const item = entries.find((entry) => entry.id === input.id)
   if (!item) return structure
   const oldParentId = item.parentId
   item.parentId = input.targetParentId
-
-  const reorder = (parentId: string | null, moved?: StructureEntry) => {
+  const reorder = (parentId: string | null, moved?: TreeEntryV2) => {
     const siblings = entries
       .filter((entry) => entry.parentId === parentId && entry.id !== moved?.id)
       .sort((a, b) => a.order - b.order || a.id.localeCompare(b.id))
     if (moved) siblings.splice(Math.min(Math.max(input.index, 0), siblings.length), 0, moved)
-    siblings.forEach((entry, order) => {
-      entry.order = order
-    })
+    siblings.forEach((entry, order) => { entry.order = order })
   }
-
   reorder(input.targetParentId, item)
   if (oldParentId !== input.targetParentId) reorder(oldParentId)
-  return { version: 1, entries }
+  return { schemaVersion: 2, entries }
 }

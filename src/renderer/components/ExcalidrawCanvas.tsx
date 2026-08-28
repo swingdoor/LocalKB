@@ -1,6 +1,8 @@
 import React, { useState, useCallback, useEffect, useRef, lazy, Suspense } from 'react'
-import type { Document } from '@shared/types'
-import { cleanExcalidrawData } from '../utils/canvasUtils'
+import { AlertCircle, RotateCcw } from 'lucide-react'
+import type { ExcalidrawScene, LoadedCanvas } from '@shared/knowledge-types'
+import { usePendingSave } from '../hooks/usePendingSave'
+import { useAppStore } from '../stores/appStore'
 
 // 初始化 Excalidraw 字体路径（必须在 Excalidraw import 之前完成）
 const fontPathReady = (async () => {
@@ -17,48 +19,27 @@ const fontPathReady = (async () => {
 const Excalidraw = lazy(async () => {
   await fontPathReady
   const module = await import('@excalidraw/excalidraw')
-  const Component = module.Excalidraw
-  const MainMenu = module.MainMenu
-  return {
-    default: (props: React.ComponentProps<typeof Component>) => (
-      <Component {...props}>
-        <MainMenu>
-          <MainMenu.DefaultItems.LoadScene />
-          <MainMenu.DefaultItems.SaveToActiveFile />
-          <MainMenu.DefaultItems.SearchMenu />
-          <MainMenu.DefaultItems.Help />
-          <MainMenu.DefaultItems.ClearCanvas />
-          <MainMenu.Separator />
-          <MainMenu.DefaultItems.ToggleTheme />
-          <MainMenu.DefaultItems.ChangeCanvasBackground />
-        </MainMenu>
-      </Component>
-    ),
-  }
+  return { default: module.Excalidraw }
 })
 
 interface ExcalidrawCanvasProps {
-  document: Document
-  onUpdate: (data: { title?: string; content?: string }) => void
+  canvas: LoadedCanvas
+  onUpdate: (content: ExcalidrawScene) => Promise<LoadedCanvas | null>
 }
 
 // Excalidraw API 类型
-interface ExcalidrawAPI {
-  updateScene: (options: { appState?: any; elements?: any[]; captureUpdate?: string }) => void
-}
-
 // 错误边界组件
-class ErrorBoundary extends React.Component<
-  { children: React.ReactNode; fallback: React.ReactNode },
-  { hasError: boolean }
+export class CanvasErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { error: Error | null }
 > {
-  constructor(props: { children: React.ReactNode; fallback: React.ReactNode }) {
+  constructor(props: { children: React.ReactNode }) {
     super(props)
-    this.state = { hasError: false }
+    this.state = { error: null }
   }
 
-  static getDerivedStateFromError() {
-    return { hasError: true }
+  static getDerivedStateFromError(error: Error) {
+    return { error }
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
@@ -66,33 +47,66 @@ class ErrorBoundary extends React.Component<
   }
 
   render() {
-    if (this.state.hasError) {
-      return this.props.fallback
+    if (this.state.error) {
+      return (
+        <div className="grid flex-1 place-items-center bg-gray-50 px-8" role="alert">
+          <div className="max-w-lg text-center">
+            <AlertCircle className="mx-auto mb-3 text-red-500" size={30} strokeWidth={1.7} />
+            <p className="font-medium text-red-500">画布加载失败</p>
+            <p className="mt-2 break-words text-sm text-gray-500">{this.state.error.message}</p>
+            <button
+              type="button"
+              className="mt-4 inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm text-white hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary/30"
+              onClick={() => this.setState({ error: null })}
+            >
+              <RotateCcw size={15} />
+              重试加载
+            </button>
+          </div>
+        </div>
+      )
     }
     return this.props.children
   }
 }
 
-function ExcalidrawCanvas({ document, onUpdate }: ExcalidrawCanvasProps) {
-  const [title, setTitle] = useState(document.title)
+function ExcalidrawCanvas({ canvas, onUpdate }: ExcalidrawCanvasProps) {
+  const [title, setTitle] = useState(canvas.title)
   const [isReady, setIsReady] = useState(false)
-  const [excalidrawAPI, setExcalidrawAPI] = useState<ExcalidrawAPI | null>(null)
-  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-  const dataRef = useRef<{ elements: any[]; appState: any; files: any }>({
-    elements: [],
-    appState: {},
-    files: {},
+  const [excalidrawAPI, setExcalidrawAPI] = useState<any>(null)
+  const initialDataRef = useRef({
+    elements: canvas.content.elements as any,
+    appState: {
+      ...canvas.content.appState,
+      collaborators: new Map(),
+      currentItemFontFamily: typeof canvas.content.appState?.currentItemFontFamily === 'number'
+        ? canvas.content.appState.currentItemFontFamily : 5,
+    } as any,
+    files: canvas.content.files as any,
+  })
+  const dataRef = useRef<{ elements: readonly any[]; appState: any; files: any }>({
+    elements: canvas.content.elements,
+    appState: canvas.content.appState,
+    files: canvas.content.files,
   })
 
   // 画布模式状态
   const [viewModeEnabled, setViewModeEnabled] = useState(false)
   const [zenModeEnabled, setZenModeEnabled] = useState(false)
 
-  // 使用 ref 稳定 onUpdate 引用，避免 store 更新导致防抖失效
-  const onUpdateRef = useRef(onUpdate)
-  useEffect(() => {
-    onUpdateRef.current = onUpdate
-  }, [onUpdate])
+  const renameContent = useAppStore((state) => state.renameContent)
+  const pendingSave = usePendingSave<{ title?: string; scene?: boolean }>(async (patch) => {
+    if (patch.scene) {
+      const { serializeAsJSON } = await import('@excalidraw/excalidraw')
+      const { elements, appState, files } = dataRef.current
+      const serialized = serializeAsJSON(elements, appState, files, 'local')
+      const saved = await onUpdate(JSON.parse(serialized) as ExcalidrawScene)
+      if (!saved) throw new Error('画布保存失败')
+    }
+    if (patch.title !== undefined && !(await renameContent(canvas.id, patch.title))) {
+      throw new Error('画布标题保存失败')
+    }
+  })
 
   // 格式化时间
   const formatTime = (dateStr: string) => {
@@ -117,16 +131,14 @@ function ExcalidrawCanvas({ document, onUpdate }: ExcalidrawCanvasProps) {
         return
       }
       
-      const { activeElements, cleanedFiles } = cleanExcalidrawData(elements, files)
-      
       const blob = await exportToBlob({
-        elements: activeElements,
+        elements,
         appState: {
           ...appState,
           exportWithDarkMode: false,
           exportBackground: true,
         },
-        files: cleanedFiles,
+        files,
         exportPadding: 20,
         quality: 1,
         getDimensions: (width: number, height: number) => ({
@@ -148,64 +160,10 @@ function ExcalidrawCanvas({ document, onUpdate }: ExcalidrawCanvasProps) {
     }
   }
 
-  // 解析初始数据
-  const getInitialData = useCallback(() => {
-    try {
-      const data = JSON.parse(document.content)
-      return {
-        elements: data.elements || [],
-        appState: data.appState || {},
-        files: data.files || {},
-      }
-    } catch {
-      return {
-        elements: [],
-        appState: {},
-        files: {},
-      }
-    }
-  }, [document.content])
-
-  // 防抖保存
-  const saveContent = useCallback(() => {
-    if (saveTimeoutRef.current) {
-      clearTimeout(saveTimeoutRef.current)
-    }
-    saveTimeoutRef.current = setTimeout(() => {
-      const { elements, appState, files } = dataRef.current
-      const { activeElements, cleanedFiles } = cleanExcalidrawData(elements, files)
-      const content = JSON.stringify({
-        elements: activeElements,
-        appState: {
-          viewBackgroundColor: appState?.viewBackgroundColor,
-          currentItemFontFamily: appState?.currentItemFontFamily,
-          zoom: appState?.zoom,
-          scrollX: appState?.scrollX,
-          scrollY: appState?.scrollY,
-          snapToElement: appState?.snapToElement,
-        },
-        files: cleanedFiles,
-      })
-      onUpdateRef.current({ content })
-    }, 1000)
-  }, [])
-
   // 标题变化时保存
   useEffect(() => {
-    if (title !== document.title) {
-      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
-      saveTimeoutRef.current = setTimeout(() => {
-        onUpdateRef.current({ title })
-      }, 500)
-    }
-  }, [title, document.title])
-
-  // 清理定时器
-  useEffect(() => {
-    return () => {
-      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
-    }
-  }, [])
+    if (title !== canvas.title) pendingSave.schedule({ title })
+  }, [title, canvas.title, pendingSave.schedule])
 
   // 延迟渲染 Excalidraw
   useEffect(() => {
@@ -213,13 +171,12 @@ function ExcalidrawCanvas({ document, onUpdate }: ExcalidrawCanvasProps) {
     return () => clearTimeout(timer)
   }, [])
 
-  const initialData = getInitialData()
+  const initialData = initialDataRef.current
 
-  const handleChange = useCallback((elements: any[], appState: any, files: any) => {
-    const { activeElements, cleanedFiles } = cleanExcalidrawData(elements, files)
-    dataRef.current = { elements: activeElements, appState, files: cleanedFiles }
-    saveContent()
-  }, [saveContent])
+  const handleChange = useCallback((elements: readonly any[], appState: any, files: any) => {
+    dataRef.current = { elements, appState, files }
+    pendingSave.schedule({ scene: true })
+  }, [pendingSave.schedule])
 
   // 切换查看模式
   const toggleViewMode = () => {
@@ -256,7 +213,7 @@ function ExcalidrawCanvas({ document, onUpdate }: ExcalidrawCanvasProps) {
   }
 
   // 获取 Excalidraw API
-  const handleExcalidrawAPI = useCallback((api: ExcalidrawAPI) => {
+  const handleExcalidrawAPI = useCallback((api: any) => {
     setExcalidrawAPI(api)
   }, [])
 
@@ -265,20 +222,6 @@ function ExcalidrawCanvas({ document, onUpdate }: ExcalidrawCanvasProps) {
       <div className="text-center">
         <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-2" />
         <p className="text-gray-500">加载画布中...</p>
-      </div>
-    </div>
-  )
-
-  const ErrorFallback = (
-    <div className="flex-1 flex items-center justify-center bg-gray-50">
-      <div className="text-center text-red-500">
-        <p className="mb-2">画布加载失败</p>
-        <button
-          onClick={() => window.location.reload()}
-          className="px-4 py-2 bg-primary text-white rounded hover:bg-primary-700"
-        >
-          刷新页面
-        </button>
       </div>
     </div>
   )
@@ -306,8 +249,16 @@ function ExcalidrawCanvas({ document, onUpdate }: ExcalidrawCanvasProps) {
               placeholder="无标题画布"
             />
             <div className="mt-1 text-xs flex items-center gap-4" style={{ color: 'var(--text-secondary)' }}>
-              <span>创建于 {formatTime(document.createdAt)}</span>
-              <span>上次保存 {formatTime(document.updatedAt)}</span>
+              <span>创建于 {formatTime(canvas.createdAt)}</span>
+              <span>上次保存 {formatTime(canvas.updatedAt)}</span>
+              {(pendingSave.pending || pendingSave.saving) && <span>正在保存…</span>}
+              {pendingSave.error && (
+                <button
+                  type="button"
+                  className="text-red-500 underline"
+                  onClick={() => void pendingSave.retry().catch(() => undefined)}
+                >保存失败，重试</button>
+              )}
             </div>
           </div>
           
@@ -354,20 +305,12 @@ function ExcalidrawCanvas({ document, onUpdate }: ExcalidrawCanvasProps) {
       </div>
       
       {/* Excalidraw 画布 */}
-      <ErrorBoundary fallback={ErrorFallback}>
+      <CanvasErrorBoundary>
         {isReady ? (
           <Suspense fallback={LoadingFallback}>
             <div className="flex-1 relative">
               <Excalidraw
-                initialData={{
-                  elements: initialData.elements,
-                  appState: {
-                    ...initialData.appState,
-                    collaborators: new Map(),
-                    currentItemFontFamily: initialData.appState?.currentItemFontFamily ?? 5,
-                  },
-                  files: initialData.files,
-                }}
+                initialData={initialData}
                 onChange={handleChange}
                 excalidrawAPI={handleExcalidrawAPI}
                 langCode="zh-CN"
@@ -388,7 +331,7 @@ function ExcalidrawCanvas({ document, onUpdate }: ExcalidrawCanvasProps) {
         ) : (
           LoadingFallback
         )}
-      </ErrorBoundary>
+      </CanvasErrorBoundary>
     </div>
   )
 }

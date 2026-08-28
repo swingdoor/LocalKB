@@ -2,8 +2,20 @@ import { app, BrowserWindow, ipcMain, shell, protocol, net } from 'electron'
 import * as path from 'path'
 import { setupIpcHandlers } from './ipc'
 import { IPC_CHANNELS } from '../shared/ipc-channels'
+import { FileKnowledgeStore } from './knowledge/file-knowledge-store'
+import { KnowledgeService } from './knowledge/knowledge-service'
+import { registerKnowledgeIpc } from './knowledge/knowledge-ipc'
+import { handleKnowledgeResourceRequest } from './knowledge/knowledge-resource-protocol'
+import { migrateLegacyVaultsAtStartup } from './knowledge/startup-migration'
+import { McpHttpService } from './mcp/http-service'
+import { McpManager } from './mcp/manager'
 
 let mainWindow: BrowserWindow | null = null
+let knowledgeService: KnowledgeService | null = null
+let mcpManager: McpManager | null = null
+let closeApproved = false
+let quitAfterClose = false
+let mcpShutdownStarted = false
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
 const isMac = process.platform === 'darwin'
@@ -12,6 +24,9 @@ const isMac = process.platform === 'darwin'
 protocol.registerSchemesAsPrivileged([{
   scheme: 'excalidraw-fonts',
   privileges: { standard: true, supportFetchAPI: true, bypassCSP: true }
+}, {
+  scheme: 'localkb-resource',
+  privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true }
 }])
 
 // Excalidraw 字体路径
@@ -52,11 +67,17 @@ ipcMain.on(IPC_CHANNELS.WINDOW.CLOSE, () => {
   mainWindow?.close()
 })
 
+ipcMain.on(IPC_CHANNELS.WINDOW.CLOSE_READY, () => {
+  closeApproved = true
+  mainWindow?.close()
+})
+
 ipcMain.handle(IPC_CHANNELS.WINDOW.IS_MAXIMIZED, () => {
   return mainWindow?.isMaximized()
 })
 
 function createWindow() {
+  closeApproved = false
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -102,8 +123,15 @@ function createWindow() {
     mainWindow?.webContents.send(IPC_CHANNELS.WINDOW.MAXIMIZED_CHANGE, false)
   })
 
+  mainWindow.on('close', (event) => {
+    if (closeApproved) return
+    event.preventDefault()
+    mainWindow?.webContents.send(IPC_CHANNELS.WINDOW.CLOSE_REQUESTED)
+  })
+
   mainWindow.on('closed', () => {
     mainWindow = null
+    if (quitAfterClose) app.quit()
   })
 
   // 在默认浏览器中打开外部链接
@@ -127,7 +155,31 @@ ipcMain.handle(IPC_CHANNELS.THEME.CHANGED, (_event, theme: string) => {
   mainWindow.setTitleBarOverlay(colors)
 })
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  const storage = new FileKnowledgeStore(path.join(app.getPath('userData'), 'data'))
+  await storage.ensureLayout()
+  await migrateLegacyVaultsAtStartup(storage, ({ vaultId, backupPath }) => {
+    console.info('Knowledge vault migrated', { vaultId, backupPath })
+  })
+  knowledgeService = new KnowledgeService(storage, (entry) => {
+    console.error('Knowledge operation failed', entry)
+  })
+  registerKnowledgeIpc(knowledgeService, ipcMain, () => mainWindow?.webContents)
+  mcpManager = new McpManager(new McpHttpService(
+    knowledgeService,
+    app.getVersion(),
+    (message) => console.error('MCP service error', { message }),
+  ))
+  mcpManager.registerIpc(ipcMain)
+  await mcpManager.start().catch((error) => {
+    console.error('MCP service failed to start', { message: error instanceof Error ? error.message : 'unknown' })
+  })
+
+  protocol.handle('localkb-resource', async (request) => {
+    if (!knowledgeService) return new Response(null, { status: 503 })
+    return handleKnowledgeResourceRequest(knowledgeService, request.url)
+  })
+
   // 注册自定义协议处理器：将 excalidraw-fonts:// 请求映射到本地 resources 目录
   if (!isDev) {
     protocol.handle('excalidraw-fonts', (request) => {
@@ -150,5 +202,19 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit()
+  }
+})
+
+app.on('before-quit', (event) => {
+  quitAfterClose = true
+  if (mainWindow && !closeApproved) {
+    event.preventDefault()
+    mainWindow.webContents.send(IPC_CHANNELS.WINDOW.CLOSE_REQUESTED)
+    return
+  }
+  if (mcpManager && !mcpShutdownStarted) {
+    event.preventDefault()
+    mcpShutdownStarted = true
+    void mcpManager.stop().finally(() => app.quit())
   }
 })

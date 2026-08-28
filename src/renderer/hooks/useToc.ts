@@ -138,7 +138,7 @@ export function useToc(
   }, [editor, updateToc, scheduleUpdate])
 
   // 展开/折叠节点（本地状态，不持久化）
-  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set())
+  const [, setExpandedNodes] = useState<Set<string>>(new Set())
 
   const toggleNode = useCallback((id: string) => {
     setExpandedNodes(prev => {

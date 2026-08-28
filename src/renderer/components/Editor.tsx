@@ -17,8 +17,9 @@ import FontFamily from '@tiptap/extension-font-family'
 import FontSize from '../extensions/FontSize'
 import Color from '../extensions/Color'
 import ResizableImage from '../extensions/ResizableImage'
-import MindMapNode from '../extensions/MindMapNode'
 import { HeadingNumbers } from '../extensions/HeadingNumbers'
+import { StableNodeId } from '../extensions/StableNodeId'
+import { AssetImage, CanvasReference, MindMapReference } from '../extensions/ResourceReferences'
 import CodeBlockComponent from './CodeBlockComponent'
 import CommandMenu from './CommandMenu'
 import EditorBubbleMenu from './BubbleMenu'
@@ -31,25 +32,27 @@ import { useCommandMenu } from '../hooks/useCommandMenu'
 import { useAIProcess } from '../hooks/useAIProcess'
 import { useCanvasEdit } from '../hooks/useCanvasEdit'
 import { useMindMapEdit } from '../hooks/useMindMapEdit'
-import { useDebouncedSave } from '../hooks/useDebouncedSave'
+import { usePendingSave } from '../hooks/usePendingSave'
 import { useToc } from '../hooks/useToc'
 import { useAppStore } from '../stores/appStore'
 import { addNumbersToHTML } from '../utils/pdfExport'
 import { handleRichPaste } from '../utils/richPaste'
+import { resolveResourceReferencesForExport } from '../utils/resourceExport'
 import { eventMatchesHotkey } from '../utils/hotkeys'
-import type { Document, HotkeyConfig } from '@shared/types'
+import type { HotkeyConfig } from '@shared/types'
+import type { LoadedDocument, TipTapDocument } from '@shared/knowledge-types'
 
 interface EditorProps {
-  document: Document
+  document: LoadedDocument
   vaultId: string
-  onUpdate: (data: Partial<Document>) => void
+  onUpdate: (data: { title?: string; content?: TipTapDocument }) => Promise<LoadedDocument>
 }
 
 function countContentCharacters(text: string) {
   return text.replace(/\s/g, '').length
 }
 
-function Editor({ document, vaultId: _vaultId, onUpdate }: EditorProps) {
+function Editor({ document, vaultId, onUpdate }: EditorProps) {
   const [title, setTitle] = useState(document.title)
   const [characterCount, setCharacterCount] = useState(0)
 
@@ -59,7 +62,7 @@ function Editor({ document, vaultId: _vaultId, onUpdate }: EditorProps) {
   const toggleHeadingNumbers = useAppStore((state) => state.toggleHeadingNumbers)
 
   // 使用自定义 Hooks
-  const { saveContent, saveTitle } = useDebouncedSave(onUpdate)
+  const pendingSave = usePendingSave(onUpdate)
   const aiProcess = useAIProcess()
 
   // 格式化时间
@@ -76,7 +79,10 @@ function Editor({ document, vaultId: _vaultId, onUpdate }: EditorProps) {
   }
 
   // Refs 用于 editorProps 中引用后定义的 hooks
-  const canvasEditRef = useRef<{ createCanvas: () => void }>({ createCanvas: () => {} })
+  const canvasEditRef = useRef<{
+    createCanvas: () => void
+    handleEditCanvas: (canvasId: string) => Promise<void>
+  }>({ createCanvas: () => {}, handleEditCanvas: async () => undefined })
   const commandMenuRef = useRef<{ handleCommandSelect: (cmd: string) => void; handleKeyDown: (view: any, e: KeyboardEvent) => boolean }>({
     handleCommandSelect: () => {},
     handleKeyDown: () => false,
@@ -121,7 +127,7 @@ function Editor({ document, vaultId: _vaultId, onUpdate }: EditorProps) {
       }),
       ResizableImage.configure({
         inline: false,
-        allowBase64: true,
+        allowBase64: false,
       }),
       TextStyle,
       FontFamily.configure({
@@ -134,6 +140,18 @@ function Editor({ document, vaultId: _vaultId, onUpdate }: EditorProps) {
         types: ['textStyle'],
       }),
       HeadingNumbers,
+      CanvasReference.configure({
+        vaultId,
+        documentId: document.id,
+        onEdit: (canvasId) => { void canvasEditRef.current.handleEditCanvas(canvasId) },
+      }),
+      MindMapReference.configure({
+        vaultId,
+        documentId: document.id,
+        onEdit: (mindmapId) => { void mindMapEditRef.current?.handleEditMindMap(mindmapId) },
+      }),
+      AssetImage.configure({ vaultId, documentId: document.id }),
+      StableNodeId,
       CodeBlockLowlight.extend({
         addNodeView() {
           return ReactNodeViewRenderer(CodeBlockComponent)
@@ -142,22 +160,36 @@ function Editor({ document, vaultId: _vaultId, onUpdate }: EditorProps) {
         lowlight,
         defaultLanguage: 'plaintext',
       }),
-      MindMapNode,
     ],
-    content: (() => {
-      try {
-        return JSON.parse(document.content)
-      } catch {
-        return { type: 'doc', content: [{ type: 'paragraph' }] }
-      }
-    })(),
+    content: document.content,
     onUpdate: ({ editor: ed }) => {
-      const json = JSON.stringify(ed.getJSON())
       setCharacterCount(countContentCharacters(ed.getText()))
-      saveContent(json)
+      pendingSave.schedule({ content: ed.getJSON() as TipTapDocument })
     },
     editorProps: {
-      handlePaste: (view, event) => handleRichPaste(view, event),
+      handlePaste: (view, event) => {
+        const imageFile = [...(event.clipboardData?.files ?? [])].find((file) => file.type.startsWith('image/'))
+        const htmlDataUrl = event.clipboardData?.getData('text/html').match(/src=["'](data:image\/[^"']+)["']/)?.[1]
+        if (imageFile || htmlDataUrl) {
+          event.preventDefault()
+          void (async () => {
+            const mimeType = imageFile?.type || htmlDataUrl!.match(/^data:([^;]+);/)?.[1] || 'image/png'
+            const bytes = imageFile
+              ? new Uint8Array(await imageFile.arrayBuffer())
+              : Uint8Array.from(atob(htmlDataUrl!.split(',')[1]), (char) => char.charCodeAt(0))
+            const result = await window.electronAPI.knowledge.importAsset(
+              vaultId, document.id, mimeType, bytes,
+            )
+            if (!result.ok) return
+            const node = view.state.schema.nodes.assetImage.create({
+              assetId: result.data.id, textAlign: 'left', alt: imageFile?.name || null,
+            })
+            view.dispatch(view.state.tr.replaceSelectionWith(node).scrollIntoView())
+          })()
+          return true
+        }
+        return handleRichPaste(view, event)
+      },
       handleKeyDown: (view, event) => {
         // Tab 键处理：在行首插入缩进
         if (event.key === 'Tab' && !event.shiftKey) {
@@ -213,10 +245,10 @@ function Editor({ document, vaultId: _vaultId, onUpdate }: EditorProps) {
   })
 
   // 画布编辑 Hook（需要 editor 实例）
-  const canvasEdit = useCanvasEdit(editor)
+  const canvasEdit = useCanvasEdit(editor, vaultId, document.id)
 
   // 思维导图编辑 Hook（需要 editor 实例）
-  const mindMapEdit = useMindMapEdit(editor)
+  const mindMapEdit = useMindMapEdit(editor, vaultId, document.id)
 
   // TOC Hook（需要在 editor 初始化后使用）
   const { toc, isPanelVisible, togglePanel, handleNavigate } = useToc(editor)
@@ -224,7 +256,15 @@ function Editor({ document, vaultId: _vaultId, onUpdate }: EditorProps) {
   // 命令菜单 Hook（需要 editor 实例和回调）
   const commandMenu = useCommandMenu(editor, {
     onSelectImage: async () => {
-      return await window.electronAPI.file.selectImage()
+      const image = await window.electronAPI.file.selectImage()
+      if (!image) return null
+      const match = image.data.match(/^data:([^;]+);base64,(.+)$/)
+      if (!match) return null
+      const bytes = Uint8Array.from(atob(match[2]), (char) => char.charCodeAt(0))
+      const result = await window.electronAPI.knowledge.importAsset(
+        vaultId, document.id, match[1], bytes,
+      )
+      return result.ok ? { assetId: result.data.id } : null
     },
     onCreateCanvas: canvasEdit.createCanvas,
     onCreateMindMap: mindMapEdit.createMindMap,
@@ -245,9 +285,9 @@ function Editor({ document, vaultId: _vaultId, onUpdate }: EditorProps) {
   // 标题变化时保存
   useEffect(() => {
     if (title !== document.title) {
-      saveTitle(title)
+      pendingSave.schedule({ title })
     }
-  }, [title, document.title, saveTitle])
+  }, [title, document.title, pendingSave.schedule])
 
   // 导出 PDF
   const handleExportPDF = useCallback(async () => {
@@ -255,7 +295,9 @@ function Editor({ document, vaultId: _vaultId, onUpdate }: EditorProps) {
       return
     }
     try {
-      let htmlContent = editor.getHTML()
+      let htmlContent = await resolveResourceReferencesForExport(
+        editor.getHTML(), vaultId, document.id,
+      )
 
       // 如果开启了序号显示，则在 HTML 中添加序号
       if (showHeadingNumbers && toc.length > 0) {
@@ -273,7 +315,7 @@ function Editor({ document, vaultId: _vaultId, onUpdate }: EditorProps) {
         alert('导出 PDF 失败，请重试')
       }
     }
-  }, [editor, title, showHeadingNumbers, toc])
+  }, [document.id, editor, showHeadingNumbers, title, toc, vaultId])
 
   // AI 处理回调（润色/扩写）
   const handlePolish = useCallback((text: string) => {
@@ -313,6 +355,16 @@ function Editor({ document, vaultId: _vaultId, onUpdate }: EditorProps) {
               <span>创建于 {formatTime(document.createdAt)}</span>
               <span>上次保存 {formatTime(document.updatedAt)}</span>
               <span>{'\u5b57\u6570'} {characterCount}</span>
+              {(pendingSave.pending || pendingSave.saving) && <span>正在保存…</span>}
+              {pendingSave.error && (
+                <button
+                  type="button"
+                  className="text-red-500 underline"
+                  onClick={() => void pendingSave.retry().catch(() => undefined)}
+                >
+                  保存失败，重试
+                </button>
+              )}
             </div>
           </div>
           <div className="flex flex-none items-center gap-2">
@@ -360,6 +412,8 @@ function Editor({ document, vaultId: _vaultId, onUpdate }: EditorProps) {
             <>
               <EditorBubbleMenu
                 editor={editor}
+                vaultId={vaultId}
+                documentId={document.id}
                 onEditCanvas={canvasEdit.handleEditCanvas}
                 onEditMindMap={mindMapEdit.handleEditMindMap}
                 onPolish={handlePolish}
@@ -400,6 +454,8 @@ function Editor({ document, vaultId: _vaultId, onUpdate }: EditorProps) {
       {canvasEdit.editingCanvas && (
         <DrawingEditorModal
           canvasData={canvasEdit.editingCanvas.data}
+          loading={canvasEdit.editingCanvas.loading}
+          resourceError={canvasEdit.editingCanvas.error}
           onSave={canvasEdit.handleSaveCanvas}
           onClose={canvasEdit.closeCanvasEditor}
         />
@@ -410,6 +466,8 @@ function Editor({ document, vaultId: _vaultId, onUpdate }: EditorProps) {
         <MindMapEditorModal
           mindmapData={mindMapEdit.editingMindMap.data}
           isOpen={!!mindMapEdit.editingMindMap}
+          loading={mindMapEdit.editingMindMap.loading}
+          resourceError={mindMapEdit.editingMindMap.error}
           onSave={mindMapEdit.handleSaveMindMap}
           onClose={mindMapEdit.closeMindMapEditor}
         />
