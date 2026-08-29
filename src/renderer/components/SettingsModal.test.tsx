@@ -1,6 +1,7 @@
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { GeneralSettings } from '@shared/types'
 import SettingsModal from './SettingsModal'
 
 describe('SettingsModal MCP panel', () => {
@@ -17,6 +18,7 @@ describe('SettingsModal MCP panel', () => {
     return { enabled, port: 17890, maskedToken: 'new-••••oken' }
   })
   const copyMcpUrl = vi.fn(async () => true)
+  const saveGeneral = vi.fn(async (settings: GeneralSettings) => settings)
   const saveAI = vi.fn(async () => true)
   const saveHotkeys = vi.fn(async () => true)
   const onClose = vi.fn()
@@ -33,11 +35,14 @@ describe('SettingsModal MCP panel', () => {
     saveMcp.mockClear()
     resetMcpToken.mockClear()
     copyMcpUrl.mockClear()
+    saveGeneral.mockClear()
     saveAI.mockClear()
     saveHotkeys.mockClear()
     onClose.mockClear()
     ;(window as any).electronAPI = {
       settings: {
+        getGeneral: vi.fn(async () => ({ editorFont: 'system' })),
+        saveGeneral,
         getAI: vi.fn(async () => ({
           provider: 'deepseek', apiKey: 'secret', baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-v4-flash',
           polishPrompt: '', expandPrompt: '',
@@ -70,6 +75,27 @@ describe('SettingsModal MCP panel', () => {
     act(() => root.unmount())
     container.remove()
     vi.restoreAllMocks()
+  })
+
+  function selectTab(label: string) {
+    const tab = Array.from(document.body.querySelectorAll<HTMLButtonElement>('button'))
+      .find((button) => button.textContent === label)!
+    act(() => {
+      tab.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 0 }))
+      tab.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }))
+      tab.click()
+    })
+  }
+
+  it('shows basic settings first and saves the global editor font', async () => {
+    await act(async () => root.render(<SettingsModal isOpen onClose={onClose} />))
+    expect(document.body.textContent).toContain('编辑字体')
+    expect(document.body.querySelector('[aria-label="编辑字体"]')?.textContent).toContain('系统默认')
+
+    await act(async () => Array.from(document.body.querySelectorAll<HTMLButtonElement>('button'))
+      .find((button) => button.textContent === '保存')!
+      .click())
+    expect(saveGeneral).toHaveBeenCalledWith({ editorFont: 'system' })
   })
 
   it('shows the stable URL and applies toggle, refresh, and copy immediately', async () => {
@@ -113,6 +139,7 @@ describe('SettingsModal MCP panel', () => {
 
   it('loads AI settings, toggles password visibility, and saves through the existing APIs', async () => {
     await act(async () => root.render(<SettingsModal isOpen onClose={onClose} />))
+    selectTab('AI 设置')
     const apiKey = document.body.querySelector<HTMLInputElement>('#api-key')!
     expect(apiKey.value).toBe('secret')
     expect(apiKey.type).toBe('password')
@@ -142,6 +169,7 @@ describe('SettingsModal MCP panel', () => {
       expandPrompt: '',
     }))
     await act(async () => root.render(<SettingsModal isOpen onClose={onClose} />))
+    selectTab('AI 设置')
 
     const model = document.body.querySelector<HTMLInputElement>('#model-id')!
     const baseUrl = document.body.querySelector<HTMLInputElement>('#base-url')!

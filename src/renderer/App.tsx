@@ -10,6 +10,7 @@ import { useAppStore } from './stores/appStore'
 import { loadXiaolaiFont } from './utils/loadFonts'
 import { eventMatchesHotkey, formatHotkeyDisplay } from './utils/hotkeys'
 import type { SearchHit } from '@shared/knowledge-types'
+import { getEditorFont } from '@shared/editor-fonts'
 import {
   discardPendingSaves,
   flushPendingSaves,
@@ -43,8 +44,10 @@ function App() {
     isSearchOpen,
     isSettingsOpen,
     sidebarOpen,
+    generalSettings,
     hotkeys,
     loadVaults,
+    loadGeneralSettings,
     loadHotkeys,
     selectContent,
     revealContent,
@@ -74,9 +77,18 @@ function App() {
   // 初始化
   useEffect(() => {
     loadVaults()
+    loadGeneralSettings()
     loadHotkeys()
     loadXiaolaiFont()
   }, [])
+
+  useEffect(() => {
+    document.documentElement.style.setProperty(
+      '--editor-font-family',
+      getEditorFont(generalSettings.editorFont).fontFamily,
+    )
+    return () => document.documentElement.style.removeProperty('--editor-font-family')
+  }, [generalSettings.editorFont])
 
   useEffect(() => {
     let handlingClose = false

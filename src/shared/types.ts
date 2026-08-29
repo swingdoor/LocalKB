@@ -48,6 +48,12 @@ export interface AttachmentFile {
   bytes: Uint8Array
 }
 
+export type EditorFontId = 'system' | 'kaiti' | 'xiaolai'
+
+export interface GeneralSettings {
+  editorFont: EditorFontId
+}
+
 /**
  * AI 设置
  */

@@ -9,6 +9,7 @@ import type {
   AIProcessResult,
   AISettings,
   AttachmentFile,
+  GeneralSettings,
   HotkeyConfig,
 } from '../shared/types'
 
@@ -290,6 +291,14 @@ export function setupIpcHandlers(mainWindow: BrowserWindow) {
   })
 
   // ========== 设置操作 ==========
+  ipcMain.handle(IPC_CHANNELS.SETTINGS.GET_GENERAL, async () => {
+    return settingsStore.getGeneralSettings()
+  })
+
+  ipcMain.handle(IPC_CHANNELS.SETTINGS.SAVE_GENERAL, async (_, settings: Partial<GeneralSettings>) => {
+    return settingsStore.saveGeneralSettings(settings)
+  })
+
   ipcMain.handle(IPC_CHANNELS.SETTINGS.GET_AI, async () => {
     return settingsStore.getAISettings()
   })

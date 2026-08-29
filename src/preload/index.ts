@@ -5,6 +5,7 @@ import type {
   AIProcessResult,
   AISettings,
   AttachmentFile,
+  GeneralSettings,
   HotkeyConfig,
   ImageFile,
 } from '../shared/types'
@@ -300,6 +301,12 @@ const electronAPI = {
 
   // 设置操作
   settings: {
+    getGeneral: () => (
+      ipcRenderer.invoke(IPC_CHANNELS.SETTINGS.GET_GENERAL) as Promise<GeneralSettings>
+    ),
+    saveGeneral: (settings: Partial<GeneralSettings>) => (
+      ipcRenderer.invoke(IPC_CHANNELS.SETTINGS.SAVE_GENERAL, settings) as Promise<GeneralSettings>
+    ),
     getAI: () => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS.GET_AI) as Promise<AISettings>,
     saveAI: (settings: Partial<AISettings>) => 
       ipcRenderer.invoke(IPC_CHANNELS.SETTINGS.SAVE_AI, settings) as Promise<AISettings>,

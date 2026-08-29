@@ -6,6 +6,8 @@
 
 /* 单一默认浅色主题；资源预览保留一个编辑器表面变量作为冻结边界桥接。 */
 :root {
+  --editor-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+  --editor-letter-spacing: 0.02em;
   --bg-editor: hsl(var(--background));
   --primary-color: hsl(var(--primary));
   --success-color: #16A34A;
@@ -73,6 +75,17 @@ body {
   outline: none;
   padding: 1rem;
   min-height: 100%;
+  font-family: var(--editor-font-family);
+  letter-spacing: var(--editor-letter-spacing);
+}
+
+.ProseMirror [style*="font-family"] {
+  font-family: inherit !important;
+}
+
+.ProseMirror pre,
+.ProseMirror code {
+  letter-spacing: normal;
 }
 
 .editor-content-shell {

@@ -254,6 +254,8 @@ describe('typed editor contextual menus', () => {
 
     expect(container.querySelector('select')).toBeNull()
     expect(container.querySelector('input[type="color"]')).toBeNull()
+    expect(container.querySelector('[aria-label="字体"]')).toBeNull()
+    expect(container.querySelector('[aria-label="字号"]')).not.toBeNull()
     expect(container.querySelector('[aria-label="字体颜色"]')).not.toBeNull()
     expect(container.querySelector('[aria-label="背景颜色"]')).not.toBeNull()
 

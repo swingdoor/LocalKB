@@ -1,5 +1,6 @@
 import { create } from 'zustand'
-import type { HotkeyConfig } from '@shared/types'
+import type { GeneralSettings, HotkeyConfig } from '@shared/types'
+import { DEFAULT_GENERAL_SETTINGS } from '@shared/editor-fonts'
 import type {
   ContentSummary, ContentType, ExcalidrawScene, KnowledgeErrorData,
   LoadedCanvas, LoadedContent, LoadedDocument, Result, TipTapDocument,
@@ -64,6 +65,7 @@ interface AppState {
   isSearchOpen: boolean
   isSettingsOpen: boolean
   sidebarOpen: boolean
+  generalSettings: GeneralSettings
   hotkeys: HotkeyConfig[]
   showHeadingNumbers: boolean
   loadVaults: () => Promise<void>
@@ -89,6 +91,8 @@ interface AppState {
   setSearchOpen: (open: boolean) => void
   setSettingsOpen: (open: boolean) => void
   toggleSidebar: () => void
+  loadGeneralSettings: () => Promise<void>
+  updateGeneralSettings: (settings: GeneralSettings) => void
   loadHotkeys: () => Promise<void>
   updateHotkeys: (hotkeys: HotkeyConfig[]) => void
   toggleHeadingNumbers: () => void
@@ -99,7 +103,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   structureLoading: false, structureError: null,
   selectedContent: null, contentLoading: false, contentError: null, currentContent: null,
   expandedGroupIds: [], revealContentId: null, isSearchOpen: false,
-  isSettingsOpen: false, sidebarOpen: true, hotkeys: [],
+  isSettingsOpen: false, sidebarOpen: true, generalSettings: DEFAULT_GENERAL_SETTINGS, hotkeys: [],
   showHeadingNumbers: (() => {
     try { return JSON.parse(localStorage.getItem('show-heading-numbers') || 'false') } catch { return false }
   })(),
@@ -424,6 +428,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   setSearchOpen: (open) => set({ isSearchOpen: open }),
   setSettingsOpen: (open) => set({ isSettingsOpen: open }),
   toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
+  loadGeneralSettings: async () => set({
+    generalSettings: await window.electronAPI.settings.getGeneral(),
+  }),
+  updateGeneralSettings: (generalSettings) => set({ generalSettings }),
   loadHotkeys: async () => set({ hotkeys: await window.electronAPI.settings.getHotkeys() }),
   updateHotkeys: (hotkeys) => set({ hotkeys }),
   toggleHeadingNumbers: () => set((state) => {

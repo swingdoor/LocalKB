@@ -11,7 +11,7 @@ vi.mock('electron', () => ({
 
 import { settingsStore } from './settings-store'
 
-describe('MCP settings persistence', () => {
+describe('settings persistence', () => {
   beforeEach(async () => {
     userDataRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'localkb-settings-'))
   })
@@ -33,5 +33,16 @@ describe('MCP settings persistence', () => {
     })
     expect(reset.token).not.toBe(initial.token)
     expect(settingsStore.getMcpSettings()).toMatchObject({ port: 24567, token: reset.token })
+  })
+
+  it('persists and validates the global editor font', () => {
+    expect(settingsStore.getGeneralSettings()).toEqual({ editorFont: 'system' })
+
+    expect(settingsStore.saveGeneralSettings({ editorFont: 'xiaolai' }))
+      .toEqual({ editorFont: 'xiaolai' })
+    expect(settingsStore.getGeneralSettings()).toEqual({ editorFont: 'xiaolai' })
+
+    expect(settingsStore.saveGeneralSettings({ editorFont: 'invalid' as never }))
+      .toEqual({ editorFont: 'system' })
   })
 })

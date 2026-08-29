@@ -60,7 +60,7 @@ interface ChoiceOption {
   value: string
 }
 
-type TextDropdown = 'font' | 'fontSize' | 'fontColor' | 'background'
+type TextDropdown = 'fontSize' | 'fontColor' | 'background'
 
 function ChoiceMenu({
   label,
@@ -225,7 +225,6 @@ export default function TextSelectionMenu({
   const formatting = useEditorState({
     editor,
     selector: ({ editor: currentEditor }) => ({
-      fontFamily: currentEditor.getAttributes('textStyle').fontFamily ?? '',
       fontSize: currentEditor.getAttributes('textStyle').fontSize ?? '16px',
       color: currentEditor.getAttributes('textStyle').color ?? '',
       highlight: currentEditor.getAttributes('highlight').color ?? '',
@@ -356,21 +355,6 @@ export default function TextSelectionMenu({
           </>
         ) : (
           <>
-            <ChoiceMenu
-              label="字体"
-              value={formatting.fontFamily}
-              options={[
-                { label: '默认字体', value: '' },
-                { label: '楷体', value: 'KaiTi, serif' },
-                { label: '手写', value: 'Xiaolai, cursive' },
-              ]}
-              onSelect={(value) => run(() => {
-                if (value) editor.chain().focus().setFontFamily(value).run()
-                else editor.chain().focus().unsetFontFamily().run()
-              })}
-              open={openDropdown === 'font'}
-              onOpenChange={(open) => setOpenDropdown(open ? 'font' : null)}
-            />
             <ChoiceMenu
               label="字号"
               value={formatting.fontSize}

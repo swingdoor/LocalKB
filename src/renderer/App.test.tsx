@@ -63,10 +63,12 @@ describe('content workspace state', () => {
       contentLoading: false,
       contentError: 'TipTap 节点类型不受支持',
       sidebarOpen: true,
+      generalSettings: { editorFont: 'system' },
       hotkeys: [],
       isSearchOpen: false,
       isSettingsOpen: false,
       loadVaults: vi.fn(async () => undefined),
+      loadGeneralSettings: vi.fn(async () => undefined),
       loadHotkeys: vi.fn(async () => undefined),
       selectContent,
       loadContents,
@@ -92,6 +94,14 @@ describe('content workspace state', () => {
         .click()
     })
     expect(selectContent).toHaveBeenCalledWith(selection)
+  })
+
+  it('applies the configured editor font globally', () => {
+    useAppStore.setState({ generalSettings: { editorFont: 'xiaolai' } })
+    act(() => root.render(<App />))
+
+    expect(document.documentElement.style.getPropertyValue('--editor-font-family'))
+      .toBe('Xiaolai, cursive')
   })
 
   it('shows loading and both lightweight empty states in the main workspace', () => {

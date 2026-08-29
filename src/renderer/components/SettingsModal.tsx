@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Copy, Eye, EyeOff, RefreshCcw, RotateCcw } from 'lucide-react'
 import { toast } from 'sonner'
-import type { AISettings, HotkeyConfig } from '@shared/types'
+import type { AISettings, GeneralSettings, HotkeyConfig } from '@shared/types'
 import type { McpStatus, PublicMcpSettings } from '@shared/mcp-types'
 import { DEFAULT_HOTKEYS } from '@shared/types'
 import { AI_PROVIDERS, getAIProvider } from '@shared/ai-providers'
+import { DEFAULT_GENERAL_SETTINGS, EDITOR_FONT_OPTIONS, getEditorFont } from '@shared/editor-fonts'
 import { useAppStore } from '../stores/appStore'
 import { formatHotkeyDisplay, getModifiersFromEvent, hasSameHotkey } from '../utils/hotkeys'
 import { Alert, AlertDescription } from './ui/alert'
@@ -28,7 +29,7 @@ interface SettingsModalProps {
   onClose: () => void
 }
 
-type TabType = 'ai' | 'hotkey' | 'mcp'
+type TabType = 'general' | 'ai' | 'hotkey' | 'mcp'
 
 const initialAISettings: AISettings = {
   provider: 'deepseek',
@@ -44,7 +45,8 @@ const statusLabel: Record<McpStatus['state'], string> = {
 }
 
 function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
-  const [activeTab, setActiveTab] = useState<TabType>('ai')
+  const [activeTab, setActiveTab] = useState<TabType>('general')
+  const [generalSettings, setGeneralSettings] = useState<GeneralSettings>(DEFAULT_GENERAL_SETTINGS)
   const [aiSettings, setAiSettings] = useState<AISettings>(initialAISettings)
   const [isSaving, setIsSaving] = useState(false)
   const [showApiKey, setShowApiKey] = useState(false)
@@ -64,13 +66,15 @@ function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     let active = true
     setPageError(null)
     void Promise.all([
+      window.electronAPI.settings.getGeneral(),
       window.electronAPI.settings.getAI(),
       window.electronAPI.settings.getHotkeys(),
       window.electronAPI.settings.getMcp(),
       window.electronAPI.settings.getMcpStatus(),
       window.electronAPI.settings.getMcpUrl(),
-    ]).then(([ai, hks, mcp, status, url]) => {
+    ]).then(([general, ai, hks, mcp, status, url]) => {
       if (!active) return
+      setGeneralSettings(general)
       setAiSettings(ai)
       setHotkeys(hks)
       setMcpSettings(mcp)
@@ -87,10 +91,12 @@ function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     setIsSaving(true)
     setPageError(null)
     try {
-      await Promise.all([
+      const [savedGeneral] = await Promise.all([
+        window.electronAPI.settings.saveGeneral(generalSettings),
         window.electronAPI.settings.saveAI(aiSettings),
         window.electronAPI.settings.saveHotkeys(hotkeys.filter((item) => !item.readonly)),
       ])
+      useAppStore.getState().updateGeneralSettings(savedGeneral)
       useAppStore.getState().updateHotkeys(hotkeys)
       toast.success('设置已保存')
       onClose()
@@ -180,10 +186,11 @@ function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose() }}>
         <DialogContent className="flex h-[min(660px,calc(100vh-2rem))] max-w-2xl flex-col gap-0 overflow-hidden p-0">
           <DialogTitle className="sr-only">设置</DialogTitle>
-          <DialogDescription className="sr-only">管理 AI、快捷键和本地 MCP 服务。</DialogDescription>
+          <DialogDescription className="sr-only">管理基础设置、AI、快捷键和本地 MCP 服务。</DialogDescription>
           <Tabs value={activeTab} onValueChange={(value) => { setActiveTab(value as TabType); setPageError(null) }} className="flex min-h-0 flex-1 flex-col">
             <div className="px-6 pt-5">
               <TabsList>
+                <TabsTrigger value="general">基础设置</TabsTrigger>
                 <TabsTrigger value="ai">AI 设置</TabsTrigger>
                 <TabsTrigger value="hotkey">快捷键</TabsTrigger>
                 <TabsTrigger value="mcp">MCP 服务</TabsTrigger>
@@ -197,6 +204,38 @@ function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             )}
 
             <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+              <TabsContent value="general" className="m-0 space-y-5">
+                <div className="grid max-w-md gap-2">
+                  <Label>编辑字体</Label>
+                  <Select
+                    value={generalSettings.editorFont}
+                    onValueChange={(value) => setGeneralSettings({
+                      ...generalSettings,
+                      editorFont: value as GeneralSettings['editorFont'],
+                    })}
+                  >
+                    <SelectTrigger aria-label="编辑字体"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {EDITOR_FONT_OPTIONS.map((font) => (
+                        <SelectItem key={font.id} value={font.id}>{font.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs leading-5 text-muted-foreground">
+                    保存后应用于所有文档，不改变知识库中的文档数据。
+                  </p>
+                </div>
+                <div className="max-w-md rounded-md border bg-muted/30 p-4">
+                  <p className="mb-2 text-xs text-muted-foreground">字体预览</p>
+                  <p
+                    className="text-base leading-7"
+                    style={{ fontFamily: getEditorFont(generalSettings.editorFont).fontFamily }}
+                  >
+                    极简笔记，让知识记录自然流畅。Aa 123
+                  </p>
+                </div>
+              </TabsContent>
+
               <TabsContent value="ai" className="m-0 space-y-5">
                 <div className="grid max-w-md gap-2">
                   <Label>提供商</Label>

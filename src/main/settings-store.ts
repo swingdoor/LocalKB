@@ -2,15 +2,25 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { randomBytes } from 'crypto'
 import { app } from 'electron'
-import type { AISettings, HotkeyConfig } from '../shared/types'
+import type { AISettings, GeneralSettings, HotkeyConfig } from '../shared/types'
 import type { McpSettings } from '../shared/mcp-types'
 import { DEFAULT_HOTKEYS } from '../shared/types'
 import { getAIProvider, isAIProviderId } from '../shared/ai-providers'
+import { DEFAULT_GENERAL_SETTINGS, isEditorFontId } from '../shared/editor-fonts'
 
 interface SettingsData {
+  general?: Partial<GeneralSettings>
   ai?: Partial<AISettings>
   hotkeys?: HotkeyConfig[]
   mcp?: Partial<McpSettings>
+}
+
+function normalizeGeneralSettings(value: Partial<GeneralSettings>): GeneralSettings {
+  return {
+    editorFont: isEditorFontId(value.editorFont)
+      ? value.editorFont
+      : DEFAULT_GENERAL_SETTINGS.editorFont,
+  }
 }
 
 const defaultMcpSettings = (): McpSettings => ({
@@ -66,6 +76,15 @@ function writeSettings(value: SettingsData): void {
 }
 
 export const settingsStore = {
+  getGeneralSettings(): GeneralSettings {
+    return normalizeGeneralSettings(readSettings().general ?? {})
+  },
+  saveGeneralSettings(patch: Partial<GeneralSettings>): GeneralSettings {
+    const settings = readSettings()
+    const general = normalizeGeneralSettings({ ...settings.general, ...patch })
+    writeSettings({ ...settings, general })
+    return general
+  },
   getAISettings(): AISettings {
     return normalizeAISettings(readSettings().ai ?? {})
   },

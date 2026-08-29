@@ -474,7 +474,7 @@ function Editor({ document, vaultId, onUpdate }: EditorProps) {
               aria-label="文档标题"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="h-8 w-full border-0 px-0 text-[22px] font-medium leading-7 shadow-none focus-visible:ring-0"
+              className="h-10 w-full border-0 px-0 text-[26px] font-semibold leading-9 shadow-none focus-visible:ring-0 md:text-[26px] md:leading-9"
               placeholder="无标题"
             />
             <div className="mt-1 flex items-center gap-4 text-xs text-muted-foreground">

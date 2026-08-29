@@ -61,6 +61,8 @@ export const IPC_CHANNELS = {
     OPEN_LOCAL_FILE: 'file:openLocalFile',
   },
   SETTINGS: {
+    GET_GENERAL: 'settings:getGeneral',
+    SAVE_GENERAL: 'settings:saveGeneral',
     GET_AI: 'settings:getAI',
     SAVE_AI: 'settings:saveAI',
     GET_HOTKEYS: 'settings:getHotkeys',
