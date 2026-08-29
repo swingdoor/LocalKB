@@ -12,7 +12,7 @@ import type {
   TipTapNode,
 } from '../../shared/knowledge-types'
 import { IPC_CHANNELS } from '../../shared/ipc-channels'
-import { assertJsonObject, KnowledgeValidationError } from '../../shared/knowledge-validation'
+import { assertJsonObject, assertPathSegment, KnowledgeValidationError } from '../../shared/knowledge-validation'
 import { KnowledgeService, toResult } from './knowledge-service'
 
 export interface KnowledgeIpcRegistrar {
@@ -21,6 +21,11 @@ export interface KnowledgeIpcRegistrar {
 
 export interface KnowledgeEventTarget {
   send(channel: string, value: unknown): void
+}
+
+export interface KnowledgeAssetActions {
+  open(input: { vaultId: string; documentId: string; assetId: string; fileName: string }): Promise<void>
+  saveAs(input: { vaultId: string; documentId: string; assetId: string; fileName: string }): Promise<boolean>
 }
 
 function request<T>(value: unknown): T {
@@ -41,6 +46,7 @@ export function registerKnowledgeIpc(
   service: KnowledgeService,
   registrar: KnowledgeIpcRegistrar,
   target: () => KnowledgeEventTarget | undefined,
+  assetActions?: KnowledgeAssetActions,
 ): () => void {
   const K = IPC_CHANNELS.KNOWLEDGE
   const handle = <T>(
@@ -268,15 +274,31 @@ export function registerKnowledgeIpc(
     ),
   )
 
-  handle<{ vaultId: string; documentId: string; mimeType: string; bytes: number[] }>(
+  handle<{ vaultId: string; documentId: string; mimeType: string; bytes: number[]; fileName?: string }>(
     K.ASSET_IMPORT,
     (input) => service.importAsset(
-      input.vaultId, input.documentId, input.mimeType, byteArray(input.bytes), 'renderer',
+      input.vaultId, input.documentId, input.mimeType, byteArray(input.bytes), 'renderer', input.fileName,
     ),
   )
   handle<{ vaultId: string; documentId: string; assetId: string }>(K.ASSET_DELETE, (input) => (
     service.deleteAsset(input.vaultId, input.documentId, input.assetId, 'renderer')
   ))
+  handle<{ vaultId: string; documentId: string; assetId: string; fileName: string }>(
+    K.ASSET_OPEN,
+    async (input) => {
+      if (!assetActions) throw new KnowledgeValidationError('PERSISTENCE_ERROR', '附件打开服务不可用')
+      assertPathSegment(input.fileName, '附件文件名')
+      return assetActions.open(input)
+    },
+  )
+  handle<{ vaultId: string; documentId: string; assetId: string; fileName: string }>(
+    K.ASSET_SAVE_AS,
+    async (input) => {
+      if (!assetActions) throw new KnowledgeValidationError('PERSISTENCE_ERROR', '附件另存为服务不可用')
+      assertPathSegment(input.fileName, '附件文件名')
+      return assetActions.saveAs(input)
+    },
+  )
   handle<{ vaultId: string; query: string; limit?: number }>(K.SEARCH, (input) => (
     service.search(input.vaultId, input.query, input.limit)
   ))

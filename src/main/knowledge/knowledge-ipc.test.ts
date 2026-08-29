@@ -4,13 +4,17 @@ import type { KnowledgeChangeEvent, TipTapDocument } from '../../shared/knowledg
 import { KnowledgeError, type KnowledgeService } from './knowledge-service'
 import {
   type KnowledgeIpcRegistrar,
+  type KnowledgeAssetActions,
   registerKnowledgeIpc,
 } from './knowledge-ipc'
 import { handleKnowledgeResourceRequest } from './knowledge-resource-protocol'
 
 type Handler = (event: unknown, request?: unknown) => unknown
 
-function adapter(serviceOverrides: Record<string, unknown> = {}) {
+function adapter(
+  serviceOverrides: Record<string, unknown> = {},
+  assetActions?: KnowledgeAssetActions,
+) {
   const handlers = new Map<string, Handler>()
   let listener: ((event: KnowledgeChangeEvent) => void) | undefined
   const service = {
@@ -24,7 +28,7 @@ function adapter(serviceOverrides: Record<string, unknown> = {}) {
     handle: (channel, handler) => handlers.set(channel, handler),
   }
   const send = vi.fn()
-  const unsubscribe = registerKnowledgeIpc(service, registrar, () => ({ send }))
+  const unsubscribe = registerKnowledgeIpc(service, registrar, () => ({ send }), assetActions)
   return { handlers, listener: () => listener, send, unsubscribe, service }
 }
 
@@ -91,6 +95,30 @@ describe('knowledge IPC adapter', () => {
     expect(subject.send).toHaveBeenCalledWith(IPC_CHANNELS.KNOWLEDGE.CHANGED, event)
     subject.unsubscribe()
     expect(subject.listener()).toBeUndefined()
+  })
+
+  it('passes attachment metadata and invokes controlled open/save actions', async () => {
+    const importAsset = vi.fn(async () => ({ id: 'asset', mimeType: 'text/plain' }))
+    const open = vi.fn(async () => undefined)
+    const saveAs = vi.fn(async () => true)
+    const subject = adapter({ importAsset }, { open, saveAs })
+    const input = {
+      vaultId: 'vault', documentId: 'document', assetId: 'asset', fileName: 'notes.txt',
+    }
+    await subject.handlers.get(IPC_CHANNELS.KNOWLEDGE.ASSET_IMPORT)!(null, {
+      vaultId: input.vaultId, documentId: input.documentId,
+      mimeType: 'text/plain', fileName: input.fileName, bytes: [1, 2, 3],
+    })
+    expect(importAsset).toHaveBeenCalledWith(
+      input.vaultId, input.documentId, 'text/plain', new Uint8Array([1, 2, 3]),
+      'renderer', input.fileName,
+    )
+    expect(await subject.handlers.get(IPC_CHANNELS.KNOWLEDGE.ASSET_OPEN)!(null, input))
+      .toEqual({ ok: true, data: undefined })
+    expect(await subject.handlers.get(IPC_CHANNELS.KNOWLEDGE.ASSET_SAVE_AS)!(null, input))
+      .toEqual({ ok: true, data: true })
+    expect(open).toHaveBeenCalledWith(input)
+    expect(saveAs).toHaveBeenCalledWith(input)
   })
 })
 

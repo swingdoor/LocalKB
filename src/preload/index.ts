@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import { IPC_CHANNELS } from '../shared/ipc-channels'
 import type {
   AISettings,
+  AttachmentFile,
   HotkeyConfig,
   ImageFile,
   PolishResult,
@@ -255,13 +256,23 @@ const electronAPI = {
       })
     ),
     importAsset: (
-      vaultId: string, documentId: string, mimeType: string, bytes: Uint8Array,
-    ) => invokeKnowledge<{ id: string; mimeType: string }>(IPC_CHANNELS.KNOWLEDGE.ASSET_IMPORT, {
-      vaultId, documentId, mimeType, bytes: [...bytes],
+      vaultId: string, documentId: string, mimeType: string, bytes: Uint8Array, fileName?: string,
+    ) => invokeKnowledge<{ id: string; mimeType: string; fileName?: string }>(IPC_CHANNELS.KNOWLEDGE.ASSET_IMPORT, {
+      vaultId, documentId, mimeType, bytes: [...bytes], fileName,
     }),
     deleteAsset: (vaultId: string, documentId: string, assetId: string) => (
       invokeKnowledge<void>(IPC_CHANNELS.KNOWLEDGE.ASSET_DELETE, {
         vaultId, documentId, assetId,
+      })
+    ),
+    openAsset: (vaultId: string, documentId: string, assetId: string, fileName: string) => (
+      invokeKnowledge<void>(IPC_CHANNELS.KNOWLEDGE.ASSET_OPEN, {
+        vaultId, documentId, assetId, fileName,
+      })
+    ),
+    saveAssetAs: (vaultId: string, documentId: string, assetId: string, fileName: string) => (
+      invokeKnowledge<boolean>(IPC_CHANNELS.KNOWLEDGE.ASSET_SAVE_AS, {
+        vaultId, documentId, assetId, fileName,
       })
     ),
     search: (vaultId: string, query: string, limit?: number) => invokeKnowledge<SearchHit[]>(
@@ -277,6 +288,7 @@ const electronAPI = {
   // 文件操作
   file: {
     selectImage: () => ipcRenderer.invoke(IPC_CHANNELS.FILE.SELECT_IMAGE) as Promise<ImageFile | null>,
+    selectAttachment: () => ipcRenderer.invoke(IPC_CHANNELS.FILE.SELECT_ATTACHMENT) as Promise<AttachmentFile | null>,
     downloadImage: (imageData: string, defaultName: string) => 
       ipcRenderer.invoke(IPC_CHANNELS.FILE.DOWNLOAD_IMAGE, imageData, defaultName) as Promise<boolean>,
     exportPDF: (title: string, htmlContent: string) =>

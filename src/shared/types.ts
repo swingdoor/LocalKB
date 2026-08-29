@@ -42,6 +42,12 @@ export interface ImageFile {
   data: string
 }
 
+export interface AttachmentFile {
+  name: string
+  mimeType: string
+  bytes: Uint8Array
+}
+
 /**
  * AI 设置
  */

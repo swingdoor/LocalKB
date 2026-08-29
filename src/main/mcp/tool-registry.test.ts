@@ -56,6 +56,31 @@ describe('MCP domain tools', () => {
     }).success).toBe(false)
     expect(documentInsert.safeParse({
       vaultId: NODE_ID, documentId: NODE_ID,
+      nodes: [{
+        type: 'paragraph', content: [
+          { type: 'documentReference', attrs: { documentId: NODE_ID, label: '目标' } },
+          { type: 'text', text: 'marked', marks: [
+            { type: 'underline' }, { type: 'highlight', attrs: { color: '#FEF08A' } },
+          ] },
+        ],
+      }],
+    }).success).toBe(true)
+    expect(documentInsert.safeParse({
+      vaultId: NODE_ID, documentId: NODE_ID,
+      nodes: [{ type: 'inlineMath', attrs: { latex: 'x^2' } }],
+    }).success).toBe(false)
+    expect(documentInsert.safeParse({
+      vaultId: NODE_ID, documentId: NODE_ID,
+      nodes: [{ type: 'fileAttachment', attrs: {
+        assetId: NODE_ID, fileName: 'a.txt', mimeType: 'text/plain',
+      } }],
+    }).success).toBe(false)
+    expect(documentInsert.safeParse({
+      vaultId: NODE_ID, documentId: NODE_ID,
+      nodes: [{ type: 'details', content: [{ type: 'detailsContent', content: [{ type: 'paragraph' }] }] }],
+    }).success).toBe(false)
+    expect(documentInsert.safeParse({
+      vaultId: NODE_ID, documentId: NODE_ID,
       nodes: [{ type: 'canvasReference', attrs: { nodeId: NODE_ID } }],
     }).success).toBe(false)
     expect(documentInsert.safeParse({
@@ -226,6 +251,47 @@ describe('MCP domain tools', () => {
     expect(await run('asset_get', { vaultId: vault.id, assetId: asset.id, includeData: true }))
       .toMatchObject({ assetId: asset.id, byteLength: 3, dataBase64: 'AQID' })
     await run('asset_remove', { vaultId: vault.id, assetId: asset.id })
+  })
+
+  it('writes native document links and file attachments with service hard validation', async () => {
+    const vault = await run('vault_create', { name: 'V' }) as { id: string }
+    const source = await run('tree_insert', {
+      vaultId: vault.id, entry: { kind: 'document', title: 'Source' },
+    }) as { id: string }
+    const target = await run('tree_insert', {
+      vaultId: vault.id, entry: { kind: 'document', title: 'Target' },
+    }) as { id: string }
+    const asset = await run('asset_import', {
+      vaultId: vault.id, documentId: source.id, mimeType: 'text/plain',
+      fileName: 'notes.txt', dataBase64: 'AQID',
+    }) as { id: string; byteLength: number; mimeType: string; fileName: string }
+    expect(asset).toMatchObject({ byteLength: 3, mimeType: 'text/plain', fileName: 'notes.txt' })
+    await run('document_insert', {
+      vaultId: vault.id, documentId: source.id,
+      nodes: [
+        { type: 'paragraph', content: [{
+          type: 'documentReference', attrs: { documentId: target.id, label: 'Target' },
+        }] },
+        { type: 'fileAttachment', attrs: {
+          assetId: asset.id, fileName: asset.fileName, mimeType: asset.mimeType, size: asset.byteLength,
+        } },
+      ],
+    })
+    const loaded = await run('document_get', {
+      vaultId: vault.id, documentId: source.id,
+    }) as { content: { content: Array<{ type: string; attrs?: Record<string, unknown> }> } }
+    expect(loaded.content.content.map((node) => node.type)).toEqual([
+      'paragraph', 'paragraph', 'fileAttachment',
+    ])
+    await expect(run('tree_delete', {
+      vaultId: vault.id, entryId: target.id, confirm: true,
+    })).rejects.toMatchObject({ code: 'CONFLICT' })
+    await expect(run('asset_remove', { vaultId: vault.id, assetId: asset.id }))
+      .rejects.toMatchObject({ code: 'CONFLICT' })
+    await expect(run('asset_import', {
+      vaultId: vault.id, documentId: source.id, mimeType: 'text/plain',
+      fileName: '../escape.txt', dataBase64: 'AQID',
+    })).rejects.toMatchObject({ code: 'PATH_OUTSIDE_VAULT' })
   })
 
   it('rejects malformed, ownerless, referenced, and cross-vault asset operations', async () => {

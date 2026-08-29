@@ -18,7 +18,11 @@ vi.mock('react-arborist', async () => {
     }))
     const Node = props.children
     return (
-      <div role="tree" aria-label={props['aria-label']}>
+      <div
+        role="tree"
+        aria-label={props['aria-label']}
+        data-dnd-root-scoped={props.dndRootElement instanceof HTMLElement ? 'true' : 'false'}
+      >
         {nodes.map((data) => (
           <Node
             key={data.id}
@@ -120,6 +124,25 @@ describe('DocumentTree', () => {
     expect(search.className).toContain('h-7')
     act(() => search.click())
     expect(useAppStore.getState().isSearchOpen).toBe(true)
+  })
+
+  it('scopes the document-tree drag backend to its own container', () => {
+    useAppStore.setState({
+      contents: [SUMMARY],
+      structure: {
+        schemaVersion: 2,
+        entries: [
+          { kind: 'group', id: GROUP_ID, name: '项目', parentId: null, order: 0 },
+          {
+            kind: 'content', id: DOC_ID, contentType: 'document', title: '说明',
+            parentId: GROUP_ID, order: 0, createdAt: timestamp, metadataUpdatedAt: timestamp,
+          },
+        ],
+      },
+    })
+    act(() => root.render(<DocumentTree />))
+
+    expect(container.querySelector('[role="tree"]')?.getAttribute('data-dnd-root-scoped')).toBe('true')
   })
 
   it('shows group creation and maintenance actions in one menu', () => {

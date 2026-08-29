@@ -46,18 +46,20 @@ function InsertionCursor({ top, left, indent }: CursorProps) {
 }
 
 function useElementHeight() {
-  const ref = useRef<HTMLDivElement>(null)
+  const [element, setElement] = useState<HTMLDivElement | null>(null)
   const [height, setHeight] = useState(1)
+  const ref = useCallback((node: HTMLDivElement | null) => setElement(node), [])
+
   useEffect(() => {
-    const element = ref.current
     if (!element) return
     const update = () => setHeight(Math.max(1, element.clientHeight))
     update()
     const observer = new ResizeObserver(update)
     observer.observe(element)
     return () => observer.disconnect()
-  }, [])
-  return { ref, height }
+  }, [element])
+
+  return { ref, element, height }
 }
 
 interface TreeNodeRowProps extends NodeRendererProps<StructureTreeNode> {
@@ -179,7 +181,7 @@ function DocumentTree() {
     clearRevealContent,
   } = useAppStore()
   const treeRef = useRef<TreeApi<StructureTreeNode>>()
-  const { ref: treeContainerRef, height } = useElementHeight()
+  const { ref: treeContainerRef, element: treeContainer, height } = useElementHeight()
   const [addMenu, setAddMenu] = useState<{ x: number; y: number; parentId: string | null } | null>(null)
   const [menu, setMenu] = useState<MenuState | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<MenuState | null>(null)
@@ -291,10 +293,11 @@ function DocumentTree() {
           <div className="py-8 text-center text-sm text-gray-400">正在加载…</div>
         ) : data.length === 0 ? (
           <div className="py-8 text-center text-sm text-gray-400">暂无内容</div>
-        ) : (
+        ) : treeContainer ? (
           <Tree<StructureTreeNode>
             ref={treeRef}
             data={data}
+            dndRootElement={treeContainer}
             width="100%"
             height={height}
             rowHeight={32}
@@ -338,7 +341,7 @@ function DocumentTree() {
           >
             {NodeRenderer}
           </Tree>
-        )}
+        ) : null}
       </div>
 
       {(addMenu || menu) && (

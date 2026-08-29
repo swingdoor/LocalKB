@@ -11,6 +11,13 @@ interface UseCommandMenuOptions {
   onSelectImage?: () => Promise<{ data?: string; assetId?: string } | null>
   onCreateCanvas?: () => void
   onCreateMindMap?: () => void
+  onSelectDocument?: () => Promise<{ documentId: string; label: string } | null>
+  onSelectAttachment?: () => Promise<{
+    assetId: string
+    fileName: string
+    mimeType: string
+    size: number
+  } | null>
 }
 
 export function useCommandMenu(editor: Editor | null, options: UseCommandMenuOptions = {}) {
@@ -39,11 +46,7 @@ export function useCommandMenu(editor: Editor | null, options: UseCommandMenuOpt
   const closeCommandMenu = useCallback(() => {
     showCommandMenuRef.current = false
     setState(prev => ({ ...prev, showCommandMenu: false }))
-    if (editor) {
-      setTimeout(() => {
-        editor.commands.focus()
-      }, 10)
-    }
+    editor?.commands.focus()
   }, [editor])
 
   /**
@@ -149,6 +152,31 @@ export function useCommandMenu(editor: Editor | null, options: UseCommandMenuOpt
       case 'mindmap':
         if (options.onCreateMindMap) {
           options.onCreateMindMap()
+        }
+        break
+      case 'details':
+        editor.chain().focus().setDetails().run()
+        break
+      case 'documentReference':
+        if (options.onSelectDocument) {
+          const reference = await options.onSelectDocument()
+          if (reference) {
+            editor.chain().focus().insertContent({
+              type: 'documentReference',
+              attrs: reference,
+            }).run()
+          }
+        }
+        break
+      case 'fileAttachment':
+        if (options.onSelectAttachment) {
+          const attachment = await options.onSelectAttachment()
+          if (attachment) {
+            editor.chain().focus().insertContent({
+              type: 'fileAttachment',
+              attrs: attachment,
+            }).run()
+          }
         }
         break
     }

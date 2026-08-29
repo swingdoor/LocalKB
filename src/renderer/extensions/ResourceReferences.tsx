@@ -9,6 +9,7 @@ import type { ReactZoomPanPinchContentRef } from 'react-zoom-pan-pinch'
 import type { MindElixirInstance } from 'mind-elixir'
 import { TIPTAP_REFERENCE_NODE_TYPES } from '@shared/knowledge-types'
 import type { ExcalidrawScene, MindMapData } from '@shared/knowledge-types'
+import type { EditorInteractionCoordinator } from '../editor/interactionContext'
 
 type Alignment = 'left' | 'center' | 'right'
 const MIN_ZOOM = 0.25
@@ -45,6 +46,7 @@ interface ResourceOptions {
   vaultId: string
   documentId: string
   onEdit: (resourceId: string) => void
+  interaction?: EditorInteractionCoordinator
 }
 
 function alignmentPosition(textAlign: Alignment): React.CSSProperties['justifyItems'] {
@@ -61,7 +63,7 @@ function resizeHandleLabel(axis: ResizeHandleAxis): string {
 
 function ReferenceShell({
   children, width, height, textAlign, selected, resizeHeight = false, updateAttributes, onResize,
-  onSelect, onDoubleClick,
+  onSelect, onDoubleClick, interaction, nodeType,
 }: {
   children: React.ReactNode
   width: number | null
@@ -73,6 +75,8 @@ function ReferenceShell({
   onResize?: () => void
   onSelect: () => void
   onDoubleClick: () => void
+  interaction?: EditorInteractionCoordinator
+  nodeType: string
 }) {
   const frameRef = useRef<HTMLDivElement>(null)
   const [draftSize, setDraftSize] = useState({
@@ -102,7 +106,8 @@ function ReferenceShell({
     }
     setResizeMaxWidth(Math.max(MIN_PREVIEW_WIDTH, frame.parentElement?.clientWidth ?? nextSize.width))
     setDraftSize(nextSize)
-  }, [resizeHeight])
+    interaction?.beginGesture('nodeResizing', nodeType)
+  }, [interaction, nodeType, resizeHeight])
 
   const handleResize = useCallback((event: React.SyntheticEvent, data: ResizeCallbackData) => {
     event.stopPropagation()
@@ -120,10 +125,13 @@ function ReferenceShell({
       height: resizeHeight ? Math.round(data.size.height) : 1,
     }
     setDraftSize(nextSize)
+    interaction?.endGesture('nodeResizing')
     updateAttributes(resizeHeight
       ? { width: nextSize.width, height: nextSize.height }
       : { width: nextSize.width })
-  }, [resizeHeight, updateAttributes])
+  }, [interaction, resizeHeight, updateAttributes])
+
+  useEffect(() => () => interaction?.endGesture('nodeResizing'), [interaction])
 
   const renderResizeHandle = useCallback((axis: ResizeHandleAxis, ref: React.RefObject<HTMLElement>) => (
     <span
@@ -157,10 +165,7 @@ function ReferenceShell({
         width: '100%',
         justifyItems: alignmentPosition(textAlign),
       }}
-      onDragStart={(event: React.DragEvent) => {
-        event.preventDefault()
-        event.stopPropagation()
-      }}
+      onDragStart={(event: React.DragEvent) => preventNativeResourceContentDrag(event)}
     >
       <Resizable
         width={draftSize.width}
@@ -178,10 +183,11 @@ function ReferenceShell({
         <div
           ref={frameRef}
           data-resource-preview-container=""
+          data-resource-selection-frame=""
           data-resource-control=""
           style={frameStyle}
           className="group relative rounded-lg border"
-          onPointerDownCapture={(event) => {
+          onClick={(event) => {
             if (event.button === 0 && !selected) onSelect()
           }}
         >
@@ -198,9 +204,21 @@ function ReferenceShell({
   )
 }
 
-function stopInteractiveResourceEvent({ event }: { event: Event }): boolean {
+export function preventNativeResourceContentDrag(event: React.DragEvent) {
+  const target = event.target
+  if (!(target instanceof Element)) return
+  if (!target.closest('[data-resource-viewport] img, [data-resource-viewport] svg, [data-resource-viewport] [draggable="true"]')) return
+  event.preventDefault()
+  event.stopPropagation()
+}
+
+export function stopInteractiveResourceEvent({ event }: { event: Event }): boolean {
   const target = event.target
   if (!(target instanceof Element)) return false
+  // The official editor-level DragHandle discovers the hovered top-level node
+  // through mousemove. Let that passive event reach ProseMirror while keeping
+  // clicks, pointer gestures, wheel zoom and resize controls inside the NodeView.
+  if (event.type === 'mousemove') return false
   return Boolean(target.closest('[data-resource-control], [data-resource-viewport]'))
 }
 
@@ -214,18 +232,18 @@ export function PreviewControls({
   onFit: () => void
 }) {
   const stop = (event: React.SyntheticEvent) => event.stopPropagation()
-  const buttonClass = 'grid h-7 w-7 place-items-center rounded text-gray-500 transition-colors hover:bg-gray-100 hover:text-primary focus:outline-none focus:ring-1 focus:ring-primary'
+  const buttonClass = 'resource-preview-control-button'
   return (
     <div
       role="toolbar"
       aria-label="资源预览控制"
       data-resource-control=""
-      className={`absolute right-2 top-2 z-10 flex items-center gap-0.5 rounded-lg border border-gray-200 bg-white/95 p-1 shadow-sm backdrop-blur transition-opacity ${selected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'}`}
+      className={`resource-preview-controls absolute right-2 top-2 z-10 flex items-center gap-0.5 rounded-lg p-1 shadow-sm backdrop-blur transition-opacity ${selected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'}`}
       onMouseDown={stop}
       onDoubleClick={stop}
     >
       <button type="button" aria-label="缩小预览" className={buttonClass} onClick={onZoomOut}><Minus size={14} /></button>
-      <span className="w-11 text-center text-[11px] tabular-nums text-gray-500" aria-label={`当前缩放 ${Math.round(zoom * 100)}%`}>
+      <span className="resource-preview-zoom w-11 text-center text-[11px] tabular-nums" aria-label={`当前缩放 ${Math.round(zoom * 100)}%`}>
         {Math.round(zoom * 100)}%
       </span>
       <button type="button" aria-label="放大预览" className={buttonClass} onClick={onZoomIn}><Plus size={14} /></button>
@@ -330,6 +348,19 @@ export function CanvasReferenceView({ node, updateAttributes, selected, extensio
         event.resourceId === canvasId) setRevision((value) => value + 1)
   }), [canvasId, options.vaultId])
 
+  useEffect(() => {
+    const editorDom = editor?.view?.dom
+    if (!editorDom) return
+    const reload = (event: Event) => {
+      const detail = (event as CustomEvent<{ resourceType: string; resourceId: string }>).detail
+      if (detail?.resourceType === 'canvas' && detail.resourceId === canvasId) {
+        setRevision((value) => value + 1)
+      }
+    }
+    editorDom.addEventListener('localkb:resource-preview-reload', reload)
+    return () => editorDom.removeEventListener('localkb:resource-preview-reload', reload)
+  }, [canvasId, editor])
+
   return (
     <ReferenceShell
       width={width}
@@ -339,6 +370,8 @@ export function CanvasReferenceView({ node, updateAttributes, selected, extensio
       resizeHeight
       updateAttributes={updateAttributes}
       onResize={fitAfterFrameResize}
+      interaction={options.interaction}
+      nodeType="canvasReference"
       onSelect={() => {
         const position = getPos()
         if (typeof position === 'number') editor.chain().focus().setNodeSelection(position).run()
@@ -365,9 +398,21 @@ export function CanvasReferenceView({ node, updateAttributes, selected, extensio
             panning={{ velocityDisabled: true }}
             onInit={() => requestAnimationFrame(fit)}
             onTransform={(_ref, state) => setZoom(state.scale)}
-            onPanningStart={() => { manuallyAdjustedRef.current = true }}
-            onWheelStart={() => { manuallyAdjustedRef.current = true }}
-            onPinchStart={() => { manuallyAdjustedRef.current = true }}
+            onPanningStart={() => {
+              manuallyAdjustedRef.current = true
+              options.interaction?.beginGesture('resourcePanning', 'canvasReference')
+            }}
+            onPanningStop={() => options.interaction?.endGesture('resourcePanning')}
+            onWheelStart={() => {
+              manuallyAdjustedRef.current = true
+              options.interaction?.beginGesture('resourcePanning', 'canvasReference')
+            }}
+            onWheelStop={() => options.interaction?.endGesture('resourcePanning')}
+            onPinchStart={() => {
+              manuallyAdjustedRef.current = true
+              options.interaction?.beginGesture('resourcePanning', 'canvasReference')
+            }}
+            onPinchStop={() => options.interaction?.endGesture('resourcePanning')}
           >
             <TransformComponent
               wrapperStyle={{ width: '100%', height: '100%', overflow: 'hidden' }}
@@ -393,10 +438,10 @@ export function CanvasReferenceView({ node, updateAttributes, selected, extensio
           onFit={fit}
         />
       )}
-      {status === 'loading' && <div className="absolute inset-0 grid place-items-center bg-white/80 text-sm text-gray-500">正在加载画布…</div>}
-      {status === 'missing' && <div className="absolute inset-0 grid place-items-center bg-white px-8 text-center text-sm text-red-500">画布资源不存在，双击可恢复编辑</div>}
+      {status === 'loading' && <div className="resource-preview-status absolute inset-0 grid place-items-center text-sm">正在加载画布…</div>}
+      {status === 'missing' && <div className="resource-preview-status is-error absolute inset-0 grid place-items-center px-8 text-center text-sm">画布资源不存在，双击可恢复编辑</div>}
       {status === 'error' && (
-        <button type="button" className="absolute inset-0 bg-white text-sm text-red-500" onClick={() => setRevision((value) => value + 1)}>
+        <button type="button" className="resource-preview-status is-error absolute inset-0 text-sm" onClick={() => setRevision((value) => value + 1)}>
           画布预览失败，点击重试
         </button>
       )}
@@ -412,27 +457,58 @@ export function MindMapReferenceView({ node, updateAttributes, selected, extensi
   const containerRef = useRef<HTMLDivElement>(null)
   const mindRef = useRef<MindElixirInstance | null>(null)
   const manuallyAdjustedRef = useRef(false)
+  const fitFrameRef = useRef<number | null>(null)
+  const viewportSizeRef = useRef<{ width: number; height: number } | null>(null)
   const [status, setStatus] = useState<'loading' | 'ready' | 'missing' | 'error'>('loading')
   const [revision, setRevision] = useState(0)
   const [zoom, setZoom] = useState(1)
+  const panningRef = useRef(false)
+
+  const startPanning = useCallback(() => {
+    panningRef.current = true
+    manuallyAdjustedRef.current = true
+    options.interaction?.beginGesture('resourcePanning', 'mindmapReference')
+  }, [options.interaction])
+
+  const stopPanning = useCallback(() => {
+    if (!panningRef.current) return
+    panningRef.current = false
+    options.interaction?.endGesture('resourcePanning')
+  }, [options.interaction])
+
+  useEffect(() => {
+    window.addEventListener('pointerup', stopPanning)
+    window.addEventListener('pointercancel', stopPanning)
+    return () => {
+      window.removeEventListener('pointerup', stopPanning)
+      window.removeEventListener('pointercancel', stopPanning)
+      stopPanning()
+    }
+  }, [stopPanning])
 
   const fit = useCallback(() => {
     const mind = mindRef.current
     if (!mind) return
     mind.scaleFit()
-    setZoom(mind.scaleVal)
+    setZoom((current) => current === mind.scaleVal ? current : mind.scaleVal)
     manuallyAdjustedRef.current = false
   }, [])
-  const fitAfterFrameResize = useCallback(() => {
-    requestAnimationFrame(fit)
+
+  const scheduleFit = useCallback(() => {
+    if (fitFrameRef.current !== null) cancelAnimationFrame(fitFrameRef.current)
+    fitFrameRef.current = requestAnimationFrame(() => {
+      fitFrameRef.current = null
+      fit()
+    })
   }, [fit])
+  const fitAfterFrameResize = scheduleFit
 
   const changeZoom = useCallback((next: number, event?: { clientX: number; clientY: number }) => {
     const mind = mindRef.current
     if (!mind) return
     const value = clampPreviewZoom(next)
     mind.scale(value, event ? { x: event.clientX, y: event.clientY } : undefined)
-    setZoom(mind.scaleVal)
+    setZoom((current) => current === mind.scaleVal ? current : mind.scaleVal)
     manuallyAdjustedRef.current = true
   }, [])
 
@@ -442,63 +518,108 @@ export function MindMapReferenceView({ node, updateAttributes, selected, extensi
     if (!mind) return
     event.preventDefault()
     event.stopPropagation()
+    options.interaction?.beginGesture('resourcePanning', 'mindmapReference')
     changeZoom(mind.scaleVal + (event.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP), event)
-  }, [changeZoom])
-
-  const load = useCallback(async () => {
-    setStatus('loading')
-    const result = await window.electronAPI.knowledge.getMindMap(
-      options.vaultId, options.documentId, mindmapId,
-    )
-    if (!result.ok) {
-      setStatus(result.error.code === 'NOT_FOUND' ? 'missing' : 'error')
-      return
-    }
-    if (!containerRef.current) return
-    try {
-      const { default: MindElixir } = await import('mind-elixir')
-      containerRef.current.innerHTML = ''
-      containerRef.current.style.setProperty('--bgcolor', 'var(--bg-editor)')
-      const mind = new MindElixir({
-        el: containerRef.current,
-        editable: false,
-        keypress: false,
-        toolBar: false,
-        contextMenu: false,
-        overflowHidden: false,
-        handleWheel: handleMindMapWheel,
-        scaleMin: MIN_ZOOM,
-        scaleMax: MAX_ZOOM,
-      } as any)
-      mind.init(result.data as MindMapData as any)
-      mindRef.current = mind
-      setStatus('ready')
-      requestAnimationFrame(() => requestAnimationFrame(fit))
-    } catch {
-      setStatus('error')
-    }
-  }, [mindmapId, options.documentId, options.vaultId, fit, handleMindMapWheel])
+    options.interaction?.endGesture('resourcePanning')
+  }, [changeZoom, options.interaction])
 
   useEffect(() => {
-    void load()
+    let cancelled = false
+    let instance: MindElixirInstance | null = null
+
+    setStatus('loading')
+    setZoom(1)
+    manuallyAdjustedRef.current = false
+    mindRef.current = null
+
+    void (async () => {
+      const result = await window.electronAPI.knowledge.getMindMap(
+        options.vaultId, options.documentId, mindmapId,
+      )
+      if (cancelled) return
+      if (!result.ok) {
+        setStatus(result.error.code === 'NOT_FOUND' ? 'missing' : 'error')
+        return
+      }
+
+      try {
+        const { default: MindElixir } = await import('mind-elixir')
+        if (cancelled) return
+        const container = containerRef.current
+        if (!container) return
+
+        container.innerHTML = ''
+        container.style.setProperty('--bgcolor', 'var(--bg-editor)')
+        const mind = new MindElixir({
+          el: container,
+          editable: false,
+          keypress: false,
+          toolBar: false,
+          contextMenu: false,
+          overflowHidden: false,
+          handleWheel: handleMindMapWheel,
+          scaleMin: MIN_ZOOM,
+          scaleMax: MAX_ZOOM,
+        } as any)
+        instance = mind
+        mind.init(result.data as MindMapData as any)
+        if (cancelled) {
+          mind.destroy()
+          instance = null
+          return
+        }
+        mindRef.current = mind
+        setStatus('ready')
+        scheduleFit()
+      } catch {
+        instance?.destroy()
+        instance = null
+        if (!cancelled) setStatus('error')
+      }
+    })()
+
     return () => {
-      mindRef.current?.destroy()
-      mindRef.current = null
-      if (containerRef.current) containerRef.current.innerHTML = ''
+      cancelled = true
+      if (fitFrameRef.current !== null) {
+        cancelAnimationFrame(fitFrameRef.current)
+        fitFrameRef.current = null
+      }
+      if (mindRef.current === instance) mindRef.current = null
+      instance?.destroy()
     }
-  }, [load, revision])
+  }, [handleMindMapWheel, mindmapId, options.documentId, options.vaultId, revision, scheduleFit])
+
   useEffect(() => {
     if (!containerRef.current || typeof ResizeObserver === 'undefined') return
-    const observer = new ResizeObserver(() => {
-      if (!manuallyAdjustedRef.current) requestAnimationFrame(fit)
+    const observer = new ResizeObserver((entries) => {
+      const rect = entries[0]?.contentRect
+      if (!rect) return
+      const nextSize = { width: Math.round(rect.width), height: Math.round(rect.height) }
+      const previousSize = viewportSizeRef.current
+      if (previousSize?.width === nextSize.width && previousSize.height === nextSize.height) return
+      viewportSizeRef.current = nextSize
+      if (!manuallyAdjustedRef.current) scheduleFit()
     })
     observer.observe(containerRef.current)
     return () => observer.disconnect()
-  }, [fit])
+  }, [scheduleFit])
   useEffect(() => window.electronAPI.knowledge.onChanged((event) => {
     if (event.vaultId === options.vaultId && event.resourceType === 'mindmap' &&
         event.resourceId === mindmapId) setRevision((value) => value + 1)
   }), [mindmapId, options.vaultId])
+
+  useEffect(() => {
+    const editorDom = editor?.view?.dom
+    if (!editorDom) return
+    const reload = (event: Event) => {
+      const detail = (event as CustomEvent<{ resourceType: string; resourceId: string }>).detail
+      if (detail?.resourceType === 'mindmap' && detail.resourceId === mindmapId) {
+        setRevision((value) => value + 1)
+      }
+    }
+    editorDom.addEventListener('localkb:resource-preview-reload', reload)
+    return () => editorDom.removeEventListener('localkb:resource-preview-reload', reload)
+  }, [editor, mindmapId])
 
   return (
     <ReferenceShell
@@ -509,6 +630,8 @@ export function MindMapReferenceView({ node, updateAttributes, selected, extensi
       resizeHeight
       updateAttributes={updateAttributes}
       onResize={fitAfterFrameResize}
+      interaction={options.interaction}
+      nodeType="mindmapReference"
       onSelect={() => {
         const position = getPos()
         if (typeof position === 'number') editor.chain().focus().setNodeSelection(position).run()
@@ -521,7 +644,9 @@ export function MindMapReferenceView({ node, updateAttributes, selected, extensi
         data-resource-interactive="true"
         className="h-full w-full cursor-grab overflow-hidden rounded-[7px] active:cursor-grabbing"
         style={{ backgroundColor: 'var(--bg-editor)' }}
-        onPointerDownCapture={() => { manuallyAdjustedRef.current = true }}
+        onPointerDownCapture={(event) => {
+          if (event.button === 0) startPanning()
+        }}
       />
       {status === 'ready' && (
         <PreviewControls
@@ -532,10 +657,10 @@ export function MindMapReferenceView({ node, updateAttributes, selected, extensi
           onFit={fit}
         />
       )}
-      {status === 'loading' && <div className="absolute inset-0 grid place-items-center bg-white/80 text-sm text-gray-500">正在加载思维导图…</div>}
-      {status === 'missing' && <div className="absolute inset-0 grid place-items-center bg-white text-sm text-red-500">思维导图资源不存在</div>}
+      {status === 'loading' && <div className="resource-preview-status absolute inset-0 grid place-items-center text-sm">正在加载思维导图…</div>}
+      {status === 'missing' && <div className="resource-preview-status is-error absolute inset-0 grid place-items-center text-sm">思维导图资源不存在</div>}
       {status === 'error' && (
-        <button type="button" className="absolute inset-0 bg-white text-sm text-red-500" onClick={() => setRevision((value) => value + 1)}>
+        <button type="button" className="resource-preview-status is-error absolute inset-0 text-sm" onClick={() => setRevision((value) => value + 1)}>
           思维导图预览失败，点击重试
         </button>
       )}
@@ -556,6 +681,8 @@ function AssetImageView({ node, updateAttributes, selected, extension, editor, g
       textAlign={textAlign}
       selected={selected}
       updateAttributes={updateAttributes}
+      interaction={options.interaction}
+      nodeType="assetImage"
       onSelect={() => {
         const position = getPos()
         if (typeof position === 'number') editor.chain().focus().setNodeSelection(position).run()
@@ -567,74 +694,137 @@ function AssetImageView({ node, updateAttributes, selected, extension, editor, g
           图片加载失败，点击重试
         </button>
       ) : (
-        <img src={src} alt={alt ?? ''} className="block h-auto w-full" onError={() => setFailed(true)} />
+        <img
+          src={src}
+          alt={alt ?? ''}
+          draggable={false}
+          className="block h-auto w-full"
+          onError={() => setFailed(true)}
+        />
       )}
     </ReferenceShell>
   )
 }
 
+function referenceIdAttribute(attributeName: string, htmlAttribute: string) {
+  return {
+    default: null,
+    parseHTML: (element: HTMLElement) => element.getAttribute(htmlAttribute),
+    renderHTML: (attributes: Record<string, unknown>) => {
+      const value = attributes[attributeName]
+      return typeof value === 'string' && value.length > 0
+        ? { [htmlAttribute]: value }
+        : {}
+    },
+  }
+}
+
+function presentationSizeAttribute(attributeName: 'width' | 'height') {
+  const htmlAttribute = `data-${attributeName}`
+  return {
+    default: null,
+    parseHTML: (element: HTMLElement) => {
+      const raw = element.getAttribute(htmlAttribute)
+      if (raw === null) return null
+      const value = Number(raw)
+      return Number.isFinite(value) && value > 0 ? value : null
+    },
+    renderHTML: (attributes: Record<string, unknown>) => {
+      const value = attributes[attributeName]
+      return typeof value === 'number' && Number.isFinite(value) && value > 0
+        ? { [htmlAttribute]: String(value) }
+        : {}
+    },
+  }
+}
+
+const textAlignAttribute = {
+  default: 'left',
+  parseHTML: (element: HTMLElement): Alignment => {
+    const value = element.getAttribute('data-text-align')
+    return value === 'center' || value === 'right' ? value : 'left'
+  },
+  renderHTML: (attributes: Record<string, unknown>) => ({
+    'data-text-align': attributes.textAlign === 'center' || attributes.textAlign === 'right'
+      ? String(attributes.textAlign)
+      : 'left',
+  }),
+}
+
+const altAttribute = {
+  default: null,
+  parseHTML: (element: HTMLElement) => element.getAttribute('alt'),
+  renderHTML: (attributes: Record<string, unknown>) => ({
+    alt: typeof attributes.alt === 'string' ? attributes.alt : '',
+  }),
+}
+
 const presentationAttributes = {
-  nodeId: { default: null },
-  width: { default: null },
-  textAlign: { default: 'left' },
+  width: presentationSizeAttribute('width'),
+  textAlign: textAlignAttribute,
 }
 
 const previewPresentationAttributes = {
   ...presentationAttributes,
-  height: { default: null },
+  height: presentationSizeAttribute('height'),
 }
 
-function referenceHtml(
-  kind: 'canvas' | 'mindmap' | 'asset',
-  resourceId: unknown,
-  attributes: Record<string, unknown>,
-): Record<string, string> {
+function referencePresentationHtml(attributes: Record<string, unknown>): Record<string, string> {
   const width = typeof attributes.width === 'number' ? `max-width:${attributes.width}px;` : 'max-width:640px;'
   const height = typeof attributes.height === 'number' ? `height:${attributes.height}px;` : ''
   const align = attributes.textAlign === 'center'
     ? 'margin-left:auto;margin-right:auto;'
     : attributes.textAlign === 'right' ? 'margin-left:auto;' : 'margin-right:auto;'
   return {
-    [`data-${kind}-id`]: String(resourceId ?? ''),
-    'data-node-id': String(attributes.nodeId ?? ''),
-    'data-text-align': String(attributes.textAlign ?? 'left'),
-    ...(height ? { 'data-height': String(attributes.height) } : {}),
     style: `${width}${height}${align}`,
   }
 }
 
 export const CanvasReference = Node.create<ResourceOptions>({
   name: TIPTAP_REFERENCE_NODE_TYPES.canvas, group: 'block', atom: true, draggable: false,
-  addOptions: () => ({ vaultId: '', documentId: '', onEdit: () => undefined }),
-  addAttributes: () => ({ canvasId: { default: null }, ...previewPresentationAttributes }),
+  addOptions: () => ({ vaultId: '', documentId: '', onEdit: () => undefined, interaction: undefined }),
+  addAttributes: () => ({
+    canvasId: referenceIdAttribute('canvasId', 'data-canvas-id'),
+    ...previewPresentationAttributes,
+  }),
   parseHTML: () => [{ tag: 'div[data-canvas-reference]' }],
-  renderHTML: ({ HTMLAttributes }) => ['div', mergeAttributes(
+  renderHTML: ({ node, HTMLAttributes }) => ['div', mergeAttributes(
     { 'data-canvas-reference': '' },
-    referenceHtml('canvas', HTMLAttributes.canvasId, HTMLAttributes),
+    HTMLAttributes,
+    referencePresentationHtml(node.attrs),
   )],
   addNodeView: () => ReactNodeViewRenderer(CanvasReferenceView, { stopEvent: stopInteractiveResourceEvent }),
 })
 
 export const MindMapReference = Node.create<ResourceOptions>({
   name: TIPTAP_REFERENCE_NODE_TYPES.mindmap, group: 'block', atom: true, draggable: false,
-  addOptions: () => ({ vaultId: '', documentId: '', onEdit: () => undefined }),
-  addAttributes: () => ({ mindmapId: { default: null }, ...previewPresentationAttributes }),
+  addOptions: () => ({ vaultId: '', documentId: '', onEdit: () => undefined, interaction: undefined }),
+  addAttributes: () => ({
+    mindmapId: referenceIdAttribute('mindmapId', 'data-mindmap-id'),
+    ...previewPresentationAttributes,
+  }),
   parseHTML: () => [{ tag: 'div[data-mindmap-reference]' }],
-  renderHTML: ({ HTMLAttributes }) => ['div', mergeAttributes(
+  renderHTML: ({ node, HTMLAttributes }) => ['div', mergeAttributes(
     { 'data-mindmap-reference': '' },
-    referenceHtml('mindmap', HTMLAttributes.mindmapId, HTMLAttributes),
+    HTMLAttributes,
+    referencePresentationHtml(node.attrs),
   )],
   addNodeView: () => ReactNodeViewRenderer(MindMapReferenceView, { stopEvent: stopInteractiveResourceEvent }),
 })
 
 export const AssetImage = Node.create<Omit<ResourceOptions, 'onEdit'>>({
-  name: TIPTAP_REFERENCE_NODE_TYPES.asset, group: 'block', atom: true, draggable: true,
-  addOptions: () => ({ vaultId: '', documentId: '' }),
-  addAttributes: () => ({ assetId: { default: null }, alt: { default: null }, ...presentationAttributes }),
+  name: TIPTAP_REFERENCE_NODE_TYPES.asset, group: 'block', atom: true, draggable: false,
+  addOptions: () => ({ vaultId: '', documentId: '', interaction: undefined }),
+  addAttributes: () => ({
+    assetId: referenceIdAttribute('assetId', 'data-asset-id'),
+    alt: altAttribute,
+    ...presentationAttributes,
+  }),
   parseHTML: () => [{ tag: 'img[data-asset-id]' }],
-  renderHTML: ({ HTMLAttributes }) => ['img', mergeAttributes(
-    { 'data-asset-image': '', alt: String(HTMLAttributes.alt ?? '') },
-    referenceHtml('asset', HTMLAttributes.assetId, HTMLAttributes),
+  renderHTML: ({ node, HTMLAttributes }) => ['img', mergeAttributes(
+    { 'data-asset-image': '' },
+    HTMLAttributes,
+    referencePresentationHtml(node.attrs),
   )],
-  addNodeView: () => ReactNodeViewRenderer(AssetImageView),
+  addNodeView: () => ReactNodeViewRenderer(AssetImageView, { stopEvent: stopInteractiveResourceEvent }),
 })

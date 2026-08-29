@@ -1,32 +1,32 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useEditor, EditorContent, ReactNodeViewRenderer } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
 import { lowlight } from 'lowlight'
 import Link from '@tiptap/extension-link'
-import TaskList from '@tiptap/extension-task-list'
-import TaskItem from '@tiptap/extension-task-item'
-import Table from '@tiptap/extension-table'
-import TableRow from '@tiptap/extension-table-row'
-import TableHeader from '@tiptap/extension-table-header'
-import TableCell from '@tiptap/extension-table-cell'
+import { TaskItem, TaskList } from '@tiptap/extension-list'
+import { Table, TableCell, TableHeader, TableRow } from '@tiptap/extension-table'
 import TextAlign from '@tiptap/extension-text-align'
-import Placeholder from '@tiptap/extension-placeholder'
-import TextStyle from '@tiptap/extension-text-style'
-import FontFamily from '@tiptap/extension-font-family'
+import { Placeholder } from '@tiptap/extensions'
+import { FontFamily, TextStyle } from '@tiptap/extension-text-style'
+import Highlight from '@tiptap/extension-highlight'
+import { Details, DetailsContent, DetailsSummary } from '@tiptap/extension-details'
 import FontSize from '../extensions/FontSize'
 import Color from '../extensions/Color'
 import ResizableImage from '../extensions/ResizableImage'
 import { HeadingNumbers } from '../extensions/HeadingNumbers'
 import { StableNodeId } from '../extensions/StableNodeId'
 import { AssetImage, CanvasReference, MindMapReference } from '../extensions/ResourceReferences'
+import { DocumentReferenceNode, FileAttachmentNode } from '../extensions/RichDocumentNodes'
 import CodeBlockComponent from './CodeBlockComponent'
 import CommandMenu from './CommandMenu'
-import EditorBubbleMenu from './BubbleMenu'
 import TableMenu from './TableMenu'
 import DrawingEditorModal from './DrawingEditorModal'
 import MindMapEditorModal from './MindMapEditorModal'
 import PolishConfirmModal from './PolishConfirmModal'
+import DocumentReferencePicker from './DocumentReferencePicker'
+import EditorRootBlockControls from './EditorRootBlockControls'
+import EditorContextMenus from './editor-menus/EditorContextMenus'
 import TocPanel from './TocPanel'
 import { useCommandMenu } from '../hooks/useCommandMenu'
 import { useAIProcess } from '../hooks/useAIProcess'
@@ -40,7 +40,9 @@ import { handleRichPaste } from '../utils/richPaste'
 import { resolveResourceReferencesForExport } from '../utils/resourceExport'
 import { eventMatchesHotkey } from '../utils/hotkeys'
 import type { HotkeyConfig } from '@shared/types'
-import type { LoadedDocument, TipTapDocument } from '@shared/knowledge-types'
+import type { ContentSummary, LoadedDocument, TipTapDocument } from '@shared/knowledge-types'
+import { createEditorInteractionCoordinator } from '../editor/interactionContext'
+import { handleRootBlockDrop } from '../editor/rootBlockDrop'
 
 interface EditorProps {
   document: LoadedDocument
@@ -55,15 +57,60 @@ function countContentCharacters(text: string) {
 function Editor({ document, vaultId, onUpdate }: EditorProps) {
   const [title, setTitle] = useState(document.title)
   const [characterCount, setCharacterCount] = useState(0)
+  const [documentReferencePickerOpen, setDocumentReferencePickerOpen] = useState(false)
+  const interaction = useMemo(() => createEditorInteractionCoordinator(), [])
+  const documentReferenceResolverRef = useRef<((value: { documentId: string; label: string } | null) => void) | null>(null)
 
   // 从 store 获取快捷键配置
   const hotkeys = useAppStore((state) => state.hotkeys)
   const showHeadingNumbers = useAppStore((state) => state.showHeadingNumbers)
   const toggleHeadingNumbers = useAppStore((state) => state.toggleHeadingNumbers)
+  const contents = useAppStore((state) => state.contents)
 
   // 使用自定义 Hooks
   const pendingSave = usePendingSave(onUpdate)
   const aiProcess = useAIProcess()
+
+  const openDocumentReferencePicker = useCallback(() => new Promise<{
+    documentId: string
+    label: string
+  } | null>((resolve) => {
+    documentReferenceResolverRef.current?.(null)
+    documentReferenceResolverRef.current = resolve
+    interaction.setModalOpen('document-reference-picker', true)
+    setDocumentReferencePickerOpen(true)
+  }), [interaction])
+
+  const closeDocumentReferencePicker = useCallback(() => {
+    interaction.setModalOpen('document-reference-picker', false)
+    setDocumentReferencePickerOpen(false)
+    const resolve = documentReferenceResolverRef.current
+    documentReferenceResolverRef.current = null
+    resolve?.(null)
+  }, [interaction])
+
+  const selectReferencedDocument = useCallback((target: ContentSummary) => {
+    interaction.setModalOpen('document-reference-picker', false)
+    setDocumentReferencePickerOpen(false)
+    const resolve = documentReferenceResolverRef.current
+    documentReferenceResolverRef.current = null
+    resolve?.({ documentId: target.id, label: target.title })
+  }, [interaction])
+
+  const openReferencedDocument = useCallback((documentId: string) => {
+    const state = useAppStore.getState()
+    const target = state.contents.find(
+      (item) => item.id === documentId && item.contentType === 'document',
+    )
+    if (!target) return
+    state.revealContent(documentId)
+    void state.selectContent(target)
+  }, [])
+
+  useEffect(() => () => {
+    documentReferenceResolverRef.current?.(null)
+    documentReferenceResolverRef.current = null
+  }, [])
 
   // 格式化时间
   const formatTime = (dateStr: string) => {
@@ -100,6 +147,12 @@ function Editor({ document, vaultId, onUpdate }: EditorProps) {
         },
         // 排除 codeBlock，使用 CodeBlockLowlight 替代
         codeBlock: false,
+        // Link 使用独立配置；Underline 使用 StarterKit v3 内置扩展。
+        link: false,
+        dropcursor: {
+          color: 'var(--primary-color)',
+          width: 2,
+        },
       }),
       Link.configure({
         openOnClick: false,
@@ -128,6 +181,7 @@ function Editor({ document, vaultId, onUpdate }: EditorProps) {
       ResizableImage.configure({
         inline: false,
         allowBase64: false,
+        interaction,
       }),
       TextStyle,
       FontFamily.configure({
@@ -139,18 +193,28 @@ function Editor({ document, vaultId, onUpdate }: EditorProps) {
       Color.configure({
         types: ['textStyle'],
       }),
+      Highlight.configure({ multicolor: true }),
+      Details.configure({ persist: false }),
+      DetailsSummary,
+      DetailsContent,
       HeadingNumbers,
       CanvasReference.configure({
         vaultId,
         documentId: document.id,
+        interaction,
         onEdit: (canvasId) => { void canvasEditRef.current.handleEditCanvas(canvasId) },
       }),
       MindMapReference.configure({
         vaultId,
         documentId: document.id,
+        interaction,
         onEdit: (mindmapId) => { void mindMapEditRef.current?.handleEditMindMap(mindmapId) },
       }),
-      AssetImage.configure({ vaultId, documentId: document.id }),
+      AssetImage.configure({ vaultId, documentId: document.id, interaction }),
+      DocumentReferenceNode.configure({
+        onOpen: openReferencedDocument,
+      }),
+      FileAttachmentNode.configure({ vaultId, documentId: document.id }),
       StableNodeId,
       CodeBlockLowlight.extend({
         addNodeView() {
@@ -161,12 +225,14 @@ function Editor({ document, vaultId, onUpdate }: EditorProps) {
         defaultLanguage: 'plaintext',
       }),
     ],
+    shouldRerenderOnTransaction: false,
     content: document.content,
     onUpdate: ({ editor: ed }) => {
       setCharacterCount(countContentCharacters(ed.getText()))
       pendingSave.schedule({ content: ed.getJSON() as TipTapDocument })
     },
     editorProps: {
+      handleDrop: handleRootBlockDrop,
       handlePaste: (view, event) => {
         const imageFile = [...(event.clipboardData?.files ?? [])].find((file) => file.type.startsWith('image/'))
         const htmlDataUrl = event.clipboardData?.getData('text/html').match(/src=["'](data:image\/[^"']+)["']/)?.[1]
@@ -178,7 +244,7 @@ function Editor({ document, vaultId, onUpdate }: EditorProps) {
               ? new Uint8Array(await imageFile.arrayBuffer())
               : Uint8Array.from(atob(htmlDataUrl!.split(',')[1]), (char) => char.charCodeAt(0))
             const result = await window.electronAPI.knowledge.importAsset(
-              vaultId, document.id, mimeType, bytes,
+              vaultId, document.id, mimeType, bytes, imageFile?.name,
             )
             if (!result.ok) return
             const node = view.state.schema.nodes.assetImage.create({
@@ -250,24 +316,75 @@ function Editor({ document, vaultId, onUpdate }: EditorProps) {
   // 思维导图编辑 Hook（需要 editor 实例）
   const mindMapEdit = useMindMapEdit(editor, vaultId, document.id)
 
+  useEffect(() => {
+    interaction.setModalOpen('document-reference-picker', documentReferencePickerOpen)
+    interaction.setModalOpen('canvas-editor', Boolean(canvasEdit.editingCanvas))
+    interaction.setModalOpen('mindmap-editor', Boolean(mindMapEdit.editingMindMap))
+    interaction.setModalOpen('ai-confirm', aiProcess.showPolishModal)
+    return () => {
+      interaction.setModalOpen('document-reference-picker', false)
+      interaction.setModalOpen('canvas-editor', false)
+      interaction.setModalOpen('mindmap-editor', false)
+      interaction.setModalOpen('ai-confirm', false)
+    }
+  }, [
+    aiProcess.showPolishModal,
+    canvasEdit.editingCanvas,
+    documentReferencePickerOpen,
+    interaction,
+    mindMapEdit.editingMindMap,
+  ])
+
   // TOC Hook（需要在 editor 初始化后使用）
   const { toc, isPanelVisible, togglePanel, handleNavigate } = useToc(editor)
 
   // 命令菜单 Hook（需要 editor 实例和回调）
   const commandMenu = useCommandMenu(editor, {
     onSelectImage: async () => {
-      const image = await window.electronAPI.file.selectImage()
-      if (!image) return null
-      const match = image.data.match(/^data:([^;]+);base64,(.+)$/)
-      if (!match) return null
-      const bytes = Uint8Array.from(atob(match[2]), (char) => char.charCodeAt(0))
-      const result = await window.electronAPI.knowledge.importAsset(
-        vaultId, document.id, match[1], bytes,
-      )
-      return result.ok ? { assetId: result.data.id } : null
+      interaction.setModalOpen('image-picker', true)
+      try {
+        const image = await window.electronAPI.file.selectImage()
+        if (!image) return null
+        const match = image.data.match(/^data:([^;]+);base64,(.+)$/)
+        if (!match) return null
+        const bytes = Uint8Array.from(atob(match[2]), (char) => char.charCodeAt(0))
+        const result = await window.electronAPI.knowledge.importAsset(
+          vaultId, document.id, match[1], bytes, image.name,
+        )
+        return result.ok ? { assetId: result.data.id } : null
+      } finally {
+        interaction.setModalOpen('image-picker', false)
+      }
     },
     onCreateCanvas: canvasEdit.createCanvas,
     onCreateMindMap: mindMapEdit.createMindMap,
+    onSelectDocument: openDocumentReferencePicker,
+    onSelectAttachment: async () => {
+      interaction.setModalOpen('attachment-picker', true)
+      try {
+        const file = await window.electronAPI.file.selectAttachment()
+        if (!file) return null
+        const bytes = new Uint8Array(file.bytes)
+        const result = await window.electronAPI.knowledge.importAsset(
+          vaultId, document.id, file.mimeType, bytes, file.name,
+        )
+        if (!result.ok) {
+          alert(result.error.message)
+          return null
+        }
+        return {
+          assetId: result.data.id,
+          fileName: result.data.fileName ?? file.name,
+          mimeType: result.data.mimeType,
+          size: bytes.byteLength,
+        }
+      } catch (error) {
+        alert(error instanceof Error ? error.message : '附件选择失败')
+        return null
+      } finally {
+        interaction.setModalOpen('attachment-picker', false)
+      }
+    },
   })
 
   // 更新 refs（每次渲染同步最新引用）
@@ -410,21 +527,25 @@ function Editor({ document, vaultId, onUpdate }: EditorProps) {
         <div className={`flex-1 overflow-y-auto px-8 pb-8 ${showHeadingNumbers ? 'show-heading-numbers' : ''}`} style={{ backgroundColor: 'var(--bg-editor)' }}>
           {editor && (
             <>
-              <EditorBubbleMenu
+              <EditorContextMenus
                 editor={editor}
+                interaction={interaction}
                 vaultId={vaultId}
                 documentId={document.id}
                 onEditCanvas={canvasEdit.handleEditCanvas}
                 onEditMindMap={mindMapEdit.handleEditMindMap}
+                onOpenDocument={openReferencedDocument}
+                onSelectDocument={openDocumentReferencePicker}
                 onPolish={handlePolish}
                 onExpand={handleExpand}
-                hidden={aiProcess.showPolishModal || !!canvasEdit.editingCanvas || !!mindMapEdit.editingMindMap}
               />
               <TableMenu
                 editor={editor}
-                hidden={aiProcess.showPolishModal || !!canvasEdit.editingCanvas || !!mindMapEdit.editingMindMap}
+                interaction={interaction}
+                hidden={aiProcess.showPolishModal || documentReferencePickerOpen || !!canvasEdit.editingCanvas || !!mindMapEdit.editingMindMap}
               />
-              <EditorContent editor={editor} className="prose max-w-none" />
+              <EditorContent editor={editor} className="editor-content-shell prose max-w-none" />
+              <EditorRootBlockControls editor={editor} interaction={interaction} />
             </>
           )}
         </div>
@@ -470,6 +591,15 @@ function Editor({ document, vaultId, onUpdate }: EditorProps) {
           resourceError={mindMapEdit.editingMindMap.error}
           onSave={mindMapEdit.handleSaveMindMap}
           onClose={mindMapEdit.closeMindMapEditor}
+        />
+      )}
+
+      {documentReferencePickerOpen && (
+        <DocumentReferencePicker
+          documents={contents}
+          currentDocumentId={document.id}
+          onSelect={selectReferencedDocument}
+          onClose={closeDocumentReferencePicker}
         />
       )}
 

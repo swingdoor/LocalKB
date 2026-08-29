@@ -43,6 +43,8 @@ import {
   appendDocumentNodes,
   canvasElementSnapshots,
   collectDocumentReferences,
+  collectFileAttachmentReferences,
+  collectInternalDocumentReferences,
   deleteCanvasElements,
   deleteCanvasElementsStrict,
   deleteCanvasFiles,
@@ -78,6 +80,7 @@ import {
 import {
   assertExcalidrawScene,
   assertMindMapData,
+  assertPathSegment,
   assertUuid,
   KnowledgeValidationError,
   normalizeIndex,
@@ -202,6 +205,14 @@ const MIME_EXTENSIONS: Record<string, string> = {
   'image/gif': 'gif',
   'image/webp': 'webp',
   'image/svg+xml': 'svg',
+  'application/pdf': 'pdf',
+  'text/plain': 'txt',
+  'text/markdown': 'md',
+  'application/json': 'json',
+  'application/zip': 'zip',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'pptx',
 }
 
 const EXTENSION_MIMES: Record<string, string> = Object.fromEntries(
@@ -434,6 +445,9 @@ export class KnowledgeService {
         this.event(vaultId, 'tree', entryId, 'deleted', origin)
         return
       }
+      if (entry.contentType === 'document') {
+        await this.assertDocumentNotReferenced(vaultId, entryId, tree)
+      }
       await this.storage.stageContentDeletion(vaultId, entry.contentType, entryId)
       try {
         await this.storage.writeTree(vaultId, {
@@ -585,6 +599,9 @@ export class KnowledgeService {
     return this.mutate(vaultId, 'content.delete', contentId, async () => {
       const tree = await this.storage.readTree(vaultId)
       const entry = findContentEntry(tree, contentId)
+      if (entry.contentType === 'document') {
+        await this.assertDocumentNotReferenced(vaultId, contentId, tree)
+      }
       await this.storage.stageContentDeletion(vaultId, entry.contentType, contentId)
       try {
         await this.storage.writeTree(vaultId, {
@@ -618,6 +635,47 @@ export class KnowledgeService {
       if (reference.type === 'canvas') await this.storage.readCanvas(vaultId, reference.id, documentId)
       else if (reference.type === 'mindmap') await this.storage.readMindMap(vaultId, documentId, reference.id)
       else await this.storage.findAsset(vaultId, documentId, reference.id)
+    }
+    const tree = await this.storage.readTree(vaultId)
+    for (const reference of collectInternalDocumentReferences(document)) {
+      findContentEntry(tree, reference.documentId, 'document')
+    }
+    for (const attachment of collectFileAttachmentReferences(document)) {
+      const bytes = await this.storage.readAsset(vaultId, documentId, attachment.assetId)
+      if (bytes.byteLength !== attachment.size) {
+        throw new KnowledgeError(
+          'INVALID_INPUT',
+          `附件 ${attachment.fileName} 的 attrs.size 与资源字节数不一致`,
+          { nodeId: attachment.nodeId, expected: bytes.byteLength, actual: attachment.size },
+        )
+      }
+    }
+  }
+
+  private async assertDocumentNotReferenced(
+    vaultId: string,
+    targetDocumentId: string,
+    tree: VaultTreeV2,
+  ): Promise<void> {
+    const sources: Array<{ documentId: string; title: string; nodeId: string }> = []
+    for (const entry of tree.entries) {
+      if (
+        entry.kind !== 'content' || entry.contentType !== 'document' ||
+        entry.id === targetDocumentId
+      ) continue
+      const content = await this.storage.readDocument(vaultId, entry.id)
+      for (const reference of collectInternalDocumentReferences(content)) {
+        if (reference.documentId === targetDocumentId) {
+          sources.push({ documentId: entry.id, title: entry.title, nodeId: reference.nodeId })
+        }
+      }
+    }
+    if (sources.length > 0) {
+      throw new KnowledgeError(
+        'CONFLICT',
+        `文档仍被 ${sources.length} 处内部引用，不能删除`,
+        sources,
+      )
     }
   }
 
@@ -1083,18 +1141,43 @@ export class KnowledgeService {
     return this.deleteMindMap(vaultId, documentId, mindMapId, origin)
   }
 
-  async importAsset(vaultId: string, documentId: string, mimeType: string, bytes: Uint8Array, origin: MutationOrigin = 'renderer'): Promise<{ id: string; mimeType: string }> {
+  async importAsset(
+    vaultId: string,
+    documentId: string,
+    mimeType: string,
+    bytes: Uint8Array,
+    origin: MutationOrigin = 'renderer',
+    fileName?: string,
+  ): Promise<{ id: string; mimeType: string; fileName?: string }> {
     return this.mutate(vaultId, 'asset.import', documentId, async () => {
       await this.getDocument(vaultId, documentId)
-      const extension = MIME_EXTENSIONS[mimeType.toLowerCase()]
-      if (!extension || !(bytes instanceof Uint8Array) || bytes.byteLength === 0) {
-        throw new KnowledgeError('INVALID_INPUT', '图片类型或内容无效')
+      const normalizedMimeType = mimeType.trim().toLowerCase()
+      if (
+        !/^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/.test(normalizedMimeType) ||
+        normalizedMimeType.length > 255 || !(bytes instanceof Uint8Array) || bytes.byteLength === 0
+      ) {
+        throw new KnowledgeError('INVALID_INPUT', '附件类型或内容无效')
       }
+      if (fileName !== undefined) {
+        if (fileName.length > 255) throw new KnowledgeError('INVALID_INPUT', '附件文件名过长')
+        assertPathSegment(fileName, '附件文件名')
+      }
+      const suppliedExtension = fileName?.match(/\.([A-Za-z0-9]{1,16})$/)?.[1].toLowerCase()
+      const extension = MIME_EXTENSIONS[normalizedMimeType] ?? suppliedExtension ?? 'bin'
       const id = uuidv4()
       await this.storage.writeAsset(vaultId, documentId, id, extension, bytes)
       this.event(vaultId, 'asset', id, 'created', origin)
-      return { id, mimeType: mimeType.toLowerCase() }
+      return {
+        id,
+        mimeType: normalizedMimeType,
+        ...(fileName === undefined ? {} : { fileName }),
+      }
     })
+  }
+
+  async getAssetPath(vaultId: string, documentId: string, assetId: string): Promise<string> {
+    await this.getDocument(vaultId, documentId)
+    return this.storage.findAsset(vaultId, documentId, assetId)
   }
 
   async readAsset(vaultId: string, documentId: string, assetId: string): Promise<AssetData> {
@@ -1111,7 +1194,7 @@ export class KnowledgeService {
     return this.mutate(vaultId, 'asset.delete', assetId, async () => {
       const document = await this.storage.readDocument(vaultId, documentId)
       if (collectDocumentReferences(document).some((reference) => reference.type === 'asset' && reference.id === assetId)) {
-        throw new KnowledgeError('CONFLICT', '图片资源仍被文档引用')
+        throw new KnowledgeError('CONFLICT', '附件资源仍被文档引用')
       }
       await this.storage.deleteAsset(vaultId, documentId, assetId)
       this.event(vaultId, 'asset', assetId, 'deleted', origin)

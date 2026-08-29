@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { formatHotkeyDisplay } from '../utils/hotkeys'
+import { FileSymlink, ListCollapse, Paperclip } from 'lucide-react'
+import { SLASH_COMMAND_BY_ID, type SlashCommandId } from '../editor/nodeCatalog'
 
 interface CommandMenuProps {
   position: { x: number; y: number }
@@ -10,7 +12,7 @@ interface CommandMenuProps {
 }
 
 interface CommandItem {
-  id: string
+  id: SlashCommandId
   title: string
   icon: React.ReactNode
   shortcut?: {
@@ -20,15 +22,22 @@ interface CommandItem {
 }
 
 interface NavItem {
-  id: string          // 实际命令 id (h1-h6, bullet, ordered...)
+  id: SlashCommandId  // 实际命令 id (h1-h6, bullet, ordered...)
   type: 'heading' | 'command'
   headingLevel?: number  // 1-6
 }
 
+function commandTitle(id: SlashCommandId): string {
+  return SLASH_COMMAND_BY_ID.get(id)?.title ?? id
+}
+
 const baseCommands: CommandItem[] = [
+  { id: 'documentReference', title: commandTitle('documentReference'), icon: <FileSymlink className="h-4 w-4" /> },
+  { id: 'fileAttachment', title: commandTitle('fileAttachment'), icon: <Paperclip className="h-4 w-4" /> },
+  { id: 'details', title: commandTitle('details'), icon: <ListCollapse className="h-4 w-4" /> },
   {
     id: 'bullet',
-    title: '无序列表',
+    title: commandTitle('bullet'),
     icon: (
       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
@@ -38,7 +47,7 @@ const baseCommands: CommandItem[] = [
   },
   {
     id: 'ordered',
-    title: '有序列表',
+    title: commandTitle('ordered'),
     icon: (
       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h10M7 16h10M4 8h.01M4 12h.01M4 16h.01" />
@@ -48,7 +57,7 @@ const baseCommands: CommandItem[] = [
   },
   {
     id: 'task',
-    title: '待办事项',
+    title: commandTitle('task'),
     icon: (
       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -57,7 +66,7 @@ const baseCommands: CommandItem[] = [
   },
   {
     id: 'quote',
-    title: '引用',
+    title: commandTitle('quote'),
     icon: (
       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
@@ -67,7 +76,7 @@ const baseCommands: CommandItem[] = [
   },
   {
     id: 'code',
-    title: '代码块',
+    title: commandTitle('code'),
     icon: (
       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
@@ -77,7 +86,7 @@ const baseCommands: CommandItem[] = [
   },
   {
     id: 'table',
-    title: '表格',
+    title: commandTitle('table'),
     icon: (
       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5h16M4 12h16M4 19h16M4 5v14M10 5v14M16 5v14M20 5v14" />
@@ -86,7 +95,7 @@ const baseCommands: CommandItem[] = [
   },
   {
     id: 'divider',
-    title: '分割线',
+    title: commandTitle('divider'),
     icon: (
       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
@@ -95,7 +104,7 @@ const baseCommands: CommandItem[] = [
   },
   {
     id: 'image',
-    title: '图片',
+    title: commandTitle('image'),
     icon: (
       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -105,7 +114,7 @@ const baseCommands: CommandItem[] = [
   },
   {
     id: 'canvas',
-    title: '画布',
+    title: commandTitle('canvas'),
     icon: (
       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
@@ -115,7 +124,7 @@ const baseCommands: CommandItem[] = [
   },
   {
     id: 'mindmap',
-    title: '思维导图',
+    title: commandTitle('mindmap'),
     icon: (
       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
@@ -128,7 +137,7 @@ const baseCommands: CommandItem[] = [
 // 构建扁平导航序列：H1-H6 + 其他命令
 function buildNavItems(): NavItem[] {
   const headings: NavItem[] = [1, 2, 3, 4, 5, 6].map(level => ({
-    id: `h${level}`,
+    id: `h${level}` as SlashCommandId,
     type: 'heading' as const,
     headingLevel: level,
   }))
@@ -140,11 +149,11 @@ function buildNavItems(): NavItem[] {
 }
 
 // 命令映射（用于搜索过滤）
-const commandMap = new Map<string, CommandItem>(baseCommands.map(c => [c.id, c]))
+const commandMap = new Map<SlashCommandId, CommandItem>(baseCommands.map(c => [c.id, c]))
 const headingMap = new Map<number, CommandItem>(
   [1, 2, 3, 4, 5, 6].map(level => [
     level,
-    { id: `h${level}`, title: `H${level}`, icon: <span className="text-xs font-bold">H{level}</span> },
+    { id: `h${level}` as SlashCommandId, title: commandTitle(`h${level}` as SlashCommandId), icon: <span className="text-xs font-bold">H{level}</span> },
   ])
 )
 
@@ -255,10 +264,7 @@ function CommandMenu({
 
   // 自动聚焦输入框
   useEffect(() => {
-    const timer = setTimeout(() => {
-      inputRef.current?.focus()
-    }, 50)
-    return () => clearTimeout(timer)
+    inputRef.current?.focus()
   }, [])
 
   // 点击外部关闭
@@ -281,7 +287,7 @@ function CommandMenu({
   }
 
   // 获取 navItem 在 navItems 中的索引
-  const getNavIndex = (id: string, headingLevel?: number): number => {
+  const getNavIndex = (id: SlashCommandId | '', headingLevel?: number): number => {
     return navItems.findIndex(n => {
       if (n.type === 'heading') return n.headingLevel === headingLevel
       return n.id === id

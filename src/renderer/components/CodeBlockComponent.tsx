@@ -1,5 +1,6 @@
 import { NodeViewWrapper, NodeViewContent, NodeViewProps } from '@tiptap/react'
 import { useState, useRef, useEffect } from 'react'
+import { Check, Copy, WrapText } from 'lucide-react'
 
 // 支持的语言列表
 const LANGUAGES = [
@@ -30,6 +31,8 @@ const LANGUAGES = [
 
 function CodeBlockComponent({ node, updateAttributes }: NodeViewProps) {
   const [dropdownOpen, setDropdownOpen] = useState(false)
+  const [wrap, setWrap] = useState(false)
+  const [copied, setCopied] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
   // 点击外部关闭下拉
@@ -48,9 +51,20 @@ function CodeBlockComponent({ node, updateAttributes }: NodeViewProps) {
   const currentLanguage = node.attrs.language || 'plaintext'
   const currentLabel = LANGUAGES.find(l => l.value === currentLanguage)?.label || '纯文本'
 
+  const copyCode = async () => {
+    await navigator.clipboard.writeText(node.textContent)
+    setCopied(true)
+    window.setTimeout(() => setCopied(false), 1200)
+  }
+
   return (
     <NodeViewWrapper className="code-block-wrapper">
-      <div className="code-block-header">
+      <div
+        className="code-block-header"
+        contentEditable={false}
+        data-code-block-control=""
+        onPointerDown={(event) => event.stopPropagation()}
+      >
         <div className="relative" ref={dropdownRef}>
           <button
             className="code-block-language-btn"
@@ -79,9 +93,23 @@ function CodeBlockComponent({ node, updateAttributes }: NodeViewProps) {
             </div>
           )}
         </div>
+        <div className="code-block-local-actions" role="toolbar" aria-label="代码块本地操作">
+          <button
+            type="button"
+            className={wrap ? 'is-active' : ''}
+            aria-label={wrap ? '关闭自动换行' : '开启自动换行'}
+            title={wrap ? '关闭自动换行' : '开启自动换行'}
+            onClick={() => setWrap((value) => !value)}
+          >
+            <WrapText aria-hidden="true" size={14} />
+          </button>
+          <button type="button" aria-label="复制代码" title="复制代码" onClick={() => void copyCode()}>
+            {copied ? <Check aria-hidden="true" size={14} /> : <Copy aria-hidden="true" size={14} />}
+          </button>
+        </div>
       </div>
-      <pre>
-        <NodeViewContent as="code" />
+      <pre className={wrap ? 'is-wrapped' : ''}>
+        <NodeViewContent<'code'> as="code" />
       </pre>
     </NodeViewWrapper>
   )

@@ -22,6 +22,11 @@ const addressableNodeTypes = [
   'canvasReference',
   'mindmapReference',
   'assetImage',
+  'documentReference',
+  'fileAttachment',
+  'details',
+  'detailsSummary',
+  'detailsContent',
 ]
 
 function createNodeId(): string {

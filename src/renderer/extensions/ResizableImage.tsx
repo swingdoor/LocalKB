@@ -1,6 +1,14 @@
 import { Node, mergeAttributes } from '@tiptap/core'
 import { ReactNodeViewRenderer, NodeViewWrapper } from '@tiptap/react'
 import React, { useCallback, useEffect, useRef, useState } from 'react'
+import type { EditorInteractionCoordinator } from '../editor/interactionContext'
+
+interface ResizableImageOptions {
+  inline: boolean
+  allowBase64: boolean
+  HTMLAttributes: Record<string, unknown>
+  interaction?: EditorInteractionCoordinator
+}
 
 // 声明命令类型
 declare module '@tiptap/core' {
@@ -13,35 +21,52 @@ declare module '@tiptap/core' {
 }
 
 // 可调整大小的图片组件
-const ResizableImageComponent = ({ node, updateAttributes, selected }: any) => {
+const ResizableImageComponent = ({ node, updateAttributes, selected, extension }: any) => {
+  const options = extension.options as ResizableImageOptions
   const imgRef = useRef<HTMLImageElement>(null)
   const [isResizing, setIsResizing] = useState(false)
   const [startX, setStartX] = useState(0)
   const [startWidth, setStartWidth] = useState(0)
+  const [draftWidth, setDraftWidth] = useState<number | null>(node.attrs.width ?? null)
+  const draftWidthRef = useRef<number | null>(node.attrs.width ?? null)
 
   const { src, alt, title, width, textAlign } = node.attrs
 
   // 判断是否是画布（画布的 title 属性是 base64 编码的 Excalidraw 数据）
   const isCanvas = title && title.length > 100
 
+  useEffect(() => {
+    if (isResizing) return
+    const nextWidth = typeof width === 'number' ? width : null
+    draftWidthRef.current = nextWidth
+    setDraftWidth(nextWidth)
+  }, [isResizing, width])
+
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
     setIsResizing(true)
     setStartX(e.clientX)
-    setStartWidth(imgRef.current?.offsetWidth || 0)
-  }, [])
+    const measuredWidth = imgRef.current?.offsetWidth || 0
+    setStartWidth(measuredWidth)
+    draftWidthRef.current = measuredWidth
+    setDraftWidth(measuredWidth)
+    options.interaction?.beginGesture('nodeResizing', 'image')
+  }, [options.interaction])
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (!isResizing) return
       const diff = e.clientX - startX
       const newWidth = Math.max(100, startWidth + diff)
-      updateAttributes({ width: newWidth })
+      draftWidthRef.current = newWidth
+      setDraftWidth(newWidth)
     }
 
     const handleMouseUp = () => {
       setIsResizing(false)
+      options.interaction?.endGesture('nodeResizing')
+      if (draftWidthRef.current !== null) updateAttributes({ width: Math.round(draftWidthRef.current) })
     }
 
     if (isResizing) {
@@ -53,7 +78,9 @@ const ResizableImageComponent = ({ node, updateAttributes, selected }: any) => {
       document.removeEventListener('mousemove', handleMouseMove)
       document.removeEventListener('mouseup', handleMouseUp)
     }
-  }, [isResizing, startX, startWidth, updateAttributes])
+  }, [isResizing, options.interaction, startX, startWidth, updateAttributes])
+
+  useEffect(() => () => options.interaction?.endGesture('nodeResizing'), [options.interaction])
 
   const alignStyle: React.CSSProperties = {
     display: 'flex',
@@ -67,7 +94,7 @@ const ResizableImageComponent = ({ node, updateAttributes, selected }: any) => {
         style={{ 
           position: 'relative', 
           display: 'inline-block',
-          width: width ? `${width}px` : 'auto',
+          width: draftWidth ? `${draftWidth}px` : 'auto',
         }}
       >
         <img
@@ -82,6 +109,10 @@ const ResizableImageComponent = ({ node, updateAttributes, selected }: any) => {
             borderRadius: '4px',
           }}
           draggable={false}
+          onDragStart={(event) => {
+            event.preventDefault()
+            event.stopPropagation()
+          }}
         />
         
         {/* 调整大小的手柄 */}
@@ -130,7 +161,7 @@ const ResizableImageComponent = ({ node, updateAttributes, selected }: any) => {
 }
 
 // 自定义可调整大小的图片扩展
-export const ResizableImage = Node.create({
+export const ResizableImage = Node.create<ResizableImageOptions>({
   name: 'image',
 
   addOptions() {
@@ -138,6 +169,7 @@ export const ResizableImage = Node.create({
       inline: false,
       allowBase64: true,
       HTMLAttributes: {},
+      interaction: undefined,
     }
   },
 
@@ -149,7 +181,7 @@ export const ResizableImage = Node.create({
     return this.options.inline ? 'inline' : 'block'
   },
 
-  draggable: true,
+  draggable: false,
 
   addAttributes() {
     return {

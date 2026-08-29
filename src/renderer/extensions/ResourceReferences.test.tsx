@@ -8,16 +8,27 @@ import { collectDocumentReferences } from '@shared/knowledge-operations'
 import type { TipTapDocument } from '@shared/knowledge-types'
 import {
   AssetImage, calculatePreviewFit, CanvasReference, CanvasReferenceView, clampPreviewZoom,
-  MindMapReference, MindMapReferenceView,
+  MindMapReference, MindMapReferenceView, stopInteractiveResourceEvent,
 } from './ResourceReferences'
 import { StableNodeId } from './StableNodeId'
+import { createEditorInteractionCoordinator } from '../editor/interactionContext'
 
 const mindMock = vi.hoisted(() => ({ instances: [] as any[] }))
+
+async function flushResourceLoad() {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0))
+  })
+}
 
 vi.mock('@excalidraw/excalidraw', () => ({
   exportToSvg: vi.fn(async () => {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
     svg.setAttribute('viewBox', '0 0 1200 800')
+    Object.defineProperty(svg, 'viewBox', {
+      configurable: true,
+      value: { baseVal: { width: 1200, height: 800 } },
+    })
     return svg
   }),
 }))
@@ -101,6 +112,9 @@ describe('native resource reference nodes', () => {
     expect(html).toContain(`data-canvas-id="${canvasId}"`)
     expect(html).toContain(`data-mindmap-id="${mindmapId}"`)
     expect(html).toContain(`data-asset-id="${assetId}"`)
+    expect(html).toContain('data-width="480"')
+    expect(html).toContain('data-height="360"')
+    expect(html).toContain('data-text-align="center"')
     expect(document.content?.[0].attrs).toEqual({
       canvasId, nodeId: nodeIds[0], width: 480, height: 360, textAlign: 'center',
     })
@@ -114,7 +128,81 @@ describe('native resource reference nodes', () => {
     ])
     expect(editor.schema.nodes.canvasReference.spec.draggable).toBe(false)
     expect(editor.schema.nodes.mindmapReference.spec.draggable).toBe(false)
+
+    const roundTripEditor = new Editor({
+      extensions: [StarterKit, CanvasReference, MindMapReference, AssetImage, StableNodeId],
+      content: html,
+    })
+    expect(roundTripEditor.getJSON()).toEqual(document)
+    roundTripEditor.destroy()
     editor.destroy()
+  })
+
+  it('preserves resource node identities and attributes when top-level blocks are reordered', () => {
+    const editor = new Editor({
+      extensions: [StarterKit, CanvasReference, MindMapReference, StableNodeId],
+      content: {
+        type: 'doc',
+        content: [
+          {
+            type: 'canvasReference',
+            attrs: {
+              canvasId: '11111111-1111-4111-8111-111111111111',
+              nodeId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+              width: 480,
+              height: 360,
+              textAlign: 'right',
+            },
+          },
+          {
+            type: 'mindmapReference',
+            attrs: {
+              mindmapId: '22222222-2222-4222-8222-222222222222',
+              nodeId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+              width: 640,
+              height: 420,
+              textAlign: 'center',
+            },
+          },
+        ],
+      },
+    })
+    const original = editor.getJSON() as TipTapDocument
+    const firstNode = editor.state.doc.child(0)
+    const secondNode = editor.state.doc.child(1)
+    const secondPosition = firstNode.nodeSize
+
+    editor.view.dispatch(
+      editor.state.tr
+        .delete(secondPosition, secondPosition + secondNode.nodeSize)
+        .insert(0, secondNode),
+    )
+
+    const reordered = editor.getJSON() as TipTapDocument
+    expect(reordered.content?.slice(0, 2).map((node) => node.type)).toEqual([
+      'mindmapReference',
+      'canvasReference',
+    ])
+    expect(reordered.content?.[0].attrs).toEqual(original.content?.[1].attrs)
+    expect(reordered.content?.[1].attrs).toEqual(original.content?.[0].attrs)
+    editor.destroy()
+  })
+
+  it('lets passive hover reach the editor drag handle while isolating resource gestures', () => {
+    const viewport = document.createElement('div')
+    const content = document.createElement('div')
+    viewport.dataset.resourceViewport = ''
+    viewport.appendChild(content)
+
+    const hover = new MouseEvent('mousemove', { bubbles: true })
+    Object.defineProperty(hover, 'target', { configurable: true, value: content })
+    expect(stopInteractiveResourceEvent({ event: hover })).toBe(false)
+
+    for (const eventType of ['mousedown', 'click', 'wheel']) {
+      const gesture = new MouseEvent(eventType, { bubbles: true })
+      Object.defineProperty(gesture, 'target', { configurable: true, value: content })
+      expect(stopInteractiveResourceEvent({ event: gesture })).toBe(true)
+    }
   })
 
   it('mounts resource references through TipTap React node views', async () => {
@@ -168,8 +256,7 @@ describe('native resource reference nodes', () => {
     })
   })
 
-  it('provides accessible canvas preview zoom, fit, and edit controls', async () => {
-    const onEdit = vi.fn()
+  it('provides accessible canvas preview zoom and fit controls', async () => {
     window.electronAPI = { knowledge: {
       getCanvas: vi.fn(async () => ({ ok: true, data: {
         type: 'excalidraw', version: 2, source: 'test', elements: [], appState: {}, files: {},
@@ -181,19 +268,19 @@ describe('native resource reference nodes', () => {
       root.render(<CanvasReferenceView
         node={{ attrs: { canvasId: 'canvas-id', width: null, height: null, textAlign: 'left' } }}
         updateAttributes={vi.fn()}
-        selected={false}
-        extension={{ options: { vaultId: 'vault-id', documentId: 'document-id', onEdit } }}
+        selected
+        extension={{ options: { vaultId: 'vault-id', documentId: 'document-id', onEdit: vi.fn() } }}
       />)
       await Promise.resolve()
       await Promise.resolve()
     })
+    await flushResourceLoad()
 
     expect(container.querySelector('[role="toolbar"]')).not.toBeNull()
-    expect(container.querySelector('[data-resource-resize]')).not.toBeNull()
+    expect(container.querySelector('[aria-label="调整预览宽度"]')).not.toBeNull()
     const image = container.querySelector<HTMLImageElement>('img[alt="画布预览"]')!
     expect(image.className).toContain('h-full')
-    act(() => container.querySelector<HTMLButtonElement>('[aria-label="编辑资源"]')!.click())
-    expect(onEdit).toHaveBeenCalledWith('canvas-id')
+    expect(container.querySelector('[aria-label="适应窗口"]')).not.toBeNull()
   })
 
   it('renders edge-scoped resize handles without a full-window interaction layer', async () => {
@@ -221,7 +308,51 @@ describe('native resource reference nodes', () => {
     expect(container.querySelector('[style*="position: fixed"]')).toBeNull()
   })
 
-  it('fits mind maps and exposes native zoom and edit controls', async () => {
+  it('ends the exclusive resize phase before committing the final resource size', async () => {
+    const interaction = createEditorInteractionCoordinator()
+    const phases: string[] = []
+    interaction.subscribe(() => phases.push(interaction.getSnapshot().kind))
+    const updateAttributes = vi.fn(() => {
+      expect(interaction.getSnapshot().kind).toBe('idle')
+    })
+    window.electronAPI = { knowledge: {
+      getCanvas: vi.fn(async () => ({ ok: true, data: {
+        type: 'excalidraw', version: 2, source: 'test', elements: [], appState: {}, files: {},
+      } })),
+      onChanged: vi.fn(() => () => undefined),
+    } } as any
+
+    await act(async () => {
+      root.render(<CanvasReferenceView
+        node={{ attrs: { canvasId: 'canvas-id', width: 500, height: 300, textAlign: 'left' } }}
+        updateAttributes={updateAttributes}
+        selected
+        extension={{ options: {
+          vaultId: 'vault-id', documentId: 'document-id', onEdit: vi.fn(), interaction,
+        } }}
+      />)
+      await Promise.resolve()
+    })
+
+    const frame = container.querySelector<HTMLElement>('[data-resource-selection-frame]')!
+    vi.spyOn(frame, 'getBoundingClientRect').mockReturnValue({
+      x: 0, y: 0, top: 0, left: 0, right: 500, bottom: 300, width: 500, height: 300,
+      toJSON: () => ({}),
+    })
+    const handle = container.querySelector<HTMLElement>('[data-resource-resize-handle="se"]')!
+    await act(async () => {
+      handle.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: 500, clientY: 300 }))
+      document.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 540, clientY: 340 }))
+      document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: 540, clientY: 340 }))
+      await Promise.resolve()
+    })
+
+    expect(phases).toEqual(['nodeResizing', 'idle'])
+    expect(updateAttributes).toHaveBeenCalledTimes(1)
+    expect(updateAttributes).toHaveBeenCalledWith({ width: 540, height: 340 })
+  })
+
+  it('fits mind maps and exposes native zoom controls and edit navigation', async () => {
     const onEdit = vi.fn()
     window.electronAPI = { knowledge: {
       getMindMap: vi.fn(async () => ({ ok: true, data: {
@@ -240,6 +371,7 @@ describe('native resource reference nodes', () => {
       await Promise.resolve()
       await Promise.resolve()
     })
+    await flushResourceLoad()
 
     expect(container.querySelector('[aria-label="当前缩放 75%"]')).not.toBeNull()
     expect(container.querySelector<HTMLElement>('[data-resource-viewport]')?.dataset.resourceInteractive).toBe('true')
@@ -255,7 +387,10 @@ describe('native resource reference nodes', () => {
     act(() => container.querySelector<HTMLButtonElement>('[aria-label="放大预览"]')!.click())
     expect(container.querySelector('[aria-label="当前缩放 115%"]')).not.toBeNull()
     expect(mindMock.instances[0].scaleVal).toBeCloseTo(1.15)
-    act(() => container.querySelector<HTMLButtonElement>('[aria-label="编辑资源"]')!.click())
+    act(() => container.querySelector('[data-resource-frame]')!.dispatchEvent(new MouseEvent('dblclick', {
+      bubbles: true,
+      cancelable: true,
+    })))
     expect(onEdit).toHaveBeenCalledWith('mindmap-id')
   })
 })

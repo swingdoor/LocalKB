@@ -19,7 +19,11 @@ import type {
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const TIPTAP_NODE_TYPE_SET = new Set<string>(TIPTAP_NODE_TYPES)
 const TIPTAP_MARK_TYPE_SET = new Set<string>(TIPTAP_MARK_TYPES)
-const TIPTAP_INLINE_NODE_TYPE_SET = new Set<string>(['text', 'hardBreak'])
+const TIPTAP_INLINE_NODE_TYPE_SET = new Set<string>([
+  'text',
+  'hardBreak',
+  'documentReference',
+])
 const TIPTAP_BLOCK_NODE_TYPE_SET = new Set<string>([
   'paragraph',
   'blockquote',
@@ -34,12 +38,51 @@ const TIPTAP_BLOCK_NODE_TYPE_SET = new Set<string>([
   'canvasReference',
   'mindmapReference',
   'assetImage',
+  'fileAttachment',
+  'details',
 ])
 const REFERENCE_ID_ATTRS = {
   [TIPTAP_REFERENCE_NODE_TYPES.canvas]: 'canvasId',
   [TIPTAP_REFERENCE_NODE_TYPES.mindmap]: 'mindmapId',
   [TIPTAP_REFERENCE_NODE_TYPES.asset]: 'assetId',
+  [TIPTAP_REFERENCE_NODE_TYPES.attachment]: 'assetId',
+  [TIPTAP_REFERENCE_NODE_TYPES.document]: 'documentId',
 } as const
+
+function assertNodeAttributeKeys(node: TipTapNode, path: string, allowed: string[]): void {
+  const attributes = node.attrs ?? {}
+  const unexpected = Object.keys(attributes).find((key) => !allowed.includes(key))
+  if (unexpected) {
+    throw new KnowledgeValidationError(
+      'INVALID_INPUT', `TipTap 节点 ${path} (${node.type}) 包含不受支持的属性: ${unexpected}`,
+    )
+  }
+}
+
+function assertOptionalNodeId(node: TipTapNode, path: string): void {
+  if (node.attrs?.nodeId !== undefined && node.attrs.nodeId !== null) {
+    assertUuid(node.attrs.nodeId, `TipTap 节点 ${path} 的 attrs.nodeId`)
+  }
+}
+
+function assertMimeType(value: unknown, label: string): asserts value is string {
+  if (
+    typeof value !== 'string' || value.length === 0 || value.length > 255 ||
+    !/^[A-Za-z0-9!#$&^_.+-]+\/[A-Za-z0-9!#$&^_.+-]+$/.test(value)
+  ) {
+    throw new KnowledgeValidationError('INVALID_INPUT', `${label} 无效`)
+  }
+}
+
+function assertHighlightColor(value: unknown, label: string): void {
+  if (value === undefined || value === null) return
+  if (
+    typeof value !== 'string' || value.length > 64 ||
+    !/^(#[0-9a-fA-F]{3,8}|[A-Za-z]{1,32}|rgba?\([0-9.,%\s]+\)|hsla?\([0-9.,%\s]+\))$/.test(value)
+  ) {
+    throw new KnowledgeValidationError('INVALID_INPUT', `${label} 无效`)
+  }
+}
 
 export class KnowledgeValidationError extends Error {
   constructor(
@@ -170,8 +213,22 @@ function assertTipTapNode(
       if (mark.attrs !== undefined && !isPlainObject(mark.attrs)) {
         throw new KnowledgeValidationError('CORRUPT_DATA', `TipTap 节点 ${path} mark 属性无效`)
       }
+      if (mark.type === 'underline' && mark.attrs !== undefined && Object.keys(mark.attrs).length > 0) {
+        throw new KnowledgeValidationError('INVALID_INPUT', `TipTap 节点 ${path} underline 不能包含属性`)
+      }
+      if (mark.type === 'highlight') {
+        const attrs = mark.attrs ?? {}
+        const unexpected = Object.keys(attrs).find((key) => key !== 'color')
+        if (unexpected) {
+          throw new KnowledgeValidationError(
+            'INVALID_INPUT', `TipTap 节点 ${path} highlight 包含不受支持的属性: ${unexpected}`,
+          )
+        }
+        assertHighlightColor(attrs.color, `TipTap 节点 ${path} highlight 的 attrs.color`)
+      }
     })
   }
+  assertOptionalNodeId(value as TipTapNode, path)
   const referenceIdAttr = REFERENCE_ID_ATTRS[value.type as keyof typeof REFERENCE_ID_ATTRS]
   if (referenceIdAttr) {
     assertUuid(value.attrs?.[referenceIdAttr], `${value.type} 的 attrs.${referenceIdAttr}`)
@@ -231,6 +288,27 @@ function assertTipTapNodeStructure(node: TipTapNode, path: string): void {
     case 'heading':
       assertChildrenMatch(node, path, (type) => TIPTAP_INLINE_NODE_TYPE_SET.has(type), '只能包含行内节点')
       return
+    case 'detailsSummary':
+      assertChildrenMatch(node, path, (type) => type === 'text', '只能包含文本节点')
+      return
+    case 'detailsContent':
+      if (!node.content?.length) {
+        throw new KnowledgeValidationError('INVALID_INPUT', `TipTap 节点 ${path} (detailsContent) 必须包含块节点`)
+      }
+      assertChildrenMatch(node, path, (type) => TIPTAP_BLOCK_NODE_TYPE_SET.has(type), '只能包含块节点')
+      return
+    case 'details':
+      assertNodeAttributeKeys(node, path, ['nodeId'])
+      if (
+        node.content?.length !== 2 ||
+        node.content[0]?.type !== 'detailsSummary' ||
+        node.content[1]?.type !== 'detailsContent'
+      ) {
+        throw new KnowledgeValidationError(
+          'INVALID_INPUT', `TipTap 节点 ${path} (details) 必须依次包含 detailsSummary 和 detailsContent`,
+        )
+      }
+      return
     case 'codeBlock':
       assertChildrenMatch(node, path, (type) => type === 'text', '只能包含文本节点')
       return
@@ -281,6 +359,34 @@ function assertTipTapNodeStructure(node: TipTapNode, path: string): void {
         )
       }
       return
+    case 'documentReference':
+      assertNodeAttributeKeys(node, path, ['nodeId', 'documentId', 'label'])
+      if (
+        node.attrs?.label !== undefined && node.attrs.label !== null &&
+        (typeof node.attrs.label !== 'string' || node.attrs.label.length > 500)
+      ) {
+        throw new KnowledgeValidationError(
+          'INVALID_INPUT', `TipTap 节点 ${path} (documentReference) 的 attrs.label 无效`,
+        )
+      }
+      return
+    case 'fileAttachment': {
+      assertNodeAttributeKeys(node, path, ['nodeId', 'assetId', 'fileName', 'mimeType', 'size'])
+      const fileName = node.attrs?.fileName
+      if (typeof fileName !== 'string' || fileName.length > 255) {
+        throw new KnowledgeValidationError(
+          'INVALID_INPUT', `TipTap 节点 ${path} (fileAttachment) 的 attrs.fileName 无效`,
+        )
+      }
+      assertPathSegment(fileName, `TipTap 节点 ${path} (fileAttachment) 的 attrs.fileName`)
+      assertMimeType(node.attrs?.mimeType, `TipTap 节点 ${path} (fileAttachment) 的 attrs.mimeType`)
+      if (!Number.isSafeInteger(node.attrs?.size) || Number(node.attrs?.size) < 0) {
+        throw new KnowledgeValidationError(
+          'INVALID_INPUT', `TipTap 节点 ${path} (fileAttachment) 的 attrs.size 无效`,
+        )
+      }
+      return
+    }
     default:
       return
   }

@@ -5,12 +5,28 @@ import { settingsStore } from './settings-store'
 import { IPC_CHANNELS } from '../shared/ipc-channels'
 import type {
   AISettings,
+  AttachmentFile,
   HotkeyConfig,
   PolishResult,
 } from '../shared/types'
 
 let mainWindowRef: BrowserWindow | null = null
 let ipcHandlersRegistered = false
+const MAX_ATTACHMENT_BYTES = 16 * 1024 * 1024
+
+const ATTACHMENT_MIME_TYPES: Record<string, string> = {
+  '.txt': 'text/plain', '.md': 'text/markdown', '.csv': 'text/csv', '.json': 'application/json',
+  '.pdf': 'application/pdf', '.zip': 'application/zip', '.7z': 'application/x-7z-compressed',
+  '.doc': 'application/msword', '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  '.xls': 'application/vnd.ms-excel', '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  '.ppt': 'application/vnd.ms-powerpoint', '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp',
+  '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.mp4': 'video/mp4', '.mov': 'video/quicktime',
+}
+
+function attachmentMimeType(filePath: string): string {
+  return ATTACHMENT_MIME_TYPES[path.extname(filePath).toLowerCase()] ?? 'application/octet-stream'
+}
 
 function getMainWindow(): BrowserWindow | undefined {
   if (!mainWindowRef || mainWindowRef.isDestroyed()) {
@@ -103,6 +119,28 @@ export function setupIpcHandlers(mainWindow: BrowserWindow) {
       }
     }
     return null
+  })
+
+  ipcMain.handle(IPC_CHANNELS.FILE.SELECT_ATTACHMENT, async (): Promise<AttachmentFile | null> => {
+    const options = { properties: ['openFile'] } satisfies Electron.OpenDialogOptions
+    const owner = getMainWindow()
+    const result = owner
+      ? await dialog.showOpenDialog(owner, options)
+      : await dialog.showOpenDialog(options)
+    if (result.canceled || result.filePaths.length === 0) return null
+
+    const filePath = result.filePaths[0]
+    const stat = await fs.promises.stat(filePath)
+    if (!stat.isFile()) throw new Error('只能选择普通文件作为附件')
+    if (stat.size === 0 || stat.size > MAX_ATTACHMENT_BYTES) {
+      throw new Error('附件大小必须为 1 字节至 16 MiB')
+    }
+    const bytes = await fs.promises.readFile(filePath)
+    return {
+      name: path.basename(filePath),
+      mimeType: attachmentMimeType(filePath),
+      bytes: new Uint8Array(bytes),
+    }
   })
 
   ipcMain.handle(IPC_CHANNELS.FILE.DOWNLOAD_IMAGE, async (_, imageData: string, defaultName: string) => {

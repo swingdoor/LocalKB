@@ -132,7 +132,7 @@ export function createMcpToolDefinitions(service: KnowledgeService): ToolDefinit
       name: 'document_search', description: '搜索一个或全部文档并返回可直接更新的原生 TipTap 节点。', readOnly: true,
       inputSchema: z.strictObject({
         vaultId: uuidSchema, documentId: uuidSchema.optional(), query: z.string().min(1),
-        nodeTypes: z.array(z.string().min(1)).max(50).optional(),
+        nodeTypes: z.array(z.enum(TIPTAP_NODE_TYPES)).max(50).optional(),
         caseSensitive: z.boolean().optional(), limit: searchLimitSchema,
       }),
       run: async ({ vaultId, query, documentId, nodeTypes, caseSensitive, limit }) => jsonData(
@@ -145,7 +145,7 @@ export function createMcpToolDefinitions(service: KnowledgeService): ToolDefinit
       ),
     },
     {
-      name: 'document_insert', description: '插入编辑器支持的原生 TipTap 节点。根级块节点（段落、列表、画布/思维导图/附件引用等）必须使用 parentNodeId=null；paragraph/heading 只能包含 text、hardBreak 行内节点。画布、思维导图、附件只能使用 canvasReference、mindmapReference、assetImage 引用节点。',
+      name: 'document_insert', description: '插入编辑器支持的原生 TipTap JSON。根级块节点必须使用 parentNodeId=null；paragraph/heading 只能包含 text、hardBreak、documentReference。内部文档引用使用 documentReference + attrs.documentId；附件须先 asset_import，再插入 fileAttachment + attrs.assetId/fileName/mimeType/size；Details 必须为 details > detailsSummary(text*) + detailsContent(block+)；下划线/高亮写在 text.marks。所有非 text 节点使用稳定 attrs.nodeId。',
       inputSchema: z.strictObject({
         vaultId: uuidSchema, documentId: uuidSchema,
         parentNodeId: uuidSchema.nullable().optional(), index: z.number().int().min(0).optional(),
@@ -159,7 +159,7 @@ export function createMcpToolDefinitions(service: KnowledgeService): ToolDefinit
       ),
     },
     {
-      name: 'document_update', description: '按稳定节点 ID 更新明确提交的 type、attrs 或完整 content[]；更新后的整篇文档必须满足 TipTap 内容模型，例如 paragraph/heading 的 content 只能是 text/hardBreak。',
+      name: 'document_update', description: '按稳定节点 ID 只更新明确提交的 type、attrs 或完整 content[]，未提交字段保持不变。更新后的整篇文档仍须满足原生 TipTap 内容模型；文档引用改 attrs.documentId/label，附件元数据须与所属资源一致，underline/highlight 属于 text.marks，Details 始终保持 summary + content 两个子节点。',
       inputSchema: z.strictObject({
         vaultId: uuidSchema, documentId: uuidSchema,
         updates: z.array(z.strictObject({
@@ -354,14 +354,18 @@ export function createMcpToolDefinitions(service: KnowledgeService): ToolDefinit
       run: async ({ vaultId, mindMapId }) => jsonData(await service.removeMindMap(String(vaultId), String(mindMapId), 'mcp')),
     },
     {
-      name: 'asset_import', description: '从 canonical base64 无损导入附件，不修改文档；随后用 document_insert 插入 type=assetImage、attrs.assetId=返回 ID 的引用节点。',
+      name: 'asset_import', description: '从 canonical base64 无损导入文档所属资产，不修改文档。图片随后插入 assetImage；普通文件随后插入 fileAttachment，并逐字使用返回的 id、mimeType、byteLength 以及输入 fileName 作为 attrs.assetId/mimeType/size/fileName。',
       inputSchema: z.strictObject({
         vaultId: uuidSchema, documentId: uuidSchema, mimeType: z.string().min(1).max(100),
+        fileName: z.string().min(1).max(255).optional(),
         dataBase64: z.string().min(4).max(Math.ceil(MAX_ASSET_BYTES * 4 / 3) + 4),
       }),
-      run: async ({ vaultId, documentId, mimeType, dataBase64 }) => {
+      run: async ({ vaultId, documentId, mimeType, fileName, dataBase64 }) => {
         const bytes = canonicalBase64(String(dataBase64))
-        const result = await service.importAsset(String(vaultId), String(documentId), String(mimeType), bytes, 'mcp')
+        const result = await service.importAsset(
+          String(vaultId), String(documentId), String(mimeType), bytes, 'mcp',
+          fileName === undefined ? undefined : String(fileName),
+        )
         return jsonData({ ...result, byteLength: bytes.byteLength })
       },
     },

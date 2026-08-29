@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { BubbleMenu, Editor } from '@tiptap/react'
+import type { Editor } from '@tiptap/core'
+import { BubbleMenu, type BubbleMenuProps as TiptapBubbleMenuProps } from '@tiptap/react/menus'
+import { CellSelection } from '@tiptap/pm/tables'
 import {
   BetweenHorizontalEnd,
   BetweenHorizontalStart,
@@ -15,12 +17,15 @@ import {
   Rows3,
   SplitSquareHorizontal,
   Table2,
-  Trash2,
 } from 'lucide-react'
+import type { EditorInteractionCoordinator } from '../editor/interactionContext'
+import { resolveEditorMenuContext } from '../editor/interactionContext'
+import { useEditorInteractionPhase } from '../editor/useEditorInteraction'
 
 interface TableMenuProps {
   editor: Editor
   hidden?: boolean
+  interaction: EditorInteractionCoordinator
 }
 
 interface TableActionsProps {
@@ -35,15 +40,14 @@ interface TableActionProps {
   label: string
   onSelect: () => void
   disabled?: boolean
-  danger?: boolean
 }
 
-function TableAction({ icon, label, onSelect, disabled = false, danger = false }: TableActionProps) {
+function TableAction({ icon, label, onSelect, disabled = false }: TableActionProps) {
   return (
     <button
       type="button"
       role="menuitem"
-      className={`table-action${danger ? ' is-danger' : ''}`}
+      className="table-action"
       onClick={onSelect}
       disabled={disabled}
     >
@@ -138,13 +142,6 @@ function TableActions({ editor, onClose, className = '', style }: TableActionsPr
         disabled={!editor.can().toggleHeaderColumn()}
         onSelect={() => run(() => editor.chain().focus().toggleHeaderColumn().run())}
       />
-      <TableAction
-        icon={<Trash2 />}
-        label="删除表格"
-        danger
-        disabled={!editor.can().deleteTable()}
-        onSelect={() => run(() => editor.chain().focus().deleteTable().run())}
-      />
     </div>
   )
 }
@@ -155,26 +152,66 @@ function getCurrentTableRect(editor: Editor): DOMRect {
   return element?.closest('table')?.getBoundingClientRect() ?? editor.view.dom.getBoundingClientRect()
 }
 
-function TableMenu({ editor, hidden = false }: TableMenuProps) {
+function selectClickedTableCell(editor: Editor, pos: number): boolean {
+  const resolved = editor.state.doc.resolve(pos)
+  for (let depth = resolved.depth; depth > 0; depth -= 1) {
+    const nodeType = resolved.node(depth).type.name
+    if (nodeType !== 'tableCell' && nodeType !== 'tableHeader') continue
+    const cellPos = resolved.before(depth)
+    editor.view.dispatch(editor.state.tr.setSelection(CellSelection.create(editor.state.doc, cellPos)))
+    editor.view.focus()
+    return true
+  }
+  return false
+}
+
+function TableMenu({ editor, hidden = false, interaction }: TableMenuProps) {
+  const phase = useEditorInteractionPhase(interaction)
   const [triggerOpen, setTriggerOpen] = useState(false)
   const [contextPosition, setContextPosition] = useState<{ x: number; y: number } | null>(null)
 
-  const closeMenus = () => {
+  const closeMenus = useCallback(() => {
     setTriggerOpen(false)
     setContextPosition(null)
-  }
+  }, [])
+
+  const getTableVirtualElement = useCallback(() => ({
+    getBoundingClientRect: () => getCurrentTableRect(editor),
+  }), [editor])
+
+  const hideTableTrigger = useCallback(() => {
+    setTriggerOpen(false)
+  }, [])
+
+  const tableMenuOptions = useMemo<NonNullable<TiptapBubbleMenuProps['options']>>(() => ({
+    placement: 'top-start',
+    offset: 8,
+    onHide: hideTableTrigger,
+  }), [hideTableTrigger])
+
+  const shouldShowTableMenu = useCallback<NonNullable<TiptapBubbleMenuProps['shouldShow']>>(({ state, view, element }) => {
+    const context = resolveEditorMenuContext({
+      state,
+      phase: interaction.getSnapshot(),
+      editable: editor.isEditable,
+    })
+    return !hidden && !contextPosition && context.kind === 'table'
+      && (view.hasFocus() || element.contains(document.activeElement))
+  }, [contextPosition, editor, hidden, interaction])
 
   useEffect(() => {
     const handleContextMenu = (event: MouseEvent) => {
       const target = event.target instanceof Element ? event.target : null
-      if (hidden || !target?.closest('table')) return
+      if (hidden || interaction.getSnapshot().kind !== 'idle' || !target?.closest('table')) return
 
       event.preventDefault()
       const position = editor.view.posAtCoords({ left: event.clientX, top: event.clientY })
+      if (!position) return
       const clickedCell = target.closest('td, th')
-      if (position && !clickedCell?.classList.contains('selectedCell')) {
-        editor.chain().focus().setTextSelection(position.pos).run()
+      if (!clickedCell?.classList.contains('selectedCell')) {
+        if (!selectClickedTableCell(editor, position.pos)) return
       }
+      if (!(editor.state.selection instanceof CellSelection)) return
 
       setTriggerOpen(false)
       setContextPosition({
@@ -185,7 +222,7 @@ function TableMenu({ editor, hidden = false }: TableMenuProps) {
 
     editor.view.dom.addEventListener('contextmenu', handleContextMenu)
     return () => editor.view.dom.removeEventListener('contextmenu', handleContextMenu)
-  }, [editor, hidden])
+  }, [editor, hidden, interaction])
 
   useEffect(() => {
     if (!triggerOpen && !contextPosition) return
@@ -201,32 +238,27 @@ function TableMenu({ editor, hidden = false }: TableMenuProps) {
       document.removeEventListener('pointerdown', handlePointerDown)
       document.removeEventListener('keydown', handleKeyDown)
     }
-  }, [triggerOpen, contextPosition])
+  }, [triggerOpen, contextPosition, closeMenus])
 
   useEffect(() => {
-    if (hidden) closeMenus()
-  }, [hidden])
+    if (hidden || phase.kind !== 'idle') closeMenus()
+  }, [hidden, phase.kind, closeMenus])
 
   return (
     <>
       <BubbleMenu
         editor={editor}
         pluginKey="tableMenu"
-        tippyOptions={{
-          duration: 100,
-          placement: 'top-start',
-          maxWidth: 'none',
-          getReferenceClientRect: () => getCurrentTableRect(editor),
-          onHidden: () => setTriggerOpen(false),
-        }}
-        shouldShow={({ view, element }) => (
-          !hidden
-          && editor.isEditable
-          && editor.isActive('table')
-          && (view.hasFocus() || element.contains(document.activeElement))
-        )}
+        updateDelay={0}
+        getReferencedVirtualElement={getTableVirtualElement}
+        options={tableMenuOptions}
+        shouldShow={shouldShowTableMenu}
       >
-        <div className="table-menu-control" onPointerDown={(event) => event.stopPropagation()}>
+        <div
+          className="table-menu-control"
+          style={{ display: phase.kind === 'idle' && !contextPosition ? 'block' : 'none' }}
+          onPointerDown={(event) => event.stopPropagation()}
+        >
           <button
             type="button"
             className="table-menu-trigger"

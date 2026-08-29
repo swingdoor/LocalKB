@@ -1,31 +1,40 @@
 import { EditorContent, useEditor } from '@tiptap/react'
 import type { Editor } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
-import { act } from 'react'
+import { act, useMemo } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { CanvasReference } from './ResourceReferences'
-import EditorBubbleMenu from '../components/BubbleMenu'
+import { CanvasMenu } from '../components/editor-menus/ResourceMenus'
+import EditorBlockDragHandle from '../components/EditorBlockDragHandle'
+import { createEditorInteractionCoordinator } from '../editor/interactionContext'
 
-vi.mock('@tiptap/react', async () => {
-  const actual = await vi.importActual<typeof import('@tiptap/react')>('@tiptap/react')
-  return {
-    ...actual,
-    BubbleMenu: ({ children }: { children: React.ReactNode }) => children,
-  }
-})
+vi.mock('@tiptap/react/menus', () => ({
+  BubbleMenu: ({ children }: { children: React.ReactNode }) => children,
+}))
 
 vi.mock('@excalidraw/excalidraw', () => ({
   exportToSvg: vi.fn(async () => {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
     svg.setAttribute('viewBox', '0 0 1200 800')
+    Object.defineProperty(svg, 'viewBox', {
+      configurable: true,
+      value: { baseVal: { width: 1200, height: 800 } },
+    })
     return svg
   }),
 }))
 
 let mountedEditor: Editor | null = null
 
+async function flushResourceLoad() {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0))
+  })
+}
+
 function ResourceEditor({ withMenu = false }: { withMenu?: boolean }) {
+  const interaction = useMemo(() => createEditorInteractionCoordinator(), [])
   const editor = useEditor({
     extensions: [
       StarterKit,
@@ -46,9 +55,16 @@ function ResourceEditor({ withMenu = false }: { withMenu?: boolean }) {
   return (
     <>
       {editor && withMenu && (
-        <EditorBubbleMenu editor={editor} vaultId="vault-id" documentId="document-id" />
+        <CanvasMenu
+          editor={editor}
+          interaction={interaction}
+          vaultId="vault-id"
+          documentId="document-id"
+          onEdit={() => undefined}
+        />
       )}
       <EditorContent editor={editor} />
+      {editor && <EditorBlockDragHandle editor={editor} interaction={interaction} />}
     </>
   )
 }
@@ -84,9 +100,11 @@ describe('resource references in a mounted TipTap editor', () => {
       await Promise.resolve()
       await Promise.resolve()
     })
+    await flushResourceLoad()
 
     expect(container.querySelector('[data-resource-frame]')).not.toBeNull()
     expect(container.querySelector('[role="toolbar"]')).not.toBeNull()
+    expect(document.body.querySelectorAll('.editor-drag-handle')).toHaveLength(1)
   })
 
   it('keeps the preview viewport mounted while the TipTap node view is detached', async () => {
@@ -96,6 +114,7 @@ describe('resource references in a mounted TipTap editor', () => {
       await Promise.resolve()
       await Promise.resolve()
     })
+    await flushResourceLoad()
 
     expect(container.querySelector('[data-resource-frame]')).not.toBeNull()
     await act(async () => {

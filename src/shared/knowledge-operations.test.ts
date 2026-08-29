@@ -8,6 +8,8 @@ import type {
 import {
   appendDocumentNodes,
   collectDocumentReferences,
+  collectFileAttachmentReferences,
+  collectInternalDocumentReferences,
   deleteCanvasElements,
   deleteCanvasElementsStrict,
   deleteCanvasFiles,
@@ -215,6 +217,68 @@ describe('native JSON guards', () => {
 })
 
 describe('TipTap native operations', () => {
+  it('validates and collects native rich document nodes and marks', () => {
+    const targetDocumentId = '11111111-1111-4111-8111-111111111111'
+    const assetId = '22222222-2222-4222-8222-222222222222'
+    const value: TipTapDocument = {
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph', attrs: { nodeId: NODE_A }, content: [
+            { type: 'text', text: '标记', marks: [
+              { type: 'underline' },
+              { type: 'highlight', attrs: { color: '#FEF08A' } },
+            ] },
+            { type: 'documentReference', attrs: {
+              nodeId: NODE_C, documentId: targetDocumentId, label: '目标',
+            } },
+          ],
+        },
+        { type: 'fileAttachment', attrs: {
+          nodeId: '44444444-4444-4444-8444-444444444444',
+          assetId, fileName: 'notes.txt', mimeType: 'text/plain', size: 12,
+        } },
+        {
+          type: 'details', attrs: { nodeId: '55555555-5555-4555-8555-555555555555' },
+          content: [
+            { type: 'detailsSummary', attrs: { nodeId: '66666666-6666-4666-8666-666666666666' }, content: [{ type: 'text', text: '摘要' }] },
+            { type: 'detailsContent', attrs: { nodeId: '77777777-7777-4777-8777-777777777777' }, content: [{ type: 'paragraph', attrs: { nodeId: '88888888-8888-4888-8888-888888888888' } }] },
+          ],
+        },
+      ],
+    }
+
+    expect(() => assertTipTapDocument(value)).not.toThrow()
+    expect(collectInternalDocumentReferences(value)).toEqual([{
+      documentId: targetDocumentId, nodeId: NODE_C, label: '目标',
+    }])
+    expect(collectFileAttachmentReferences(value)).toEqual([{
+      assetId, nodeId: '44444444-4444-4444-8444-444444444444',
+      fileName: 'notes.txt', mimeType: 'text/plain', size: 12,
+    }])
+    expect(collectDocumentReferences(value)).toEqual([{
+      type: 'asset', id: assetId, nodeId: '44444444-4444-4444-8444-444444444444',
+    }])
+  })
+
+  it('rejects malformed native rich document structures', () => {
+    expect(() => assertTipTapDocument({
+      type: 'doc', content: [{ type: 'inlineMath', attrs: { latex: 'x' } }],
+    })).toThrow(/不受支持/)
+    expect(() => assertTipTapDocument({
+      type: 'doc', content: [{
+        type: 'details',
+        content: [{ type: 'detailsContent', content: [{ type: 'paragraph' }] }],
+      }],
+    })).toThrow(/detailsSummary/)
+    expect(() => assertTipTapDocument({
+      type: 'doc', content: [{ type: 'fileAttachment', attrs: {
+        assetId: '22222222-2222-4222-8222-222222222222',
+        fileName: '../escape.txt', mimeType: 'text/plain', size: 1,
+      } }],
+    })).toThrow(/fileName/)
+  })
+
   it('assigns deterministic stable IDs and rejects duplicates', () => {
     const ids = [NODE_A, NODE_B]
     const normalized = normalizeDocumentNodeIds({

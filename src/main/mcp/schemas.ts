@@ -39,7 +39,14 @@ const tipTapMarkSchema = z.object({
   attrs: jsonObjectSchema.optional(),
 }).catchall(jsonValueSchema)
 
-const TIPTAP_NODE_GUIDE = '原生 TipTap 节点。doc/blockquote/tableCell/tableHeader 包含块节点；paragraph/heading 只包含 text 或 hardBreak；bulletList/orderedList 只包含 listItem；taskList 只包含 taskItem；table 只包含 tableRow；tableRow 只包含 tableHeader/tableCell。canvasReference、mindmapReference、assetImage 是无 content 的块级引用节点。'
+const TIPTAP_NODE_GUIDE = [
+  '原生 TipTap 节点。doc/blockquote/tableCell/tableHeader 包含块节点；paragraph/heading 只包含 text、hardBreak 或 documentReference。',
+  '内部引用：{"type":"documentReference","attrs":{"nodeId":"UUID","documentId":"同库文档 UUID","label":"回退标题"}}。',
+  '附件：先 asset_import，再插入 {"type":"fileAttachment","attrs":{"nodeId":"UUID","assetId":"返回 UUID","fileName":"原文件名","mimeType":"MIME","size":字节数}}。',
+  'Details 必须依次包含 detailsSummary(text*) 与 detailsContent(block+)；三类节点都使用 attrs.nodeId。',
+  '下划线和高亮写在 text.marks：{"type":"underline"}、{"type":"highlight","attrs":{"color":"#FEF08A"}}。',
+  'canvasReference、mindmapReference、assetImage、fileAttachment、documentReference 都不能包含 content。',
+].join(' ')
 
 export const tipTapNodeSchema: z.ZodType<TipTapNode> = z.lazy(() => z.object({
   type: z.enum(TIPTAP_NODE_TYPES),

@@ -137,6 +137,51 @@ describe('KnowledgeService', () => {
     expect(await storage.exists(storage.paths.resourceTrash(vault.id, first.id))).toBe(false)
   })
 
+  it('enforces internal document links and native attachment integrity', async () => {
+    const vault = await service.createVault('V')
+    const source = await service.createContent(vault.id, 'document', 'Source', null)
+    const target = await service.createContent(vault.id, 'document', 'Target', null)
+    const asset = await service.importAsset(
+      vault.id, source.id, 'text/plain', new Uint8Array([1, 2, 3]), 'renderer', 'notes.txt',
+    )
+    await service.replaceDocument(vault.id, source.id, documentWith([
+      {
+        type: 'paragraph', attrs: { nodeId: NODE_A }, content: [{
+          type: 'documentReference', attrs: {
+            nodeId: RESOURCE_A, documentId: target.id, label: 'Target',
+          },
+        }],
+      },
+      { type: 'fileAttachment', attrs: {
+        nodeId: RESOURCE_B, assetId: asset.id, fileName: 'notes.txt',
+        mimeType: 'text/plain', size: 3,
+      } },
+    ]))
+
+    await expect(service.deleteContent(vault.id, target.id)).rejects.toMatchObject({
+      code: 'CONFLICT', details: [expect.objectContaining({ documentId: source.id, nodeId: RESOURCE_A })],
+    })
+    await expect(service.deleteAsset(vault.id, source.id, asset.id)).rejects
+      .toMatchObject({ code: 'CONFLICT' })
+    await expect(service.replaceDocument(vault.id, source.id, documentWith([{
+      type: 'fileAttachment', attrs: {
+        nodeId: RESOURCE_B, assetId: asset.id, fileName: 'notes.txt',
+        mimeType: 'text/plain', size: 2,
+      },
+    }]))).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+    await expect(service.replaceDocument(vault.id, source.id, documentWith([{
+      type: 'paragraph', attrs: { nodeId: NODE_A }, content: [{
+        type: 'documentReference', attrs: {
+          nodeId: RESOURCE_A, documentId: '99999999-9999-4999-8999-999999999999',
+        },
+      }],
+    }]))).rejects.toMatchObject({ code: 'NOT_FOUND' })
+
+    await service.replaceDocument(vault.id, source.id, documentWith([]))
+    await service.deleteAsset(vault.id, source.id, asset.id)
+    await service.deleteTreeEntry(vault.id, target.id)
+  })
+
   it('supports top-level/embedded canvas, mind-map, and asset operation groups', async () => {
     const vault = await service.createVault('V')
     const document = await service.createContent(vault.id, 'document', 'D', null)

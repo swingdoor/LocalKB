@@ -88,6 +88,21 @@ async function resolveAsset(
   }
 }
 
+async function resolveDocumentReference(element: HTMLElement, vaultId: string): Promise<void> {
+  const documentId = element.dataset.documentId
+  const fallback = element.dataset.label || element.textContent || '文档引用'
+  if (!documentId) { element.textContent = fallback; return }
+  const result = await window.electronAPI.knowledge.getDocument(vaultId, documentId)
+  element.textContent = result.ok ? `文档：${result.data.title}` : `文档：${fallback}（不可用）`
+}
+
+function resolveFileAttachment(element: HTMLElement): void {
+  const fileName = element.dataset.fileName || '未命名文件'
+  const size = Number(element.dataset.size ?? 0)
+  element.textContent = `附件：${fileName}${Number.isFinite(size) ? `（${size} 字节）` : ''}`
+  element.style.cssText = 'padding:10px 12px;border:1px solid #ddd;border-radius:6px;color:#555;'
+}
+
 export async function resolveResourceReferencesForExport(
   html: string,
   vaultId: string,
@@ -102,6 +117,13 @@ export async function resolveResourceReferencesForExport(
       .map((element) => resolveMindMap(element, vaultId, documentId)),
     ...[...container.querySelectorAll<HTMLImageElement>('img[data-asset-image]')]
       .map((element) => resolveAsset(element, vaultId, documentId)),
+    ...[...container.querySelectorAll<HTMLElement>('[data-document-reference]')]
+      .map((element) => resolveDocumentReference(element, vaultId)),
   ])
+  container.querySelectorAll<HTMLElement>('[data-file-attachment]')
+    .forEach(resolveFileAttachment)
+  container.querySelectorAll<HTMLDetailsElement>('details').forEach((element) => {
+    element.open = true
+  })
   return container.innerHTML
 }

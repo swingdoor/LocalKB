@@ -1,9 +1,10 @@
-import { app, BrowserWindow, ipcMain, shell, protocol, net } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, shell, protocol, net } from 'electron'
+import { promises as fs } from 'fs'
 import * as path from 'path'
 import { setupIpcHandlers } from './ipc'
 import { IPC_CHANNELS } from '../shared/ipc-channels'
 import { FileKnowledgeStore } from './knowledge/file-knowledge-store'
-import { KnowledgeService } from './knowledge/knowledge-service'
+import { KnowledgeError, KnowledgeService } from './knowledge/knowledge-service'
 import { registerKnowledgeIpc } from './knowledge/knowledge-ipc'
 import { handleKnowledgeResourceRequest } from './knowledge/knowledge-resource-protocol'
 import { migrateLegacyVaultsAtStartup } from './knowledge/startup-migration'
@@ -164,7 +165,23 @@ app.whenReady().then(async () => {
   knowledgeService = new KnowledgeService(storage, (entry) => {
     console.error('Knowledge operation failed', entry)
   })
-  registerKnowledgeIpc(knowledgeService, ipcMain, () => mainWindow?.webContents)
+  registerKnowledgeIpc(knowledgeService, ipcMain, () => mainWindow?.webContents, {
+    open: async ({ vaultId, documentId, assetId }) => {
+      const assetPath = await knowledgeService!.getAssetPath(vaultId, documentId, assetId)
+      const error = await shell.openPath(assetPath)
+      if (error) throw new KnowledgeError('PERSISTENCE_ERROR', `无法打开附件：${error}`)
+    },
+    saveAs: async ({ vaultId, documentId, assetId, fileName }) => {
+      const owner = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined
+      const result = owner
+        ? await dialog.showSaveDialog(owner, { defaultPath: fileName })
+        : await dialog.showSaveDialog({ defaultPath: fileName })
+      if (result.canceled || !result.filePath) return false
+      const asset = await knowledgeService!.readAsset(vaultId, documentId, assetId)
+      await fs.writeFile(result.filePath, asset.bytes)
+      return true
+    },
+  })
   mcpManager = new McpManager(new McpHttpService(
     knowledgeService,
     app.getVersion(),

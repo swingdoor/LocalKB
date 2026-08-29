@@ -26,6 +26,11 @@ export const TIPTAP_NODE_TYPES = [
   'canvasReference',
   'mindmapReference',
   'assetImage',
+  'documentReference',
+  'fileAttachment',
+  'details',
+  'detailsSummary',
+  'detailsContent',
 ] as const
 
 export const TIPTAP_MARK_TYPES = [
@@ -35,12 +40,16 @@ export const TIPTAP_MARK_TYPES = [
   'strike',
   'link',
   'textStyle',
+  'underline',
+  'highlight',
 ] as const
 
 export const TIPTAP_REFERENCE_NODE_TYPES = {
   canvas: 'canvasReference',
   mindmap: 'mindmapReference',
   asset: 'assetImage',
+  attachment: 'fileAttachment',
+  document: 'documentReference',
 } as const
 
 export const EXCALIDRAW_ELEMENT_TYPES = [
@@ -166,6 +175,20 @@ export interface DocumentReference {
   type: EmbeddedResourceType
   id: string
   nodeId: string
+}
+
+export interface InternalDocumentReference {
+  documentId: string
+  nodeId: string
+  label?: string
+}
+
+export interface FileAttachmentReference {
+  assetId: string
+  nodeId: string
+  fileName: string
+  mimeType: string
+  size: number
 }
 
 export interface AssetData {

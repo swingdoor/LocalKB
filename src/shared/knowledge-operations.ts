@@ -11,6 +11,8 @@ import type {
   DocumentSearchResult,
   DocumentNodePatch,
   DocumentReference,
+  InternalDocumentReference,
+  FileAttachmentReference,
   ExcalidrawElement,
   ExcalidrawScene,
   JsonObject,
@@ -94,7 +96,54 @@ export function collectDocumentReferences(document: TipTapDocument): DocumentRef
       references.push({ type: 'mindmap', id: node.attrs.mindmapId, nodeId: id })
     } else if (node.type === TIPTAP_REFERENCE_NODE_TYPES.asset && typeof node.attrs?.assetId === 'string') {
       references.push({ type: 'asset', id: node.attrs.assetId, nodeId: id })
+    } else if (node.type === TIPTAP_REFERENCE_NODE_TYPES.attachment && typeof node.attrs?.assetId === 'string') {
+      references.push({ type: 'asset', id: node.attrs.assetId, nodeId: id })
     }
+  })
+  return references
+}
+
+export function collectInternalDocumentReferences(
+  document: TipTapDocument,
+): InternalDocumentReference[] {
+  assertTipTapDocument(document)
+  const references: InternalDocumentReference[] = []
+  visitNodes(document, (node) => {
+    const id = nodeId(node)
+    if (
+      !id || node.type !== TIPTAP_REFERENCE_NODE_TYPES.document ||
+      typeof node.attrs?.documentId !== 'string'
+    ) return
+    references.push({
+      documentId: node.attrs.documentId,
+      nodeId: id,
+      ...(typeof node.attrs.label === 'string' ? { label: node.attrs.label } : {}),
+    })
+  })
+  return references
+}
+
+export function collectFileAttachmentReferences(
+  document: TipTapDocument,
+): FileAttachmentReference[] {
+  assertTipTapDocument(document)
+  const references: FileAttachmentReference[] = []
+  visitNodes(document, (node) => {
+    const id = nodeId(node)
+    if (
+      !id || node.type !== TIPTAP_REFERENCE_NODE_TYPES.attachment ||
+      typeof node.attrs?.assetId !== 'string' ||
+      typeof node.attrs.fileName !== 'string' ||
+      typeof node.attrs.mimeType !== 'string' ||
+      typeof node.attrs.size !== 'number'
+    ) return
+    references.push({
+      assetId: node.attrs.assetId,
+      nodeId: id,
+      fileName: node.attrs.fileName,
+      mimeType: node.attrs.mimeType,
+      size: node.attrs.size,
+    })
   })
   return references
 }

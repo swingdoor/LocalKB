@@ -174,6 +174,95 @@ body {
   min-height: 100%;
 }
 
+.editor-content-shell {
+  position: relative;
+}
+
+.editor-drag-handle {
+  display: grid;
+  width: 1.5rem;
+  height: 1.5rem;
+  place-items: center;
+  border: 0;
+  border-radius: 0.375rem;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: grab;
+  opacity: 0.72;
+  transition: color 120ms ease, background-color 120ms ease, opacity 120ms ease;
+}
+
+.editor-drag-handle:hover,
+.editor-drag-handle:focus-visible {
+  background: var(--bg-secondary);
+  color: var(--primary-color);
+  opacity: 1;
+  outline: none;
+}
+
+.editor-drag-handle[data-dragging="true"] {
+  cursor: grabbing;
+  opacity: 1;
+}
+
+.editor-drag-handle svg {
+  pointer-events: none;
+}
+
+.editor-block-actions-menu {
+  position: fixed;
+  z-index: 100;
+  width: 220px;
+  max-height: min(480px, calc(100vh - 16px));
+  padding: 0.375rem;
+  overflow-y: auto;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 0.5rem;
+  box-shadow: 0 10px 25px rgba(15, 23, 42, 0.16);
+}
+
+.editor-block-actions-heading {
+  padding: 0.35rem 0.5rem 0.15rem;
+  color: var(--text-secondary);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+.editor-block-action {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  width: 100%;
+  min-height: 2rem;
+  padding: 0.25rem 0.5rem;
+  color: var(--text-primary);
+  background: transparent;
+  border: 0;
+  border-radius: 0.35rem;
+  cursor: pointer;
+  font-size: 0.8125rem;
+  text-align: left;
+}
+
+.editor-block-action:hover,
+.editor-block-action:focus-visible {
+  background: var(--bg-secondary);
+  outline: none;
+}
+
+.editor-block-action.is-danger {
+  color: var(--error-color);
+}
+
+.editor-block-action svg {
+  width: 1rem;
+  height: 1rem;
+  flex: none;
+}
+
 /* Resource node views need a full editor-width row so left/center/right positions
    the whole preview container rather than only aligning content inside it. */
 .ProseMirror > .node-canvasReference,
@@ -181,6 +270,149 @@ body {
 .ProseMirror > .node-assetImage {
   display: block;
   width: 100%;
+}
+
+.ProseMirror div[data-type="details"] {
+  position: relative;
+  padding: 0.5rem 0.75rem 0.5rem 2rem;
+  border: 1px solid var(--border-color);
+  border-radius: 0.5rem;
+  background: var(--bg-secondary);
+}
+
+.ProseMirror div[data-type="details"] > button {
+  position: absolute;
+  top: 0.65rem;
+  left: 0.65rem;
+  width: 1rem;
+  height: 1rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.ProseMirror div[data-type="details"] > button::before {
+  content: '›';
+  display: block;
+  font-size: 1.25rem;
+  line-height: 0.8;
+  transform-origin: center;
+  transition: transform 0.15s ease;
+}
+
+.ProseMirror div[data-type="details"].is-open > button::before {
+  transform: rotate(90deg);
+}
+
+.ProseMirror summary {
+  font-weight: 600;
+  cursor: text;
+  list-style: none;
+}
+
+.ProseMirror summary::marker {
+  content: '';
+  display: none;
+}
+
+.ProseMirror summary::-webkit-details-marker {
+  display: none;
+}
+
+.ProseMirror div[data-type="detailsContent"] {
+  padding-top: 0.5rem;
+}
+
+.document-reference {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin: 0 0.1rem;
+  padding: 0.08rem 0.35rem;
+  border-radius: 0.3rem;
+  background: color-mix(in srgb, var(--primary-color) 10%, transparent);
+  color: var(--primary-color);
+  cursor: pointer;
+  vertical-align: baseline;
+}
+
+.document-reference[data-missing="true"] {
+  background: color-mix(in srgb, var(--error-color) 10%, transparent);
+  color: var(--error-color);
+}
+
+.file-attachment {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: min(100%, 680px);
+  padding: 0.75rem;
+  border: 1px solid var(--border-color);
+  border-radius: 0.65rem;
+  background: var(--bg-editor);
+}
+
+.file-attachment.is-selected {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 1px var(--primary-color);
+}
+
+.file-attachment-icon {
+  display: grid;
+  flex: 0 0 2.25rem;
+  height: 2.25rem;
+  place-items: center;
+  border-radius: 0.5rem;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+}
+
+.file-attachment-meta {
+  min-width: 0;
+  flex: 1;
+}
+
+.file-attachment-name {
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-attachment-detail,
+.file-attachment-error {
+  margin-top: 0.15rem;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+}
+
+.file-attachment-error { color: var(--error-color); }
+
+.file-attachment-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 0.25rem;
+}
+
+.file-attachment-actions button {
+  display: grid;
+  width: 2rem;
+  height: 2rem;
+  place-items: center;
+  border: 0;
+  border-radius: 0.4rem;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.file-attachment-actions button:hover {
+  background: var(--bg-secondary);
+  color: var(--primary-color);
 }
 
 .resource-resize-handle {
@@ -223,6 +455,46 @@ body {
   content: '';
   background: var(--primary-color);
   border-radius: 1px;
+}
+
+.resource-preview-controls {
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--bg-primary) 94%, transparent);
+  border: 1px solid var(--border-color);
+}
+
+.resource-preview-control-button {
+  display: grid;
+  width: 1.75rem;
+  height: 1.75rem;
+  place-items: center;
+  padding: 0;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 0;
+  border-radius: 0.3rem;
+  cursor: pointer;
+}
+
+.resource-preview-control-button:hover,
+.resource-preview-control-button:focus-visible {
+  color: var(--primary-color);
+  background: var(--bg-secondary);
+  outline: none;
+}
+
+.resource-preview-zoom {
+  color: var(--text-secondary);
+}
+
+.resource-preview-status {
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--bg-editor) 88%, transparent);
+  border: 0;
+}
+
+.resource-preview-status.is-error {
+  color: var(--error-color);
 }
 
 .ProseMirror > * + * {
@@ -453,7 +725,7 @@ body {
 /* 代码块头部 */
 .code-block-header {
   display: flex;
-  justify-content: flex-start;
+  justify-content: space-between;
   align-items: center;
   background: var(--code-header-bg);
   border: 1px solid var(--code-border);
@@ -462,6 +734,35 @@ body {
   margin-bottom: -1px;
   position: relative;
   z-index: 1;
+}
+
+.code-block-local-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.125rem;
+}
+
+.code-block-local-actions button {
+  display: grid;
+  width: 1.75rem;
+  height: 1.75rem;
+  place-items: center;
+  color: var(--code-comment);
+  background: transparent;
+  border: 0;
+  border-radius: 0.25rem;
+  cursor: pointer;
+}
+
+.code-block-local-actions button:hover,
+.code-block-local-actions button.is-active {
+  color: var(--code-text);
+  background: var(--bg-secondary);
+}
+
+.code-block-wrapper pre.is-wrapped code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .code-block-language-btn {
@@ -687,11 +988,54 @@ body {
   align-items: center;
   gap: 0.25rem;
   padding: 0.375rem 0.5rem;
-  background: white;
-  border: 1px solid #E2E8F0;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
   border-radius: 0.5rem;
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
   white-space: nowrap;
+}
+
+.editor-menu-select {
+  height: 1.75rem;
+  max-width: 7rem;
+  padding: 0 1.5rem 0 0.45rem;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 0.3rem;
+  font-size: 0.75rem;
+}
+
+.editor-menu-color-control {
+  position: relative;
+  display: grid;
+  width: 2rem;
+  height: 2rem;
+  place-items: center;
+  color: var(--text-secondary);
+  border-radius: 0.25rem;
+  cursor: pointer;
+}
+
+.editor-menu-color-control:hover {
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+}
+
+.editor-menu-color-control input {
+  position: absolute;
+  inset: auto 0.25rem 0.15rem;
+  width: 1.5rem;
+  height: 0.25rem;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  opacity: 0.9;
+}
+
+.bubble-menu > button.is-destructive {
+  color: var(--error-color);
 }
 
 .bubble-menu > button {
@@ -705,19 +1049,21 @@ body {
   border: none;
   border-radius: 0.25rem;
   cursor: pointer;
-  color: #64748B;
+  color: var(--text-secondary);
   transition: all 0.15s;
   flex-shrink: 0;
 }
 
-.bubble-menu > button:hover {
-  background: #F1F5F9;
-  color: #1E293B;
+.bubble-menu > button:hover,
+.bubble-menu > button:focus-visible {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  outline: none;
 }
 
 .bubble-menu > button.is-active {
-  background: #EFF6FF;
-  color: #2563EB;
+  background: color-mix(in srgb, var(--primary-color) 12%, transparent);
+  color: var(--primary-color);
 }
 
 /* 下拉菜单触发按钮 */
@@ -783,9 +1129,9 @@ body {
   gap: 0.375rem;
   height: 2rem;
   padding: 0 0.625rem;
-  color: #475569;
-  background: white;
-  border: 1px solid #E2E8F0;
+  color: var(--text-secondary);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
   border-radius: 0.375rem;
   box-shadow: 0 2px 5px rgba(15, 23, 42, 0.12);
   cursor: pointer;
@@ -793,9 +1139,11 @@ body {
 }
 
 .table-menu-trigger:hover,
+.table-menu-trigger:focus-visible,
 .table-menu-trigger[aria-expanded="true"] {
-  color: #1E293B;
-  background: #F8FAFC;
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+  outline: none;
 }
 
 .table-menu-trigger svg {
@@ -812,9 +1160,9 @@ body {
   max-height: min(460px, calc(100vh - 16px));
   padding: 0.375rem;
   overflow-y: auto;
-  color: #1E293B;
-  background: white;
-  border: 1px solid #E2E8F0;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
   border-radius: 0.5rem;
   box-shadow: 0 10px 25px rgba(15, 23, 42, 0.16);
 }
@@ -825,7 +1173,7 @@ body {
 
 .table-actions-heading {
   padding: 0.25rem 0.5rem 0.125rem;
-  color: #94A3B8;
+  color: var(--text-secondary);
   font-size: 0.6875rem;
   font-weight: 600;
   letter-spacing: 0.08em;
@@ -838,7 +1186,7 @@ body {
   width: 100%;
   height: 1.875rem;
   padding: 0 0.5rem;
-  color: #334155;
+  color: var(--text-primary);
   background: transparent;
   border: none;
   border-radius: 0.3rem;
@@ -848,8 +1196,8 @@ body {
 }
 
 .table-action:hover {
-  color: #0F172A;
-  background: #F1F5F9;
+  color: var(--text-primary);
+  background: var(--bg-secondary);
 }
 
 .table-action:disabled {
@@ -858,17 +1206,17 @@ body {
 }
 
 .table-action:disabled:hover {
-  color: #334155;
+  color: var(--text-primary);
   background: transparent;
 }
 
 .table-action.is-danger {
-  color: #DC2626;
+  color: var(--error-color);
 }
 
 .table-action.is-danger:hover {
-  color: #B91C1C;
-  background: #FEF2F2;
+  color: var(--error-color);
+  background: color-mix(in srgb, var(--error-color) 10%, transparent);
 }
 
 .table-action svg {
@@ -880,7 +1228,7 @@ body {
 .table-actions-separator {
   height: 1px;
   margin: 0.25rem 0.25rem 0.125rem;
-  background: #E2E8F0;
+  background: var(--border-color);
 }
 
 /* 命令菜单样式 */

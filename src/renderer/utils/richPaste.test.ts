@@ -1,9 +1,6 @@
 import { Editor } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
-import Table from '@tiptap/extension-table'
-import TableRow from '@tiptap/extension-table-row'
-import TableHeader from '@tiptap/extension-table-header'
-import TableCell from '@tiptap/extension-table-cell'
+import { Table, TableCell, TableHeader, TableRow } from '@tiptap/extension-table'
 import { describe, expect, it, vi } from 'vitest'
 import { handleRichPaste, looksLikeMarkdown, markdownToHtml, sanitizePastedHtml } from './richPaste'
 
@@ -65,13 +62,10 @@ describe('rich paste TipTap insertion', () => {
 
     expect(handleRichPaste(editor.view, event)).toBe(true)
     expect(event.preventDefault).toHaveBeenCalled()
-    expect(editor.getJSON()).toMatchObject({
-      type: 'doc',
-      content: [
-        { type: 'heading', attrs: { level: 1 } },
-        { type: 'bulletList' },
-      ],
-    })
+    expect(editor.getJSON().content?.slice(0, 2)).toMatchObject([
+      { type: 'heading', attrs: { level: 1 } },
+      { type: 'bulletList' },
+    ])
 
     editor.destroy()
   })
