@@ -51,7 +51,10 @@ export interface AttachmentFile {
 /**
  * AI 设置
  */
+export type AIProviderId = 'deepseek' | 'zhipu' | 'bailian' | 'minimax' | 'custom'
+
 export interface AISettings {
+  provider: AIProviderId
   apiKey: string
   baseUrl: string
   model: string
@@ -59,10 +62,19 @@ export interface AISettings {
   expandPrompt: string
 }
 
+export type AIProcessMode = 'polish' | 'expand' | 'custom'
+
+export interface AIProcessRequest {
+  requestId: string
+  mode: AIProcessMode
+  text: string
+  instruction?: string
+}
+
 /**
- * AI 处理结果（润色/扩写）
+ * AI 文字处理结果
  */
-export interface PolishResult {
+export interface AIProcessResult {
   success: boolean
   text?: string
   error?: string

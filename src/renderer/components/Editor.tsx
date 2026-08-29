@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { Download, FileText, Hash, ListTree, RotateCcw } from 'lucide-react'
 import { useEditor, EditorContent, ReactNodeViewRenderer } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
@@ -23,7 +24,7 @@ import CommandMenu from './CommandMenu'
 import TableMenu from './TableMenu'
 import DrawingEditorModal from './DrawingEditorModal'
 import MindMapEditorModal from './MindMapEditorModal'
-import PolishConfirmModal from './PolishConfirmModal'
+import AIProcessModal from './AIProcessModal'
 import DocumentReferencePicker from './DocumentReferencePicker'
 import EditorRootBlockControls from './EditorRootBlockControls'
 import EditorContextMenus from './editor-menus/EditorContextMenus'
@@ -43,6 +44,10 @@ import type { HotkeyConfig } from '@shared/types'
 import type { ContentSummary, LoadedDocument, TipTapDocument } from '@shared/knowledge-types'
 import { createEditorInteractionCoordinator } from '../editor/interactionContext'
 import { handleRootBlockDrop } from '../editor/rootBlockDrop'
+import { Button } from './ui/button'
+import { Input } from './ui/input'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu'
+import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 
 interface EditorProps {
   document: LoadedDocument
@@ -320,7 +325,7 @@ function Editor({ document, vaultId, onUpdate }: EditorProps) {
     interaction.setModalOpen('document-reference-picker', documentReferencePickerOpen)
     interaction.setModalOpen('canvas-editor', Boolean(canvasEdit.editingCanvas))
     interaction.setModalOpen('mindmap-editor', Boolean(mindMapEdit.editingMindMap))
-    interaction.setModalOpen('ai-confirm', aiProcess.showPolishModal)
+    interaction.setModalOpen('ai-confirm', aiProcess.showProcessModal)
     return () => {
       interaction.setModalOpen('document-reference-picker', false)
       interaction.setModalOpen('canvas-editor', false)
@@ -328,7 +333,7 @@ function Editor({ document, vaultId, onUpdate }: EditorProps) {
       interaction.setModalOpen('ai-confirm', false)
     }
   }, [
-    aiProcess.showPolishModal,
+    aiProcess.showProcessModal,
     canvasEdit.editingCanvas,
     documentReferencePickerOpen,
     interaction,
@@ -447,84 +452,67 @@ function Editor({ document, vaultId, onUpdate }: EditorProps) {
     }
   }, [editor, aiProcess])
 
+  const handleCustom = useCallback((text: string) => {
+    if (editor) aiProcess.beginCustomProcess(text, editor)
+  }, [editor, aiProcess])
+
   // AI 确认回调
   const handlePolishConfirm = useCallback(() => {
     if (editor) {
-      aiProcess.confirmPolish(editor)
+      aiProcess.confirmProcess(editor)
     }
   }, [editor, aiProcess])
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="flex h-full flex-col bg-background">
       {/* 文档标题 */}
-      <div className="px-4 py-2 flex-shrink-0">
+      <div className="flex-shrink-0 border-b px-4 py-2">
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1 min-w-0">
-            <input
+            <Input
               type="text"
+              aria-label="文档标题"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="w-full text-[22px] leading-7 font-medium bg-transparent border-none outline-none"
-              style={{ color: 'var(--text-primary)' }}
+              className="h-8 w-full border-0 px-0 text-[22px] font-medium leading-7 shadow-none focus-visible:ring-0"
               placeholder="无标题"
             />
-            <div className="mt-1 text-xs flex items-center gap-4" style={{ color: 'var(--text-secondary)' }}>
+            <div className="mt-1 flex items-center gap-4 text-xs text-muted-foreground">
               <span>创建于 {formatTime(document.createdAt)}</span>
               <span>上次保存 {formatTime(document.updatedAt)}</span>
               <span>{'\u5b57\u6570'} {characterCount}</span>
               {(pendingSave.pending || pendingSave.saving) && <span>正在保存…</span>}
               {pendingSave.error && (
-                <button
-                  type="button"
-                  className="text-red-500 underline"
+                <Button type="button" variant="link" size="sm" className="h-auto p-0 text-destructive"
                   onClick={() => void pendingSave.retry().catch(() => undefined)}
                 >
-                  保存失败，重试
-                </button>
+                  <RotateCcw className="mr-1 h-3 w-3" />保存失败，重试
+                </Button>
               )}
             </div>
           </div>
           <div className="flex flex-none items-center gap-2">
-            <button
-              onClick={togglePanel}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition-colors"
-              style={{ color: 'var(--text-secondary)' }}
-              title={isPanelVisible ? "隐藏目录" : "显示目录"}
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7" />
-              </svg>
-              <span>目录</span>
-            </button>
-            <button
-              onClick={toggleHeadingNumbers}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition-colors"
-              style={{ color: showHeadingNumbers ? 'var(--text-primary)' : 'var(--text-secondary)' }}
-              title={showHeadingNumbers ? "隐藏章节序号" : "显示章节序号"}
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" />
-              </svg>
-              <span>序号</span>
-            </button>
-            <button
-              onClick={handleExportPDF}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition-colors"
-              style={{ color: 'var(--text-secondary)' }}
-              title="导出PDF"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              <span>导出PDF</span>
-            </button>
+            <Tooltip>
+              <TooltipTrigger asChild><Button type="button" variant={isPanelVisible ? 'secondary' : 'ghost'} size="sm" onClick={togglePanel}><ListTree className="mr-2 h-4 w-4" />目录</Button></TooltipTrigger>
+              <TooltipContent>{isPanelVisible ? '隐藏目录' : '显示目录'}</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild><Button type="button" variant={showHeadingNumbers ? 'secondary' : 'ghost'} size="sm" onClick={toggleHeadingNumbers}><Hash className="mr-2 h-4 w-4" />序号</Button></TooltipTrigger>
+              <TooltipContent>{showHeadingNumbers ? '隐藏章节序号' : '显示章节序号'}</TooltipContent>
+            </Tooltip>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild><Button type="button" variant="ghost" size="sm"><Download className="mr-2 h-4 w-4" />导出</Button></DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={() => void handleExportPDF()}><FileText className="mr-2 h-4 w-4" />导出 PDF</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </div>
 
       {/* 编辑器内容 */}
       <div className="flex-1 flex overflow-hidden">
-        <div className={`flex-1 overflow-y-auto px-8 pb-8 ${showHeadingNumbers ? 'show-heading-numbers' : ''}`} style={{ backgroundColor: 'var(--bg-editor)' }}>
+        <div className={`flex-1 overflow-y-auto bg-background px-8 pb-8 ${showHeadingNumbers ? 'show-heading-numbers' : ''}`}>
           {editor && (
             <>
               <EditorContextMenus
@@ -538,11 +526,12 @@ function Editor({ document, vaultId, onUpdate }: EditorProps) {
                 onSelectDocument={openDocumentReferencePicker}
                 onPolish={handlePolish}
                 onExpand={handleExpand}
+                onCustom={handleCustom}
               />
               <TableMenu
                 editor={editor}
                 interaction={interaction}
-                hidden={aiProcess.showPolishModal || documentReferencePickerOpen || !!canvasEdit.editingCanvas || !!mindMapEdit.editingMindMap}
+                hidden={aiProcess.showProcessModal || documentReferencePickerOpen || !!canvasEdit.editingCanvas || !!mindMapEdit.editingMindMap}
               />
               <EditorContent editor={editor} className="editor-content-shell prose max-w-none" />
               <EditorRootBlockControls editor={editor} interaction={interaction} />
@@ -603,17 +592,19 @@ function Editor({ document, vaultId, onUpdate }: EditorProps) {
         />
       )}
 
-      {/* 润色/扩写确认模态框 */}
-      <PolishConfirmModal
-        isOpen={aiProcess.showPolishModal}
-        mode={aiProcess.aiMode}
-        originalText={aiProcess.polishState.originalText}
-        polishedText={aiProcess.polishState.polishedText}
-        isLoading={aiProcess.polishState.isLoading}
-        error={aiProcess.polishState.error}
+      {/* 润色、扩写和自定义修改共用同一套处理流程 */}
+      <AIProcessModal
+        isOpen={aiProcess.showProcessModal}
+        mode={aiProcess.mode}
+        phase={aiProcess.processState.phase}
+        originalText={aiProcess.processState.originalText}
+        processedText={aiProcess.processState.processedText}
+        error={aiProcess.processState.error}
+        onSubmitInstruction={(instruction) => { void aiProcess.submitCustomProcess(instruction) }}
+        onReviseInstruction={aiProcess.reviseCustomProcess}
         onConfirm={handlePolishConfirm}
-        onCancel={aiProcess.cancelPolish}
-        onOpenSettings={aiProcess.cancelPolish}
+        onCancel={aiProcess.cancelProcess}
+        onOpenSettings={aiProcess.cancelProcess}
       />
     </div>
   )

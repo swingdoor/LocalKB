@@ -22,13 +22,27 @@ import {
   isInvalidMove,
   type StructureTreeNode,
 } from '../utils/structureTree'
+import { Button } from './ui/button'
+import { Input } from './ui/input'
+import { Alert, AlertDescription } from './ui/alert'
+import { Skeleton } from './ui/skeleton'
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from './ui/dropdown-menu'
+import {
+  ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger,
+} from './ui/context-menu'
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from './ui/alert-dialog'
+import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 
-interface MenuState {
+interface DeleteTarget {
   id: string
   kind: StructureTreeNode['kind']
   name: string
-  x: number
-  y: number
 }
 
 function InsertionCursor({ top, left, indent }: CursorProps) {
@@ -63,10 +77,13 @@ function useElementHeight() {
 }
 
 interface TreeNodeRowProps extends NodeRendererProps<StructureTreeNode> {
-  openMenu: (node: StructureTreeNode, button: HTMLButtonElement) => void
+  create: (kind: 'group' | 'document' | 'canvas', parentId: string | null) => void
+  rename: (id: string) => void
+  requestDelete: (node: StructureTreeNode) => void
+  descendantCount: (id: string) => number
 }
 
-function TreeNodeRow({ node, style, dragHandle, openMenu }: TreeNodeRowProps) {
+function TreeNodeRow({ node, style, dragHandle, create, rename, requestDelete, descendantCount }: TreeNodeRowProps) {
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -82,20 +99,23 @@ function TreeNodeRow({ node, style, dragHandle, openMenu }: TreeNodeRowProps) {
   }, [node.willReceiveDrop, node.data.kind, node.isOpen, node])
 
   const selected = node.isSelected
+  const deleteDisabled = node.data.kind === 'group' && descendantCount(node.data.id) > 0
   return (
-    <div
-      ref={dragHandle}
-      style={style}
-      className={`group flex h-8 min-w-0 items-center rounded-lg pr-1 text-sm transition-colors ${
-        selected ? 'bg-selected text-primary' : 'hover:bg-gray-100'
-      } ${node.willReceiveDrop ? 'outline outline-1 outline-primary' : ''}`}
-    >
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+      <div
+        ref={dragHandle}
+        style={style}
+        className={`group flex h-8 min-w-0 items-center rounded-md pr-1 text-sm transition-colors ${
+          selected ? 'bg-sidebar-accent text-sidebar-accent-foreground' : 'hover:bg-sidebar-accent'
+        } ${node.willReceiveDrop ? 'outline outline-1 outline-ring' : ''}`}
+      >
       {node.data.kind === 'group' ? (
         <button
           type="button"
           tabIndex={-1}
           aria-label={node.isOpen ? '折叠组' : '展开组'}
-          className="flex h-6 w-5 flex-none items-center justify-center rounded text-gray-400 hover:text-gray-600"
+          className="flex h-6 w-5 flex-none items-center justify-center rounded text-muted-foreground hover:text-foreground"
           onClick={(event) => {
             event.stopPropagation()
             node.toggle()
@@ -112,7 +132,7 @@ function TreeNodeRow({ node, style, dragHandle, openMenu }: TreeNodeRowProps) {
       )}
 
       {node.data.kind === 'group' ? (
-        <Folder size={16} strokeWidth={1.8} className="mr-2 flex-none text-gray-500" />
+        <Folder size={16} strokeWidth={1.8} className="mr-2 flex-none text-muted-foreground" />
       ) : node.data.contentType === 'canvas' ? (
         <ImageIcon size={16} strokeWidth={1.8} className="mr-2 flex-none text-amber-500" />
       ) : (
@@ -120,11 +140,11 @@ function TreeNodeRow({ node, style, dragHandle, openMenu }: TreeNodeRowProps) {
       )}
 
       {node.isEditing ? (
-        <input
+        <Input
           ref={inputRef}
           defaultValue={node.data.name}
           aria-label="重命名"
-          className="h-6 min-w-0 flex-1 rounded border border-primary bg-white px-1 text-sm outline-none"
+          className="h-6 min-w-0 flex-1 px-1 text-sm"
           onClick={(event) => event.stopPropagation()}
           onBlur={() => node.reset()}
           onKeyDown={(event) => {
@@ -140,21 +160,64 @@ function TreeNodeRow({ node, style, dragHandle, openMenu }: TreeNodeRowProps) {
       )}
 
       {!node.isEditing && (
-        <button
-          type="button"
-          aria-label={`${node.data.name} 的更多操作`}
-          className={`ml-1 flex h-6 w-6 flex-none items-center justify-center rounded text-gray-400 hover:bg-white/70 hover:text-gray-600 focus:opacity-100 ${
-            selected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
-          }`}
-          onClick={(event) => {
-            event.stopPropagation()
-            openMenu(node.data, event.currentTarget)
-          }}
-        >
-          <MoreHorizontal size={16} />
-        </button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label={`${node.data.name} 的更多操作`}
+              className={`ml-1 h-6 w-6 flex-none text-muted-foreground focus:opacity-100 ${
+                selected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
+              }`}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <MoreHorizontal className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" side="right">
+            {node.data.kind === 'group' && (
+              <>
+                <DropdownMenuItem onSelect={() => create('group', node.data.id)}>新建组</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => create('document', node.data.id)}>新建文档</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => create('canvas', node.data.id)}>新建画布</DropdownMenuItem>
+                <DropdownMenuSeparator />
+              </>
+            )}
+            <DropdownMenuItem onSelect={() => rename(node.data.id)}>重命名</DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={deleteDisabled}
+              className="text-destructive focus:text-destructive"
+              title={deleteDisabled ? '组内仍有内容，请先移动或删除这些内容' : undefined}
+              onSelect={() => requestDelete(node.data)}
+            >
+              {node.data.kind === 'group' ? '删除组' : '删除'}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       )}
-    </div>
+      </div>
+      </ContextMenuTrigger>
+      <ContextMenuContent>
+        {node.data.kind === 'group' && (
+          <>
+            <ContextMenuItem onSelect={() => create('group', node.data.id)}>新建组</ContextMenuItem>
+            <ContextMenuItem onSelect={() => create('document', node.data.id)}>新建文档</ContextMenuItem>
+            <ContextMenuItem onSelect={() => create('canvas', node.data.id)}>新建画布</ContextMenuItem>
+            <ContextMenuSeparator />
+          </>
+        )}
+        <ContextMenuItem onSelect={() => rename(node.data.id)}>重命名</ContextMenuItem>
+        <ContextMenuItem
+          disabled={deleteDisabled}
+          className="text-destructive focus:text-destructive"
+          title={deleteDisabled ? '组内仍有内容，请先移动或删除这些内容' : undefined}
+          onSelect={() => requestDelete(node.data)}
+        >
+          {node.data.kind === 'group' ? '删除组' : '删除'}
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
   )
 }
 
@@ -182,10 +245,7 @@ function DocumentTree() {
   } = useAppStore()
   const treeRef = useRef<TreeApi<StructureTreeNode>>()
   const { ref: treeContainerRef, element: treeContainer, height } = useElementHeight()
-  const [addMenu, setAddMenu] = useState<{ x: number; y: number; parentId: string | null } | null>(null)
-  const [menu, setMenu] = useState<MenuState | null>(null)
-  const [deleteTarget, setDeleteTarget] = useState<MenuState | null>(null)
-  const [disabledHint, setDisabledHint] = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null)
   const [editAfterCreate, setEditAfterCreate] = useState<string | null>(null)
 
   const data = useMemo(
@@ -219,27 +279,7 @@ function DocumentTree() {
     setEditAfterCreate(null)
   }, [editAfterCreate, data])
 
-  const openNodeMenu = useCallback((node: StructureTreeNode, button: HTMLButtonElement) => {
-    const rect = button.getBoundingClientRect()
-    setMenu({ id: node.id, kind: node.kind, name: node.name, x: rect.right + 4, y: rect.top })
-  }, [])
-
-  const NodeRenderer = useCallback(
-    (props: NodeRendererProps<StructureTreeNode>) => (
-      <TreeNodeRow {...props} openMenu={openNodeMenu} />
-    ),
-    [openNodeMenu],
-  )
-
-  const openAddMenu = (button: HTMLButtonElement, parentId: string | null) => {
-    const rect = button.getBoundingClientRect()
-    setMenu(null)
-    setAddMenu({ x: rect.right + 4, y: rect.top, parentId })
-  }
-
   const create = async (kind: 'group' | 'document' | 'canvas', parentId: string | null) => {
-    setAddMenu(null)
-    setMenu(null)
     if (kind === 'group') {
       const id = await createGroup(parentId)
       if (id) {
@@ -251,48 +291,67 @@ function DocumentTree() {
     await createContent(undefined, kind, parentId)
   }
 
-  const contentCount = menu?.kind === 'group'
-    ? countDescendantContent(structure, menu.id)
-    : 0
+  const NodeRenderer = useCallback(
+    (props: NodeRendererProps<StructureTreeNode>) => (
+      <TreeNodeRow
+        {...props}
+        create={(kind, parentId) => void create(kind, parentId)}
+        rename={(id) => treeRef.current?.get(id)?.edit()}
+        requestDelete={(node) => setDeleteTarget({ id: node.id, kind: node.kind, name: node.name })}
+        descendantCount={(id) => countDescendantContent(structure, id)}
+      />
+    ),
+    [structure],
+  )
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex h-9 flex-none items-center justify-between px-3">
-        <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>内容</span>
+        <span className="text-sm font-medium text-muted-foreground">内容</span>
         <div className="flex items-center gap-1">
-          <button
-            type="button"
-            aria-label="搜索文档"
-            onClick={() => setSearchOpen(true)}
-            className="flex h-7 w-7 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-gray-100 hover:text-primary focus:outline-none focus:ring-1 focus:ring-primary"
-            title="搜索"
-          >
-            <Search size={16} />
-          </button>
-          <button
-            type="button"
-            aria-label="新建内容"
-            aria-haspopup="menu"
-            onClick={(event) => openAddMenu(event.currentTarget, null)}
-            className="flex h-7 w-7 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-gray-100 hover:text-primary focus:outline-none focus:ring-1 focus:ring-primary"
-            title="新建"
-          >
-            <Plus size={16} />
-          </button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button type="button" variant="ghost" size="icon" aria-label="搜索文档" onClick={() => setSearchOpen(true)} className="h-7 w-7">
+                <Search className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>搜索</TooltipContent>
+          </Tooltip>
+          <DropdownMenu>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DropdownMenuTrigger asChild>
+                  <Button type="button" variant="ghost" size="icon" aria-label="新建内容" className="h-7 w-7">
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+              </TooltipTrigger>
+              <TooltipContent>新建</TooltipContent>
+            </Tooltip>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={() => void create('group', null)}>新建组</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => void create('document', null)}>新建文档</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => void create('canvas', null)}>新建画布</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
       {structureError && (
-        <div className="mx-3 mb-1 rounded bg-red-50 px-2 py-1 text-xs text-red-500" role="status">
-          {structureError}
-        </div>
+        <Alert variant="destructive" className="mx-3 mb-2 w-auto px-3 py-2">
+          <AlertDescription className="text-xs">{structureError}</AlertDescription>
+        </Alert>
       )}
 
       <div ref={treeContainerRef} className="min-h-0 flex-1 px-2 pb-1">
         {structureLoading ? (
-          <div className="py-8 text-center text-sm text-gray-400">正在加载…</div>
+          <div className="space-y-2 px-1 py-2" role="status" aria-label="正在加载文档结构">
+            <Skeleton className="h-8 w-full" />
+            <Skeleton className="h-8 w-5/6" />
+            <Skeleton className="h-8 w-full" />
+          </div>
         ) : data.length === 0 ? (
-          <div className="py-8 text-center text-sm text-gray-400">暂无内容</div>
+          <div className="py-8 text-center text-sm text-muted-foreground">暂无内容</div>
         ) : treeContainer ? (
           <Tree<StructureTreeNode>
             ref={treeRef}
@@ -344,130 +403,30 @@ function DocumentTree() {
         ) : null}
       </div>
 
-      {(addMenu || menu) && (
-        <button
-          type="button"
-          className="fixed inset-0 z-40 cursor-default"
-          aria-label="关闭菜单"
-          onClick={() => {
-            setAddMenu(null)
-            setMenu(null)
-          }}
-        />
-      )}
-
-      {addMenu && (
-        <div
-          role="menu"
-          className="fixed z-50 w-24 rounded-lg border border-border bg-white py-1 shadow-lg"
-          style={{ left: addMenu.x, top: addMenu.y }}
-        >
-          <button role="menuitem" className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50" onClick={() => void create('group', addMenu.parentId)}>新建组</button>
-          <button role="menuitem" className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50" onClick={() => void create('document', addMenu.parentId)}>新建文档</button>
-          <button role="menuitem" className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50" onClick={() => void create('canvas', addMenu.parentId)}>新建画布</button>
-        </div>
-      )}
-
-      {menu && (
-        <div
-          role="menu"
-          className="fixed z-50 w-24 rounded-lg border border-border bg-white py-1 shadow-lg"
-          style={{ left: menu.x, top: menu.y }}
-        >
-          {menu.kind === 'group' && (
-            <>
-              <button role="menuitem" className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50" onClick={() => void create('group', menu.id)}>新建组</button>
-              <button role="menuitem" className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50" onClick={() => void create('document', menu.id)}>新建文档</button>
-              <button role="menuitem" className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50" onClick={() => void create('canvas', menu.id)}>新建画布</button>
-            </>
-          )}
-          <button
-            role="menuitem"
-            className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50"
-            onClick={() => {
-              treeRef.current?.get(menu.id)?.edit()
-              setMenu(null)
-            }}
-          >
-            重命名
-          </button>
-          <button
-            role="menuitem"
-            aria-disabled={menu.kind === 'group' && contentCount > 0}
-            aria-label={menu.kind === 'group' && contentCount > 0
-              ? `删除组不可用：组内还有 ${contentCount} 项内容`
-              : menu.kind === 'group' ? '删除组' : '删除'}
-            title={menu.kind === 'group' && contentCount > 0
-              ? `组内还有 ${contentCount} 项内容，请先移动或删除这些内容`
-              : undefined}
-            className={`w-full px-3 py-2 text-left text-sm ${
-              menu.kind === 'group' && contentCount > 0
-                ? 'cursor-not-allowed text-gray-300'
-                : 'text-red-500 hover:bg-red-50'
-            }`}
-            onMouseEnter={() => {
-              if (menu.kind === 'group' && contentCount > 0) {
-                setDisabledHint(`组内还有 ${contentCount} 项内容，请先移动或删除这些内容`)
-              }
-            }}
-            onMouseLeave={() => setDisabledHint(null)}
-            onFocus={() => {
-              if (menu.kind === 'group' && contentCount > 0) {
-                setDisabledHint(`组内还有 ${contentCount} 项内容，请先移动或删除这些内容`)
-              }
-            }}
-            onBlur={() => setDisabledHint(null)}
-            onClick={() => {
-              if (menu.kind === 'group' && contentCount > 0) return
-              setDeleteTarget(menu)
-              setMenu(null)
-            }}
-          >
-            {menu.kind === 'group' ? '删除组' : '删除'}
-          </button>
-        </div>
-      )}
-
-      {disabledHint && menu && (
-        <div
-          role="tooltip"
-          className="fixed z-[60] max-w-60 rounded-lg px-3 py-2 text-xs shadow-lg"
-          style={{
-            left: menu.x + 104,
-            top: menu.y + 144,
-            backgroundColor: 'var(--bg-primary)',
-            color: 'var(--text-primary)',
-          }}
-        >
-          {disabledHint}
-        </div>
-      )}
-
-      {deleteTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setDeleteTarget(null)}>
-          <div className="w-72 rounded-lg bg-white p-4 shadow-xl" onClick={(event) => event.stopPropagation()}>
-            <h3 className="mb-2 text-base font-medium">确认删除</h3>
-            <p className="mb-4 text-sm text-gray-600">
-              {deleteTarget.kind === 'group'
-                ? `确定删除组“${deleteTarget.name}”及其中的空组吗？`
-                : `确定删除“${deleteTarget.name}”吗？此操作不可恢复。`}
-            </p>
-            <div className="flex gap-2">
-              <button
-                className="flex-1 rounded-lg bg-red-500 px-3 py-2 text-sm text-white hover:bg-red-600"
-                onClick={async () => {
-                  if (deleteTarget.kind === 'group') await deleteGroup(deleteTarget.id)
-                  else await deleteContent(deleteTarget.id)
-                  setDeleteTarget(null)
-                }}
-              >
-                删除
-              </button>
-              <button className="flex-1 rounded-lg bg-gray-100 px-3 py-2 text-sm hover:bg-gray-200" onClick={() => setDeleteTarget(null)}>取消</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>删除“{deleteTarget?.name}”？</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteTarget?.kind === 'group'
+                ? '该组及其下的空组将被删除。'
+                : '此内容将被永久删除，操作无法撤销。'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={async () => {
+                if (!deleteTarget) return
+                if (deleteTarget.kind === 'group') await deleteGroup(deleteTarget.id)
+                else await deleteContent(deleteTarget.id)
+                setDeleteTarget(null)
+              }}
+            >删除</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

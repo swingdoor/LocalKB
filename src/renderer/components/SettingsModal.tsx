@@ -1,9 +1,27 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useCallback, useEffect, useState } from 'react'
+import { Copy, Eye, EyeOff, RefreshCcw, RotateCcw } from 'lucide-react'
+import { toast } from 'sonner'
 import type { AISettings, HotkeyConfig } from '@shared/types'
 import type { McpStatus, PublicMcpSettings } from '@shared/mcp-types'
 import { DEFAULT_HOTKEYS } from '@shared/types'
+import { AI_PROVIDERS, getAIProvider } from '@shared/ai-providers'
 import { useAppStore } from '../stores/appStore'
 import { formatHotkeyDisplay, getModifiersFromEvent, hasSameHotkey } from '../utils/hotkeys'
+import { Alert, AlertDescription } from './ui/alert'
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from './ui/alert-dialog'
+import { Button } from './ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from './ui/dialog'
+import { Input } from './ui/input'
+import { Label } from './ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
+import { Separator } from './ui/separator'
+import { Switch } from './ui/switch'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs'
+import { Textarea } from './ui/textarea'
+import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 
 interface SettingsModalProps {
   isOpen: boolean
@@ -12,158 +30,73 @@ interface SettingsModalProps {
 
 type TabType = 'ai' | 'hotkey' | 'mcp'
 
-// 自定义下拉组件
-interface CustomSelectProps {
-  value: string
-  options: { value: string; label: string }[]
-  onChange: (value: string) => void
-  className?: string
+const initialAISettings: AISettings = {
+  provider: 'deepseek',
+  apiKey: '',
+  baseUrl: getAIProvider('deepseek').baseUrl,
+  model: 'deepseek-v4-flash',
+  polishPrompt: '请对以下文本进行润色，使其更加流畅、专业，同时保持原意不变。只返回润色后的文本，不要添加任何解释或说明：\n\n',
+  expandPrompt: '请对以下文本进行扩写，丰富内容细节，增加相关论述，使其更加完整充实。只返回扩写后的文本，不要添加任何解释或说明：\n\n',
 }
 
-function CustomSelect({ value, options, onChange, className = '' }: CustomSelectProps) {
-  const [isOpen, setIsOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-
-  const selectedOption = options.find(o => o.value === value)
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setIsOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [])
-
-  return (
-    <div ref={ref} className={`relative ${className}`}>
-      <button
-        type="button"
-        onClick={() => setIsOpen(!isOpen)}
-        className="w-full h-8 px-3 py-2 pr-8 text-sm border rounded text-left focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-        style={{ borderColor: 'var(--border-color)', backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)' }}
-      >
-        {selectedOption?.label || '请选择'}
-      </button>
-      <svg 
-        className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" 
-        fill="none" 
-        stroke="currentColor" 
-        viewBox="0 0 24 24"
-      >
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-      </svg>
-      
-      {isOpen && (
-        <div className="absolute z-10 w-full mt-1 border rounded shadow-lg" style={{ backgroundColor: 'var(--bg-primary)', borderColor: 'var(--border-color)' }}>
-          {options.map((option) => (
-            <button
-              key={option.value}
-              onClick={() => {
-                onChange(option.value)
-                setIsOpen(false)
-              }}
-              className={`w-full px-3 py-2.5 text-sm text-left hover:bg-primary/10 transition-colors first:rounded-t last:rounded-b ${
-                option.value === value ? 'bg-primary/5 text-primary' : ''
-              }`}
-              style={{ color: option.value === value ? 'var(--primary-color)' : 'var(--text-primary)', borderColor: 'var(--border-color)' }}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  )
+const statusLabel: Record<McpStatus['state'], string> = {
+  disabled: '已停止', starting: '启动中', running: '运行中', error: '启动失败',
 }
-
-// 模型提供商配置
-const modelProviders = [
-  { id: 'deepseek', name: 'DeepSeek', baseUrl: 'https://api.deepseek.com' },
-]
-
-const deepseekModels = [
-  { value: 'deepseek-v4-flash', label: 'DeepSeek V4 Flash' },
-  { value: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro' },
-  { value: 'deepseek-chat', label: 'DeepSeek Chat (将于 2026/07/24 弃用)' },
-  { value: 'deepseek-reasoner', label: 'DeepSeek Reasoner (将于 2026/07/24 弃用)' },
-]
 
 function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [activeTab, setActiveTab] = useState<TabType>('ai')
-  
-  // AI 设置状态
-  const [aiSettings, setAiSettings] = useState<AISettings>({
-    apiKey: '',
-    baseUrl: 'https://api.deepseek.com',
-    model: 'deepseek-v4-flash',
-    polishPrompt: '请对以下文本进行润色，使其更加流畅、专业，同时保持原意不变。只返回润色后的文本，不要添加任何解释或说明：\n\n',
-    expandPrompt: '请对以下文本进行扩写，丰富内容细节，增加相关论述，使其更加完整充实。只返回扩写后的文本，不要添加任何解释或说明：\n\n',
-  })
+  const [aiSettings, setAiSettings] = useState<AISettings>(initialAISettings)
   const [isSaving, setIsSaving] = useState(false)
   const [showApiKey, setShowApiKey] = useState(false)
   const [aiPromptTab, setAiPromptTab] = useState<'polish' | 'expand'>('polish')
-  
-  // 快捷键状态
   const [hotkeys, setHotkeys] = useState<HotkeyConfig[]>([])
   const [editingHotkeyId, setEditingHotkeyId] = useState<string | null>(null)
   const [hotkeyConflict, setHotkeyConflict] = useState<string | null>(null)
-  const [saveMessage, setSaveMessage] = useState<string | null>(null)
-  const [mcpSettings, setMcpSettings] = useState<PublicMcpSettings>({
-    enabled: false, port: 17890, maskedToken: '',
-  })
-  const [mcpStatus, setMcpStatus] = useState<McpStatus>({
-    state: 'disabled', port: 0, endpoint: '',
-  })
+  const [pageError, setPageError] = useState<string | null>(null)
+  const [mcpSettings, setMcpSettings] = useState<PublicMcpSettings>({ enabled: false, port: 17890, maskedToken: '' })
+  const [mcpStatus, setMcpStatus] = useState<McpStatus>({ state: 'disabled', port: 0, endpoint: '' })
   const [mcpUrl, setMcpUrl] = useState('')
   const [mcpBusy, setMcpBusy] = useState(false)
-  const [mcpNotice, setMcpNotice] = useState<string | null>(null)
+  const [refreshConfirmOpen, setRefreshConfirmOpen] = useState(false)
 
   useEffect(() => {
-    if (isOpen) {
-      loadAllSettings()
-    }
-  }, [isOpen])
-
-  const loadAllSettings = async () => {
-    try {
-      const [ai, hks, mcp, status, url] = await Promise.all([
-        window.electronAPI.settings.getAI(),
-        window.electronAPI.settings.getHotkeys(),
-        window.electronAPI.settings.getMcp(),
-        window.electronAPI.settings.getMcpStatus(),
-        window.electronAPI.settings.getMcpUrl(),
-      ])
+    if (!isOpen) return
+    let active = true
+    setPageError(null)
+    void Promise.all([
+      window.electronAPI.settings.getAI(),
+      window.electronAPI.settings.getHotkeys(),
+      window.electronAPI.settings.getMcp(),
+      window.electronAPI.settings.getMcpStatus(),
+      window.electronAPI.settings.getMcpUrl(),
+    ]).then(([ai, hks, mcp, status, url]) => {
+      if (!active) return
       setAiSettings(ai)
       setHotkeys(hks)
       setMcpSettings(mcp)
       setMcpStatus(status)
       setMcpUrl(url)
-    } catch (error) {
+    }).catch((error) => {
       console.error('Failed to load settings:', error)
-    }
-  }
+      if (active) setPageError('设置加载失败，请关闭后重试。')
+    })
+    return () => { active = false }
+  }, [isOpen])
 
   const handleSave = async () => {
     setIsSaving(true)
-    setSaveMessage(null)
+    setPageError(null)
     try {
       await Promise.all([
         window.electronAPI.settings.saveAI(aiSettings),
-        // 只保存可修改的快捷键（排除只读的 heading1-6）
-        window.electronAPI.settings.saveHotkeys(hotkeys.filter(h => !h.readonly)),
+        window.electronAPI.settings.saveHotkeys(hotkeys.filter((item) => !item.readonly)),
       ])
-      
-      // 更新 store 中的配置（使用完整配置，包含只读的 heading1-6）
-      const { updateHotkeys } = useAppStore.getState()
-      updateHotkeys(hotkeys)
-      
-      setSaveMessage('保存成功')
-      setTimeout(onClose, 500)
+      useAppStore.getState().updateHotkeys(hotkeys)
+      toast.success('设置已保存')
+      onClose()
     } catch (error) {
       console.error('Failed to save settings:', error)
-      setSaveMessage('保存失败')
+      setPageError('设置保存失败，请重试。')
     } finally {
       setIsSaving(false)
     }
@@ -171,479 +104,300 @@ function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
   const handleMcpToggle = async (enabled: boolean) => {
     setMcpBusy(true)
-    setMcpNotice(null)
+    setPageError(null)
     try {
       setMcpSettings(await window.electronAPI.settings.saveMcp(enabled))
       setMcpStatus(await window.electronAPI.settings.getMcpStatus())
-      setMcpNotice(enabled ? '服务已启动' : '服务已停止')
+      toast.success(enabled ? 'MCP 服务已启动' : 'MCP 服务已停止')
     } catch (error) {
       console.error('Failed to update MCP service:', error)
       setMcpStatus(await window.electronAPI.settings.getMcpStatus())
-      setMcpNotice('服务状态更新失败')
+      setPageError('MCP 服务状态更新失败。')
     } finally {
       setMcpBusy(false)
     }
   }
 
   const handleMcpRefresh = async () => {
-    if (!window.confirm('刷新后，之前复制的 MCP 地址会立即失效。确认刷新？')) return
+    setRefreshConfirmOpen(false)
     setMcpBusy(true)
-    setMcpNotice(null)
+    setPageError(null)
     try {
       setMcpSettings(await window.electronAPI.settings.resetMcpToken())
       setMcpUrl(await window.electronAPI.settings.getMcpUrl())
       setMcpStatus(await window.electronAPI.settings.getMcpStatus())
-      setMcpNotice('连接地址已刷新')
+      toast.success('MCP 连接地址已刷新')
     } catch (error) {
       console.error('Failed to refresh MCP URL:', error)
-      setMcpNotice('连接地址刷新失败')
+      setPageError('MCP 连接地址刷新失败。')
     } finally {
       setMcpBusy(false)
     }
   }
 
   const handleMcpCopy = async () => {
-    await window.electronAPI.settings.copyMcpUrl()
-    setMcpNotice('连接地址已复制')
+    if (await window.electronAPI.settings.copyMcpUrl()) toast.success('连接地址已复制')
+    else setPageError('连接地址复制失败。')
   }
 
-  // 快捷键冲突检测
   const checkHotkeyConflict = useCallback((hotkey: HotkeyConfig, excludeId?: string): string | null => {
-    for (const hk of hotkeys) {
-      if (hk.id === excludeId) continue
-      if (hasSameHotkey(hk, hotkey)) {
-        return hk.name
-      }
+    for (const current of hotkeys) {
+      if (current.id !== excludeId && hasSameHotkey(current, hotkey)) return current.name
     }
     return null
   }, [hotkeys])
 
-  // 监听键盘输入修改快捷键
-  const handleHotkeyKeyDown = useCallback((e: React.KeyboardEvent, hotkeyId: string) => {
-    e.preventDefault()
-    e.stopPropagation()
-    
-    const hotkey = hotkeys.find(h => h.id === hotkeyId)
+  const handleHotkeyKeyDown = useCallback((event: React.KeyboardEvent, hotkeyId: string) => {
+    event.preventDefault()
+    event.stopPropagation()
+    const hotkey = hotkeys.find((item) => item.id === hotkeyId)
     if (!hotkey) return
-
-    if (e.key === 'Escape') {
+    if (event.key === 'Escape') {
       setEditingHotkeyId(null)
       setHotkeyConflict(null)
       return
     }
-
-    const modifiers = getModifiersFromEvent(e)
-
-    if (['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) {
-      return
-    }
-
-    const key = e.key.length === 1 ? e.key.toLowerCase() : e.key
-
-    const newHotkey: HotkeyConfig = {
-      ...hotkey,
-      key,
-      modifiers,
-      display: formatHotkeyDisplay({ key, modifiers }),
-    }
-
-    const conflict = checkHotkeyConflict(newHotkey, hotkeyId)
+    const modifiers = getModifiersFromEvent(event)
+    if (['Control', 'Alt', 'Shift', 'Meta'].includes(event.key)) return
+    const key = event.key.length === 1 ? event.key.toLowerCase() : event.key
+    const next = { ...hotkey, key, modifiers, display: formatHotkeyDisplay({ key, modifiers }) }
+    const conflict = checkHotkeyConflict(next, hotkeyId)
     if (conflict) {
       setHotkeyConflict(conflict)
       return
     }
-
-    setHotkeys(hotkeys.map(h => h.id === hotkeyId ? newHotkey : h))
+    setHotkeys(hotkeys.map((item) => item.id === hotkeyId ? next : item))
     setEditingHotkeyId(null)
     setHotkeyConflict(null)
   }, [hotkeys, checkHotkeyConflict])
 
-  const startEditHotkey = (hotkeyId: string) => {
-    setEditingHotkeyId(hotkeyId)
-    setHotkeyConflict(null)
-  }
-
-  const cancelEditHotkey = () => {
-    setEditingHotkeyId(null)
-    setHotkeyConflict(null)
-  }
-
-  const handleProviderChange = (providerId: string) => {
-    const provider = modelProviders.find(p => p.id === providerId)
-    if (provider) {
-      setAiSettings({
-        ...aiSettings,
-        baseUrl: provider.baseUrl,
-        model: providerId === 'deepseek' ? 'deepseek-v4-flash' : '',
-      })
-    }
-  }
-
-  const getCurrentModels = () => {
-    if (aiSettings.baseUrl.includes('deepseek')) {
-      return deepseekModels
-    }
-    return []
-  }
-
-  if (!isOpen) return null
+  const provider = getAIProvider(aiSettings.provider)
+  const recommendedModel = provider.models.some((model) => model.value === aiSettings.model)
+  const modelSelection = recommendedModel ? aiSettings.model : '__custom__'
 
   return (
-    <div className="fixed inset-0 flex items-center justify-center z-50" style={{ backgroundColor: 'var(--overlay-bg)' }}>
-      <div 
-        className="rounded-lg shadow-xl w-full max-w-2xl mx-4 flex flex-col" 
-        style={{ height: '520px', backgroundColor: 'var(--bg-primary)', borderColor: 'var(--border-color)', borderWidth: '1px' }}
-      >
-        {/* 标签页导航 */}
-        <div className="flex items-center justify-between px-6 py-3" style={{ borderColor: 'var(--border-color)', borderBottomWidth: '1px' }}>
-          <div className="flex gap-1">
-            {[
-              { key: 'ai' as TabType, label: 'AI 设置' },
-              { key: 'hotkey' as TabType, label: '快捷键' },
-              { key: 'mcp' as TabType, label: 'MCP 服务' },
-            ].map(tab => (
-              <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
-                className={`px-4 py-1.5 text-sm font-medium rounded transition-colors ${
-                  activeTab === tab.key
-                    ? 'bg-primary/10 text-primary'
-                    : 'hover:bg-gray-100'
-                }`}
-                style={{ color: activeTab === tab.key ? 'var(--primary-color, #3B82F6)' : 'var(--text-secondary, #6B7280)' }}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-          <button
-            onClick={onClose}
-            className="transition-colors"
-            style={{ color: 'var(--text-secondary)' }}
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-
-        {/* 内容区 */}
-        <div className="flex-1 overflow-y-auto px-12 py-5">
-          {/* AI 设置标签页 */}
-          {activeTab === 'ai' && (
-            <div className="space-y-4">
-              {/* API Key */}
-              <div className="flex items-center gap-4">
-                <span className="w-24 text-sm" style={{ color: 'var(--text-secondary)' }}>Key</span>
-                <div className="relative flex-1 max-w-sm">
-                  <input
-                    type={showApiKey ? 'text' : 'password'}
-                    value={aiSettings.apiKey}
-                    onChange={(e) => setAiSettings({ ...aiSettings, apiKey: e.target.value })}
-                    placeholder="API Key"
-                    className="w-full h-8 px-3 py-2 pr-8 text-sm border rounded focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-                    style={{ borderColor: 'var(--border-color)', backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)' }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowApiKey(!showApiKey)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                  >
-                    {showApiKey ? (
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
-                      </svg>
-                    ) : (
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                      </svg>
-                    )}
-                  </button>
-                </div>
-              </div>
-
-              {/* 模型提供商 */}
-              <div className="flex items-center gap-4">
-                <span className="w-24 text-sm" style={{ color: 'var(--text-secondary)' }}>厂商</span>
-                <CustomSelect
-                  value={aiSettings.baseUrl.includes('deepseek') ? 'deepseek' : ''}
-                  options={modelProviders.map(p => ({ value: p.id, label: p.name }))}
-                  onChange={handleProviderChange}
-                  className="flex-1 max-w-sm"
-                />
-              </div>
-              {/* 模型 */}
-              <div className="flex items-center gap-4">
-                <span className="w-24 text-sm" style={{ color: 'var(--text-secondary)' }}>模型</span>
-                <CustomSelect
-                  value={aiSettings.model}
-                  options={getCurrentModels()}
-                  onChange={(value) => setAiSettings({ ...aiSettings, model: value })}
-                  className="flex-1 max-w-sm"
-                />
-              </div>
-
-              {/* 提示词 */}
-              <div>
-                <div className="flex items-center gap-4 mb-2">
-                  <span className="w-24 text-sm" style={{ color: 'var(--text-secondary)' }}>提示词</span>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => setAiPromptTab('polish')}
-                      className="text-sm px-3 py-1 rounded transition-colors"
-                      style={{ backgroundColor: aiPromptTab === 'polish' ? 'var(--primary-color)' : 'transparent', color: aiPromptTab === 'polish' ? '#fff' : 'var(--text-secondary)' }}
-                    >
-                      润色
-                    </button>
-                    <button
-                      onClick={() => setAiPromptTab('expand')}
-                      className="text-sm px-3 py-1 rounded transition-colors"
-                      style={{ backgroundColor: aiPromptTab === 'expand' ? 'var(--primary-color)' : 'transparent', color: aiPromptTab === 'expand' ? '#fff' : 'var(--text-secondary)' }}
-                    >
-                      扩写
-                    </button>
-                  </div>
-                </div>
-                <div className="ml-28">
-                  <textarea
-                    value={aiPromptTab === 'polish' ? aiSettings.polishPrompt : aiSettings.expandPrompt}
-                    onChange={(e) => setAiSettings({ 
-                      ...aiSettings, 
-                      [aiPromptTab === 'polish' ? 'polishPrompt' : 'expandPrompt']: e.target.value 
-                    })}
-                    rows={4}
-                    className="w-full px-3 py-2 text-sm border rounded focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary resize-none"
-                    style={{ borderColor: 'var(--border-color)', backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)' }}
-                  />
-                </div>
-              </div>
+    <>
+      <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose() }}>
+        <DialogContent className="flex h-[min(660px,calc(100vh-2rem))] max-w-2xl flex-col gap-0 overflow-hidden p-0">
+          <DialogTitle className="sr-only">设置</DialogTitle>
+          <DialogDescription className="sr-only">管理 AI、快捷键和本地 MCP 服务。</DialogDescription>
+          <Tabs value={activeTab} onValueChange={(value) => { setActiveTab(value as TabType); setPageError(null) }} className="flex min-h-0 flex-1 flex-col">
+            <div className="px-6 pt-5">
+              <TabsList>
+                <TabsTrigger value="ai">AI 设置</TabsTrigger>
+                <TabsTrigger value="hotkey">快捷键</TabsTrigger>
+                <TabsTrigger value="mcp">MCP 服务</TabsTrigger>
+              </TabsList>
             </div>
-          )}
 
-          {activeTab === 'mcp' && (
-            <div className="w-full">
-              <div className="flex items-center justify-between gap-6 py-1">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <h2 className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-                      本地 MCP 服务
-                    </h2>
-                    <span
-                      className="h-2 w-2 rounded-full transition-colors duration-200"
-                      style={{
-                        backgroundColor: mcpStatus.state === 'running'
-                          ? 'var(--success-color, #22C55E)'
-                          : mcpStatus.state === 'error'
-                            ? 'var(--error-color, #EF4444)'
-                            : '#A3A3A3',
-                      }}
-                    />
-                    <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                      {{ disabled: '已停止', starting: '启动中', running: '运行中', error: '启动失败' }[mcpStatus.state]}
-                    </span>
-                  </div>
-                  <p className="mt-1.5 text-xs leading-5" style={{ color: 'var(--text-secondary)' }}>
-                    仅本机 Agent 可访问，极简笔记退出后服务停止
-                  </p>
-                  {mcpStatus.error && (
-                    <p className="mt-1 text-xs" style={{ color: 'var(--error-color, #EF4444)' }}>
-                      {mcpStatus.error}
-                    </p>
-                  )}
+            {pageError && (
+              <Alert variant="destructive" className="mx-6 mt-3 w-auto py-2">
+                <AlertDescription>{pageError}</AlertDescription>
+              </Alert>
+            )}
+
+            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+              <TabsContent value="ai" className="m-0 space-y-5">
+                <div className="grid max-w-md gap-2">
+                  <Label>提供商</Label>
+                  <Select value={aiSettings.provider} onValueChange={(value) => {
+                    const nextProvider = getAIProvider(value as AISettings['provider'])
+                    setAiSettings({
+                      ...aiSettings,
+                      provider: nextProvider.id,
+                      baseUrl: nextProvider.baseUrl,
+                      model: nextProvider.models[0]?.value ?? '',
+                    })
+                  }}>
+                    <SelectTrigger aria-label="模型提供商"><SelectValue placeholder="选择提供商" /></SelectTrigger>
+                    <SelectContent>{AI_PROVIDERS.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}</SelectContent>
+                  </Select>
                 </div>
 
-                <button
-                  type="button"
-                  role="switch"
-                  aria-label="启用本地 MCP 服务"
-                  aria-checked={mcpSettings.enabled}
-                  aria-busy={mcpBusy}
-                  disabled={mcpBusy}
-                  onClick={() => void handleMcpToggle(!mcpSettings.enabled)}
-                  className="relative inline-flex h-6 w-11 shrink-0 rounded-full border transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary/25 disabled:cursor-not-allowed disabled:opacity-50"
-                  style={{
-                    backgroundColor: mcpSettings.enabled ? 'var(--primary-color)' : 'var(--bg-secondary)',
-                    borderColor: mcpSettings.enabled ? 'var(--primary-color)' : 'var(--border-color)',
-                  }}
-                >
-                  <span
-                    aria-hidden="true"
-                    className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-200 ${
-                      mcpSettings.enabled ? 'translate-x-5' : 'translate-x-0'
-                    }`}
-                  />
-                </button>
-              </div>
-
-              <div className="mt-5 pt-5" style={{ borderColor: 'var(--border-color)', borderTopWidth: '1px' }}>
-                <div className="mb-2 flex items-center justify-between">
-                  <h3 className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>连接地址</h3>
-                  <button
-                    type="button"
-                    aria-label="刷新 MCP 连接地址"
-                    disabled={mcpBusy}
-                    onClick={() => void handleMcpRefresh()}
-                    className="flex items-center gap-1.5 rounded px-2 py-1 text-xs transition-colors hover:bg-black/5 focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
-                    style={{ color: 'var(--text-secondary)' }}
-                  >
-                    <svg className={`h-4 w-4 ${mcpBusy ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 11a8.1 8.1 0 00-15.5-2M4 4v5h5m-5 4a8.1 8.1 0 0015.5 2M20 20v-5h-5" />
-                    </svg>
-                    刷新地址
-                  </button>
-                </div>
-
-                <div className="relative">
-                  <input
-                    aria-label="MCP 连接地址"
-                    readOnly
-                    value={mcpUrl}
-                    className="h-9 w-full rounded border bg-transparent px-3 pr-10 text-sm outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary"
-                    style={{ borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
-                  />
-                  <button
-                    type="button"
-                    aria-label="复制 MCP 连接地址"
-                    onClick={() => void handleMcpCopy()}
-                    className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-1.5 transition-colors hover:bg-black/5 focus:outline-none focus:ring-1 focus:ring-primary"
-                    style={{ color: 'var(--text-secondary)' }}
-                  >
-                    {mcpNotice === '连接地址已复制' ? (
-                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                      </svg>
-                    ) : (
-                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <rect x="9" y="9" width="11" height="11" rx="2" strokeWidth="2" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 9V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7a2 2 0 002 2h3" />
-                      </svg>
-                    )}
-                  </button>
-                </div>
-                <div className="mt-2 flex items-center justify-between gap-4">
-                  <p className="text-xs leading-5" style={{ color: 'var(--text-secondary)' }}>
-                    地址包含访问 token。除非主动刷新，否则启停或重启应用后地址保持不变。
-                  </p>
-                  {mcpNotice && (
-                    <span className="shrink-0 text-xs" style={{ color: mcpNotice.includes('失败') ? 'var(--error-color, #EF4444)' : 'var(--success-color, #22C55E)' }}>
-                      {mcpNotice}
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* 快捷键设置标签页 */}
-          {activeTab === 'hotkey' && (
-            <div className="space-y-4">
-              {hotkeys.filter(h => h.id !== 'commandMenu').map((hotkey) => (
-                <div key={hotkey.id} className="flex items-center gap-4">
-                  <span className="w-24 text-sm truncate" style={{ color: 'var(--text-secondary)' }}>{hotkey.name}</span>
-                  
-                  {editingHotkeyId === hotkey.id ? (
-                    <div className="flex items-center gap-2">
-                      <span 
-                        className="px-3 py-1 text-sm border rounded font-mono w-28 text-center"
-                        style={{ backgroundColor: 'var(--primary-color)', color: '#fff', borderColor: 'var(--primary-color)' }}
-                        onKeyDown={(e) => handleHotkeyKeyDown(e, hotkey.id)}
-                        tabIndex={0}
-                      >
-                        ...
-                      </span>
-                      <button
-                        onClick={cancelEditHotkey}
-                        className="p-1.5 rounded hover:bg-gray-100 transition-colors"
-                        style={{ color: 'var(--text-secondary)' }}
-                        title="取消"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      </button>
-                    </div>
+                <div className="grid max-w-md gap-2">
+                  <Label htmlFor={provider.models.length ? undefined : 'model-id'}>模型 ID</Label>
+                  {provider.models.length ? (
+                    <>
+                      <Select value={modelSelection} onValueChange={(value) => setAiSettings({ ...aiSettings, model: value === '__custom__' ? '' : value })}>
+                        <SelectTrigger aria-label="模型 ID"><SelectValue placeholder="选择推荐模型" /></SelectTrigger>
+                        <SelectContent>
+                          {provider.models.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}
+                          <SelectItem value="__custom__">自定义模型 ID…</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {modelSelection === '__custom__' && (
+                        <Input
+                          id="model-id"
+                          aria-label="自定义模型 ID"
+                          value={aiSettings.model}
+                          onChange={(event) => setAiSettings({ ...aiSettings, model: event.target.value })}
+                          placeholder="输入模型代码"
+                        />
+                      )}
+                    </>
                   ) : (
-                    <div className="flex items-center gap-3">
-                      <span className="px-3 py-1 text-sm rounded font-mono w-28 text-center"
-                        style={{ backgroundColor: 'var(--bg-secondary)', color: 'var(--text-secondary)' }}>
+                    <Input
+                      id="model-id"
+                      value={aiSettings.model}
+                      onChange={(event) => setAiSettings({ ...aiSettings, model: event.target.value })}
+                      placeholder="输入模型代码"
+                    />
+                  )}
+                </div>
+
+                <div className="grid gap-2">
+                  <Label htmlFor="api-key">API Key</Label>
+                  <div className="relative max-w-md">
+                    <Input
+                      id="api-key"
+                      type={showApiKey ? 'text' : 'password'}
+                      value={aiSettings.apiKey}
+                      onChange={(event) => setAiSettings({ ...aiSettings, apiKey: event.target.value })}
+                      placeholder="输入 API Key"
+                      className="pr-10"
+                    />
+                    <Button type="button" variant="ghost" size="icon" className="absolute right-0 top-0 h-9 w-9" aria-label={showApiKey ? '隐藏 API Key' : '显示 API Key'} onClick={() => setShowApiKey(!showApiKey)}>
+                      {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                </div>
+
+                {aiSettings.provider === 'custom' && (
+                  <div className="grid max-w-md gap-2">
+                    <Label htmlFor="base-url">Base URL</Label>
+                    <Input
+                      id="base-url"
+                      value={aiSettings.baseUrl}
+                      onChange={(event) => setAiSettings({ ...aiSettings, baseUrl: event.target.value })}
+                      placeholder="例如 https://example.com/v1"
+                    />
+                    <p className="text-xs text-muted-foreground">填写 OpenAI 兼容接口的 Base URL。</p>
+                  </div>
+                )}
+
+                <div className="grid gap-2">
+                  <Label>提示词</Label>
+                  <Tabs value={aiPromptTab} onValueChange={(value) => setAiPromptTab(value as 'polish' | 'expand')}>
+                    <TabsList><TabsTrigger value="polish">润色</TabsTrigger><TabsTrigger value="expand">扩写</TabsTrigger></TabsList>
+                    <Textarea
+                      className="mt-2 min-h-32 resize-none"
+                      value={aiPromptTab === 'polish' ? aiSettings.polishPrompt : aiSettings.expandPrompt}
+                      onChange={(event) => setAiSettings({
+                        ...aiSettings,
+                        [aiPromptTab === 'polish' ? 'polishPrompt' : 'expandPrompt']: event.target.value,
+                      })}
+                    />
+                  </Tabs>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="hotkey" className="m-0 space-y-2">
+                {hotkeys.filter((item) => item.id !== 'commandMenu').map((hotkey) => (
+                  <div key={hotkey.id} className={`flex min-h-10 items-center gap-4 rounded-md px-2 ${hotkey.readonly ? 'text-muted-foreground' : 'hover:bg-muted/50'}`}>
+                    <span className="min-w-0 flex-1 truncate text-sm">{hotkey.name}</span>
+                    {editingHotkeyId === hotkey.id ? (
+                      <Button
+                        autoFocus
+                        variant="secondary"
+                        className="w-36 font-mono"
+                        onKeyDown={(event) => handleHotkeyKeyDown(event, hotkey.id)}
+                        onBlur={() => { setEditingHotkeyId(null); setHotkeyConflict(null) }}
+                      >
+                        请按组合键…
+                      </Button>
+                    ) : hotkey.readonly ? (
+                      <span
+                        className="inline-flex h-9 w-36 items-center justify-center rounded-md bg-muted/50 px-3 font-mono text-sm opacity-60"
+                        aria-label={`${hotkey.name} 快捷键（不可修改）`}
+                      >
                         {formatHotkeyDisplay(hotkey)}
                       </span>
-                      {!hotkey.readonly && (
-                        <>
-                          <button
-                            onClick={() => startEditHotkey(hotkey.id)}
-                            className="p-1.5 rounded hover:bg-gray-100 transition-colors"
-                            style={{ color: 'var(--text-secondary)' }}
-                            title="修改快捷键"
+                    ) : (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            className="w-36 font-mono font-normal"
+                            aria-label={`${hotkey.name} 快捷键，双击修改`}
+                            onDoubleClick={() => { setEditingHotkeyId(hotkey.id); setHotkeyConflict(null) }}
                           >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                            </svg>
-                          </button>
-                          <button
-                            onClick={() => {
-                              const defaultHk = DEFAULT_HOTKEYS.find(d => d.id === hotkey.id)
-                              if (defaultHk) {
-                                setHotkeys(hotkeys.map(h => h.id === hotkey.id ? { ...defaultHk, readonly: hotkey.readonly } : h))
-                              }
-                            }}
-                            className="p-1.5 rounded hover:bg-gray-100 transition-colors"
-                            style={{ color: 'var(--text-secondary)' }}
-                            title="恢复默认"
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12a9 9 0 109-9 9.75 9.75 0 00-6.74 2.74L3 8" />
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3v5h5" />
-                            </svg>
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  )}
-                </div>
-              ))}
-              
-              {/* 帮助提示 */}
-              <div className="pt-4 mt-4" style={{ borderColor: 'var(--border-color)', borderTopWidth: '1px', borderTopStyle: 'solid' }}>
-                <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                  点击修改后按下组合键即可，按 ESC 取消
-                  {hotkeyConflict && <span style={{ color: 'var(--error-color, #EF4444)' }}>与「{hotkeyConflict}」冲突</span>}
-                </p>
-              </div>
-            </div>
-          )}
-        </div>
+                            {formatHotkeyDisplay(hotkey)}
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>双击修改快捷键</TooltipContent>
+                      </Tooltip>
+                    )}
+                    <Tooltip>
+                      <TooltipTrigger asChild><Button type="button" variant="ghost" size="icon" aria-label={`恢复 ${hotkey.name} 默认值`} disabled={hotkey.readonly} onClick={() => {
+                        const fallback = DEFAULT_HOTKEYS.find((item) => item.id === hotkey.id)
+                        if (fallback) setHotkeys(hotkeys.map((item) => item.id === hotkey.id ? { ...fallback, readonly: hotkey.readonly } : item))
+                      }}><RotateCcw className="h-4 w-4" /></Button></TooltipTrigger>
+                      <TooltipContent>恢复默认</TooltipContent>
+                    </Tooltip>
+                  </div>
+                ))}
+                <Separator className="my-4" />
+                <p className="text-sm text-muted-foreground">双击快捷键组合进行修改，按 Esc 取消。</p>
+                {hotkeyConflict && <Alert variant="destructive"><AlertDescription>与“{hotkeyConflict}”冲突，请换一个组合键。</AlertDescription></Alert>}
+              </TabsContent>
 
-        {/* MCP 操作即时生效；其他设置保留统一保存。 */}
-        {activeTab !== 'mcp' && <div className="flex justify-between items-center px-6 py-4" style={{ borderColor: 'var(--border-color)', borderTopWidth: '1px' }}>
-          <div className="flex-1">
-            {saveMessage && (
-              <span className="text-sm" style={{ color: saveMessage === '保存成功' ? 'var(--success-color, #22C55E)' : 'var(--error-color, #EF4444)' }}>
-                {saveMessage}
-              </span>
+              <TabsContent value="mcp" className="m-0 space-y-5">
+                <div className="flex items-start justify-between gap-6">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm font-medium">本地 MCP 服务</h3>
+                      <span className={`h-2 w-2 rounded-full ${mcpStatus.state === 'running' ? 'bg-green-600' : mcpStatus.state === 'error' ? 'bg-destructive' : 'bg-muted-foreground/50'}`} />
+                      <span className="text-xs text-muted-foreground">{statusLabel[mcpStatus.state]}</span>
+                    </div>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">仅本机 Agent 可访问，极简笔记退出后服务停止。</p>
+                  </div>
+                  <Switch aria-label="启用本地 MCP 服务" checked={mcpSettings.enabled} disabled={mcpBusy} onCheckedChange={(checked) => void handleMcpToggle(checked)} />
+                </div>
+                {mcpStatus.error && <Alert variant="destructive"><AlertDescription>{mcpStatus.error}</AlertDescription></Alert>}
+                <Separator />
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="mcp-url">连接地址</Label>
+                    <Button type="button" variant="ghost" size="sm" aria-label="刷新 MCP 连接地址" disabled={mcpBusy} onClick={() => setRefreshConfirmOpen(true)}>
+                      <RefreshCcw className={`mr-2 h-4 w-4 ${mcpBusy ? 'animate-spin' : ''}`} />刷新地址
+                    </Button>
+                  </div>
+                  <div className="flex gap-2">
+                    <Input id="mcp-url" readOnly value={mcpUrl} aria-label="MCP 连接地址" />
+                    <Tooltip>
+                      <TooltipTrigger asChild><Button type="button" variant="outline" size="icon" aria-label="复制 MCP 连接地址" onClick={() => void handleMcpCopy()}><Copy className="h-4 w-4" /></Button></TooltipTrigger>
+                      <TooltipContent>复制连接地址</TooltipContent>
+                    </Tooltip>
+                  </div>
+                  <p className="text-xs leading-5 text-muted-foreground">地址包含访问 token。除非主动刷新，否则启停或重启应用后地址保持不变。</p>
+                </div>
+              </TabsContent>
+            </div>
+
+            {activeTab !== 'mcp' && (
+              <div className="flex justify-end gap-2 border-t px-6 py-4">
+                <Button type="button" variant="outline" onClick={onClose}>取消</Button>
+                <Button type="button" disabled={isSaving} onClick={() => void handleSave()}>{isSaving ? '保存中…' : '保存'}</Button>
+              </div>
             )}
-          </div>
-          <div className="flex gap-3">
-            <button
-              onClick={onClose}
-              className="px-4 py-2 text-sm rounded transition-colors"
-              style={{ color: 'var(--text-secondary)', backgroundColor: 'var(--bg-secondary)' }}
-            >
-              取消
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={isSaving}
-              className="px-4 py-2 text-sm text-white rounded transition-colors disabled:opacity-50"
-              style={{ backgroundColor: 'var(--primary-color)' }}
-            >
-              {isSaving ? '保存中...' : '保存'}
-            </button>
-          </div>
-        </div>}
-      </div>
-    </div>
+          </Tabs>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={refreshConfirmOpen} onOpenChange={setRefreshConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>刷新 MCP 连接地址？</AlertDialogTitle>
+            <AlertDialogDescription>当前 token 将立即失效，之前复制给 Agent 的所有连接地址都需要更新。</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void handleMcpRefresh()}>确认刷新</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   )
 }
 

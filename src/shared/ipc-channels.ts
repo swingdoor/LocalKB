@@ -63,8 +63,6 @@ export const IPC_CHANNELS = {
   SETTINGS: {
     GET_AI: 'settings:getAI',
     SAVE_AI: 'settings:saveAI',
-    GET_THEME: 'settings:getTheme',
-    SAVE_THEME: 'settings:saveTheme',
     GET_HOTKEYS: 'settings:getHotkeys',
     SAVE_HOTKEYS: 'settings:saveHotkeys',
     GET_MCP: 'settings:getMcp',
@@ -75,8 +73,8 @@ export const IPC_CHANNELS = {
     COPY_MCP_URL: 'settings:copyMcpUrl',
   },
   AI: {
-    POLISH: 'ai:polish',
-    EXPAND: 'ai:expand',
+    PROCESS: 'ai:process',
+    CANCEL: 'ai:cancel',
   },
   WINDOW: {
     MINIMIZE: 'window:minimize',
@@ -89,9 +87,6 @@ export const IPC_CHANNELS = {
   },
   APP: {
     GET_ASSET_PATH: 'app:getAssetPath',
-  },
-  THEME: {
-    CHANGED: 'theme:changed',
   },
 } as const
 

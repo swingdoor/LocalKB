@@ -1,8 +1,8 @@
 export interface CloseWorkflowOptions {
   flush: () => Promise<void>
   discard: () => void
-  confirmRetry: () => boolean
-  confirmDiscard: () => boolean
+  confirmRetry: () => boolean | Promise<boolean>
+  confirmDiscard: () => boolean | Promise<boolean>
   complete: () => void
 }
 
@@ -15,8 +15,8 @@ export async function finishPendingSavesBeforeClose(
       options.complete()
       return 'closed'
     } catch {
-      if (options.confirmRetry()) continue
-      if (!options.confirmDiscard()) return 'cancelled'
+      if (await options.confirmRetry()) continue
+      if (!await options.confirmDiscard()) return 'cancelled'
       options.discard()
       options.complete()
       return 'closed'

@@ -16,6 +16,7 @@ interface EditorContextMenusProps {
   onSelectDocument: () => Promise<{ documentId: string; label: string } | null>
   onPolish: (text: string) => void
   onExpand: (text: string) => void
+  onCustom: (text: string) => void
 }
 
 export default function EditorContextMenus(props: EditorContextMenusProps) {
@@ -27,6 +28,7 @@ export default function EditorContextMenus(props: EditorContextMenusProps) {
         interaction={interaction}
         onPolish={props.onPolish}
         onExpand={props.onExpand}
+        onCustom={props.onCustom}
       />
       <ImageMenu editor={editor} interaction={interaction} vaultId={vaultId} documentId={documentId} />
       <AssetImageMenu editor={editor} interaction={interaction} vaultId={vaultId} documentId={documentId} />

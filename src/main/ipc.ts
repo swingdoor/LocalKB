@@ -2,17 +2,20 @@ import { ipcMain, dialog, BrowserWindow, app } from 'electron'
 import * as fs from 'fs'
 import * as path from 'path'
 import { settingsStore } from './settings-store'
+import { describeAIError, generateAIText } from './ai-service'
 import { IPC_CHANNELS } from '../shared/ipc-channels'
 import type {
+  AIProcessRequest,
+  AIProcessResult,
   AISettings,
   AttachmentFile,
   HotkeyConfig,
-  PolishResult,
 } from '../shared/types'
 
 let mainWindowRef: BrowserWindow | null = null
 let ipcHandlersRegistered = false
 const MAX_ATTACHMENT_BYTES = 16 * 1024 * 1024
+const activeAIRequests = new Map<string, AbortController>()
 
 const ATTACHMENT_MIME_TYPES: Record<string, string> = {
   '.txt': 'text/plain', '.md': 'text/markdown', '.csv': 'text/csv', '.json': 'application/json',
@@ -35,55 +38,42 @@ function getMainWindow(): BrowserWindow | undefined {
   return mainWindowRef
 }
 
-/**
- * 通用 AI 调用函数
- * 消除 polish 和 expand 的重复代码
- */
-async function callAI(text: string, mode: 'polish' | 'expand'): Promise<PolishResult> {
-  const settings = settingsStore.getAISettings()
-  
-  if (!settings.apiKey) {
-    return { success: false, error: '请先配置 API Key' }
-  }
+function aiRequestKey(senderId: number, requestId: string) {
+  return `${senderId}:${requestId}`
+}
 
-  const prompt = mode === 'polish' ? settings.polishPrompt : settings.expandPrompt
-  const errorMsg = mode === 'polish' ? '润色失败，请检查网络和配置' : '扩写失败，请检查网络和配置'
+function buildAIInput(settings: AISettings, request: AIProcessRequest): string {
+  if (request.mode === 'polish') return settings.polishPrompt + request.text
+  if (request.mode === 'expand') return settings.expandPrompt + request.text
+  const instruction = request.instruction?.trim()
+  if (!instruction) throw new Error('请输入自定义指令')
+  return `请严格按照以下临时指令修改所选文字，只返回修改后的文字，不要解释。\n\n临时指令：${instruction}\n\n所选文字：\n${request.text}`
+}
+
+async function callAI(
+  request: AIProcessRequest,
+  key: string,
+): Promise<AIProcessResult> {
+  if (!request.requestId?.trim()) return { success: false, error: '无效的请求 ID' }
+  if (!request.text?.trim()) return { success: false, error: '请选择需要处理的文字' }
+
+  const settings = settingsStore.getAISettings()
+  const controller = new AbortController()
+  activeAIRequests.get(key)?.abort()
+  activeAIRequests.set(key, controller)
+  const actionName = request.mode === 'polish' ? '润色' : request.mode === 'expand' ? '扩写' : '自定义处理'
 
   try {
-    const response = await fetch(`${settings.baseUrl}/v1/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${settings.apiKey}`,
-      },
-      body: JSON.stringify({
-        model: settings.model,
-        messages: [
-          {
-            role: 'user',
-            content: prompt + text,
-          },
-        ],
-        stream: false,
-      }),
-    })
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({})) as any
-      throw new Error(errorData.error?.message || `API 请求失败: ${response.status}`)
+    const input = buildAIInput(settings, request)
+    return { success: true, text: await generateAIText(settings, input, controller.signal) }
+  } catch (error: unknown) {
+    if (!controller.signal.aborted) console.error(`AI ${request.mode} error:`, error)
+    return {
+      success: false,
+      error: describeAIError(error, `${actionName}失败，请检查网络和配置`),
     }
-
-    const data = await response.json() as any
-    const resultText = data.choices?.[0]?.message?.content
-
-    if (!resultText) {
-      throw new Error('AI 返回结果为空')
-    }
-
-    return { success: true, text: resultText.trim() }
-  } catch (error: any) {
-    console.error(`AI ${mode} error:`, error)
-    return { success: false, error: error.message || errorMsg }
+  } finally {
+    if (activeAIRequests.get(key) === controller) activeAIRequests.delete(key)
   }
 }
 
@@ -308,14 +298,6 @@ export function setupIpcHandlers(mainWindow: BrowserWindow) {
     return settingsStore.saveAISettings(settings)
   })
 
-  ipcMain.handle(IPC_CHANNELS.SETTINGS.GET_THEME, async () => {
-    return settingsStore.getTheme()
-  })
-
-  ipcMain.handle(IPC_CHANNELS.SETTINGS.SAVE_THEME, async (_, theme: string) => {
-    return settingsStore.saveTheme(theme)
-  })
-
   ipcMain.handle(IPC_CHANNELS.SETTINGS.GET_HOTKEYS, async () => {
     return settingsStore.getHotkeys()
   })
@@ -324,8 +306,15 @@ export function setupIpcHandlers(mainWindow: BrowserWindow) {
     return settingsStore.saveHotkeys(hotkeys)
   })
 
-  // ========== AI 润色与扩写 ==========
-  ipcMain.handle(IPC_CHANNELS.AI.POLISH, async (_, text: string) => callAI(text, 'polish'))
+  // ========== AI 文字处理 ==========
+  ipcMain.handle(IPC_CHANNELS.AI.PROCESS, async (event, request: AIProcessRequest) => (
+    callAI(request, aiRequestKey(event.sender.id, request.requestId))
+  ))
 
-  ipcMain.handle(IPC_CHANNELS.AI.EXPAND, async (_, text: string) => callAI(text, 'expand'))
+  ipcMain.handle(IPC_CHANNELS.AI.CANCEL, async (event, requestId: string) => {
+    const controller = activeAIRequests.get(aiRequestKey(event.sender.id, requestId))
+    if (!controller) return false
+    controller.abort()
+    return true
+  })
 }

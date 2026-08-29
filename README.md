@@ -125,7 +125,7 @@ AI 能力默认需要用户自行配置，且只在明确触发时参与。这�
 
 ### 桌面端框架
 
-- Electron 42（内置 Chromium 148、Node.js 24）
+- Electron 44（内置 Chromium 152、Node.js 24）
 - React 18
 - TypeScript
 - Vite
@@ -184,13 +184,13 @@ vaults/<vaultId>/
 
 ### 环境要求
 
-- Node.js 20 及以上
+- Node.js 24 LTS 及以上
 - npm
 
 **操作系统要求**：
-- **Windows**：Windows 10 1903 (2019) 及以上
-- **macOS**：macOS 10.15 (Catalina) 及以上
-- **Linux**：主流桌面环境（GNOME、KDE 等）
+- **Windows**：Windows 10 1903 (2019) 及以上，64 位
+- **macOS**：macOS 13 (Ventura) 及以上
+- **Linux**：主流 64 位桌面环境（GNOME、KDE 等）
 
 可通过以下命令检查当前 Node.js 版本：
 
@@ -202,15 +202,15 @@ node --version
 
 ```bash
 # 使用 nvm
-nvm install 20
-nvm use 20
+nvm install 24
+nvm use 24
 
 # 或使用 fnm
-fnm install 20
-fnm use 20
+fnm install 24
+fnm use 24
 ```
 
-项目通过 `package.json` 的 `engines` 字段声明了 Node.js >= 20，低于该版本执行 `npm install` 时会收到警告。
+项目通过 `package.json` 的 `engines` 字段声明了 Node.js >= 24，低于该版本执行 `npm install` 时会收到警告。
 
 ### 安装依赖
 

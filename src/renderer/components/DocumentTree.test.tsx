@@ -56,6 +56,12 @@ vi.mock('react-arborist', async () => {
 
 import DocumentTree from './DocumentTree'
 
+function openMenu(trigger: HTMLElement) {
+  act(() => {
+    trigger.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 0 }))
+  })
+}
+
 const timestamp = '2026-01-01T00:00:00.000Z'
 const VAULT: VaultV2 = {
   schemaVersion: 2,
@@ -112,7 +118,7 @@ describe('DocumentTree', () => {
     act(() => root.render(<DocumentTree />))
     const add = container.querySelector<HTMLButtonElement>('button[aria-label="新建内容"]')!
     expect(add.className).toContain('h-7')
-    act(() => add.click())
+    openMenu(add)
     expect(document.body.textContent).toContain('新建组')
     expect(document.body.textContent).toContain('新建文档')
     expect(document.body.textContent).toContain('新建画布')
@@ -155,7 +161,7 @@ describe('DocumentTree', () => {
     useAppStore.setState({ structure })
     act(() => root.render(<DocumentTree />))
     const more = container.querySelector<HTMLButtonElement>('button[aria-label="项目 的更多操作"]')!
-    act(() => more.click())
+    openMenu(more)
     const actions = Array.from(document.body.querySelectorAll<HTMLElement>('[role="menuitem"]'))
       .map((item) => item.textContent)
     expect(actions).toEqual(['新建组', '新建文档', '新建画布', '重命名', '删除组'])
@@ -176,12 +182,12 @@ describe('DocumentTree', () => {
     useAppStore.setState({ structure, contents: [SUMMARY] })
     act(() => root.render(<DocumentTree />))
     const more = container.querySelector<HTMLButtonElement>('button[aria-label="项目 的更多操作"]')!
-    act(() => more.click())
+    openMenu(more)
     const deleteItem = document.body.querySelector<HTMLButtonElement>('[role="menuitem"][aria-disabled="true"]')!
     expect(deleteItem).toBeTruthy()
-    expect(deleteItem.disabled).toBe(false)
-    expect(deleteItem.tabIndex).not.toBe(-1)
-    expect(deleteItem.title).toContain('组内还有 1 项内容')
-    expect(deleteItem.className).toContain('text-gray-300')
+    expect(deleteItem.getAttribute('aria-disabled')).toBe('true')
+    expect(deleteItem.tabIndex).toBe(-1)
+    expect(deleteItem.title).toContain('组内仍有内容')
+    expect(deleteItem.className).toContain('opacity-50')
   })
 })

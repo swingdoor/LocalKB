@@ -30,7 +30,7 @@ export function addNumbersToHTML(html: string, toc: TocNode[]): string {
     if (tocNode && tocNode.level === level && tocNode.text === text && tocNode.number) {
       // 创建序号 span
       const numberSpan = doc.createElement('span')
-      numberSpan.style.color = '#64748B' // var(--text-secondary)
+      numberSpan.style.color = '#64748B' // Export-safe muted foreground.
       numberSpan.style.marginRight = '0.5em'
       numberSpan.textContent = tocNode.number + ' '
 

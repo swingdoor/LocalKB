@@ -14,7 +14,8 @@ describe('Editor runtime mounting', () => {
     container = document.createElement('div')
     document.body.appendChild(container)
     root = createRoot(container)
-    useAppStore.setState({ hotkeys: [], contents: [] })
+    localStorage.setItem('toc-panel-visible', 'true')
+    useAppStore.setState({ hotkeys: [], contents: [], showHeadingNumbers: false })
     window.electronAPI = {
       knowledge: {
         onChanged: vi.fn(() => () => undefined),
@@ -29,7 +30,7 @@ describe('Editor runtime mounting', () => {
     container.remove()
   })
 
-  it('opens a document with the official drag handle mounted once', () => {
+  it('opens a document with the official drag handle and independent shell controls', async () => {
     const loadedDocument: LoadedDocument = {
       id: '11111111-1111-4111-8111-111111111111',
       contentType: 'document',
@@ -48,15 +49,43 @@ describe('Editor runtime mounting', () => {
       },
     }
 
+    const onUpdate = vi.fn(async () => loadedDocument)
     act(() => root.render(
       <Editor
         document={loadedDocument}
         vaultId="33333333-3333-4333-8333-333333333333"
-        onUpdate={vi.fn(async () => loadedDocument)}
+        onUpdate={onUpdate}
       />,
     ))
 
     expect(container.querySelector('.ProseMirror')?.textContent).toContain('文档正文')
     expect(document.body.querySelectorAll('.editor-drag-handle')).toHaveLength(1)
+
+    const title = container.querySelector<HTMLInputElement>('input[aria-label="文档标题"]')!
+    const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!
+    act(() => {
+      setValue.call(title, '更新后的标题')
+      title.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 700)))
+    expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ title: '更新后的标题' }))
+
+    const tocPanel = container.querySelector<HTMLElement>('[aria-label="文档目录"]')!
+    expect(tocPanel.style.width).toBe('260px')
+    act(() => Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find((button) => button.textContent?.includes('目录'))!
+      .click())
+    expect(tocPanel.style.width).toBe('0px')
+
+    act(() => Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find((button) => button.textContent?.includes('序号'))!
+      .click())
+    expect(container.querySelector('.show-heading-numbers')).toBeTruthy()
+
+    const exportTrigger = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find((button) => button.textContent?.includes('导出'))!
+    act(() => exportTrigger.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 0 })))
+    expect(Array.from(document.body.querySelectorAll('[role="menuitem"]'))
+      .some((item) => item.textContent?.includes('导出 PDF'))).toBe(true)
   })
 })

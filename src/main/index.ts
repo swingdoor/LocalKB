@@ -142,20 +142,6 @@ function createWindow() {
   })
 }
 
-// 主题到系统按钮颜色的映射
-const themeColorMap: Record<string, { color: string; symbolColor: string }> = {
-  white: { color: '#FFFFFF', symbolColor: '#333333' },
-  warm: { color: '#FFF9E6', symbolColor: '#4A4A4A' },
-  green: { color: '#F0F9F4', symbolColor: '#2D5F3F' }
-}
-
-// IPC handler: 主题切换时同步系统按钮颜色（仅 Windows/Linux）
-ipcMain.handle(IPC_CHANNELS.THEME.CHANGED, (_event, theme: string) => {
-  if (isMac || !mainWindow) return
-  const colors = themeColorMap[theme] || themeColorMap.white
-  mainWindow.setTitleBarOverlay(colors)
-})
-
 app.whenReady().then(async () => {
   const storage = new FileKnowledgeStore(path.join(app.getPath('userData'), 'data'))
   await storage.ensureLayout()

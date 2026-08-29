@@ -1,11 +1,12 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC_CHANNELS } from '../shared/ipc-channels'
 import type {
+  AIProcessRequest,
+  AIProcessResult,
   AISettings,
   AttachmentFile,
   HotkeyConfig,
   ImageFile,
-  PolishResult,
 } from '../shared/types'
 import type { McpStatus, PublicMcpSettings } from '../shared/mcp-types'
 import type {
@@ -302,8 +303,6 @@ const electronAPI = {
     getAI: () => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS.GET_AI) as Promise<AISettings>,
     saveAI: (settings: Partial<AISettings>) => 
       ipcRenderer.invoke(IPC_CHANNELS.SETTINGS.SAVE_AI, settings) as Promise<AISettings>,
-    getTheme: () => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS.GET_THEME) as Promise<string>,
-    saveTheme: (theme: string) => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS.SAVE_THEME, theme) as Promise<string>,
     getHotkeys: () => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS.GET_HOTKEYS) as Promise<HotkeyConfig[]>,
     saveHotkeys: (hotkeys: HotkeyConfig[]) => 
       ipcRenderer.invoke(IPC_CHANNELS.SETTINGS.SAVE_HOTKEYS, hotkeys) as Promise<HotkeyConfig[]>,
@@ -321,8 +320,12 @@ const electronAPI = {
 
   // AI 功能
   ai: {
-    polish: (text: string) => ipcRenderer.invoke(IPC_CHANNELS.AI.POLISH, text) as Promise<PolishResult>,
-    expand: (text: string) => ipcRenderer.invoke(IPC_CHANNELS.AI.EXPAND, text) as Promise<PolishResult>,
+    process: (request: AIProcessRequest) => (
+      ipcRenderer.invoke(IPC_CHANNELS.AI.PROCESS, request) as Promise<AIProcessResult>
+    ),
+    cancel: (requestId: string) => (
+      ipcRenderer.invoke(IPC_CHANNELS.AI.CANCEL, requestId) as Promise<boolean>
+    ),
   },
 
   // 应用资源路径
@@ -331,10 +334,6 @@ const electronAPI = {
     getPlatform: () => process.platform,
   },
 
-  // 主题（用于同步系统按钮颜色）
-  theme: {
-    changed: (theme: string) => ipcRenderer.invoke(IPC_CHANNELS.THEME.CHANGED, theme),
-  },
 }
 
 // 暴露 API 到 window 对象

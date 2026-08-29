@@ -46,6 +46,7 @@ describe('ExcalidrawCanvas', () => {
   let container: HTMLDivElement
   let root: Root
   const onUpdate = vi.fn(async () => canvas)
+  const renameContent = vi.fn(async () => true)
 
   beforeEach(() => {
     vi.useFakeTimers()
@@ -56,7 +57,8 @@ describe('ExcalidrawCanvas', () => {
     mockCanvas.shouldThrow = false
     mockCanvas.props = null
     onUpdate.mockClear()
-    useAppStore.setState({ renameContent: vi.fn(async () => true) })
+    renameContent.mockClear()
+    useAppStore.setState({ renameContent })
   })
 
   afterEach(() => {
@@ -114,5 +116,30 @@ describe('ExcalidrawCanvas', () => {
     })
     expect(container.querySelector('[data-testid="excalidraw"]')).not.toBeNull()
     errorLog.mockRestore()
+  })
+
+  it('saves the title and keeps view-mode actions scoped to the Excalidraw API', async () => {
+    await renderCanvas()
+    const title = container.querySelector<HTMLInputElement>('input[aria-label="画布标题"]')!
+    const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!
+    act(() => {
+      setValue.call(title, '系统架构图')
+      title.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await act(async () => {
+      vi.advanceTimersByTime(700)
+      await Promise.resolve()
+    })
+    expect(renameContent).toHaveBeenCalledWith(canvas.id, '系统架构图')
+
+    const updateScene = vi.fn()
+    act(() => mockCanvas.props.excalidrawAPI({ updateScene }))
+    act(() => Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find((button) => button.textContent?.includes('查看'))!
+      .click())
+    expect(updateScene).toHaveBeenCalledWith(expect.objectContaining({
+      appState: expect.objectContaining({ viewModeEnabled: true }),
+    }))
+    expect(Array.from(container.querySelectorAll('button')).some((button) => button.textContent?.includes('导出'))).toBe(true)
   })
 })

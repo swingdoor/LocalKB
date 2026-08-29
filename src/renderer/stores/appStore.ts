@@ -64,7 +64,6 @@ interface AppState {
   isSearchOpen: boolean
   isSettingsOpen: boolean
   sidebarOpen: boolean
-  theme: string
   hotkeys: HotkeyConfig[]
   showHeadingNumbers: boolean
   loadVaults: () => Promise<void>
@@ -90,8 +89,6 @@ interface AppState {
   setSearchOpen: (open: boolean) => void
   setSettingsOpen: (open: boolean) => void
   toggleSidebar: () => void
-  loadTheme: () => Promise<void>
-  setTheme: (theme: string) => Promise<void>
   loadHotkeys: () => Promise<void>
   updateHotkeys: (hotkeys: HotkeyConfig[]) => void
   toggleHeadingNumbers: () => void
@@ -102,7 +99,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   structureLoading: false, structureError: null,
   selectedContent: null, contentLoading: false, contentError: null, currentContent: null,
   expandedGroupIds: [], revealContentId: null, isSearchOpen: false,
-  isSettingsOpen: false, sidebarOpen: true, theme: 'white', hotkeys: [],
+  isSettingsOpen: false, sidebarOpen: true, hotkeys: [],
   showHeadingNumbers: (() => {
     try { return JSON.parse(localStorage.getItem('show-heading-numbers') || 'false') } catch { return false }
   })(),
@@ -427,15 +424,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   setSearchOpen: (open) => set({ isSearchOpen: open }),
   setSettingsOpen: (open) => set({ isSettingsOpen: open }),
   toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
-  loadTheme: async () => {
-    const theme = await window.electronAPI.settings.getTheme()
-    set({ theme }); document.documentElement.setAttribute('data-theme', theme === 'white' ? '' : theme)
-  },
-  setTheme: async (theme) => {
-    set({ theme }); await window.electronAPI.settings.saveTheme(theme)
-    document.documentElement.setAttribute('data-theme', theme === 'white' ? '' : theme)
-    if (window.electronAPI.app.getPlatform() !== 'darwin') window.electronAPI.theme.changed(theme)
-  },
   loadHotkeys: async () => set({ hotkeys: await window.electronAPI.settings.getHotkeys() }),
   updateHotkeys: (hotkeys) => set({ hotkeys }),
   toggleHeadingNumbers: () => set((state) => {

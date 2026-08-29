@@ -5,10 +5,10 @@ import { app } from 'electron'
 import type { AISettings, HotkeyConfig } from '../shared/types'
 import type { McpSettings } from '../shared/mcp-types'
 import { DEFAULT_HOTKEYS } from '../shared/types'
+import { getAIProvider, isAIProviderId } from '../shared/ai-providers'
 
 interface SettingsData {
   ai?: Partial<AISettings>
-  theme?: string
   hotkeys?: HotkeyConfig[]
   mcp?: Partial<McpSettings>
 }
@@ -31,11 +31,25 @@ function normalizeMcpSettings(value: Partial<McpSettings>, fallback?: McpSetting
 }
 
 const defaultAISettings: AISettings = {
+  provider: 'deepseek',
   apiKey: '',
-  baseUrl: 'https://api.deepseek.com',
+  baseUrl: getAIProvider('deepseek').baseUrl,
   model: 'deepseek-v4-flash',
   polishPrompt: '请对以下文本进行润色，使其更加流畅、专业，同时保持原意不变。只返回润色后的文本，不要添加任何解释或说明：\n\n',
   expandPrompt: '请对以下文本进行扩写，丰富内容细节，增加相关论述，使其更加完整充实。只返回扩写后的文本，不要添加任何解释或说明：\n\n',
+}
+
+function normalizeAISettings(value: Partial<AISettings>): AISettings {
+  const provider = isAIProviderId(value.provider) ? value.provider : defaultAISettings.provider
+  const merged = { ...defaultAISettings, ...value, provider }
+  const configuredBaseUrl = typeof merged.baseUrl === 'string' ? merged.baseUrl.trim() : ''
+  const baseUrl = provider === 'custom' ? configuredBaseUrl : getAIProvider(provider).baseUrl
+  return {
+    ...merged,
+    baseUrl,
+    apiKey: typeof merged.apiKey === 'string' ? merged.apiKey : '',
+    model: typeof merged.model === 'string' ? merged.model.trim() : '',
+  }
 }
 
 function settingsPath(): string {
@@ -53,20 +67,13 @@ function writeSettings(value: SettingsData): void {
 
 export const settingsStore = {
   getAISettings(): AISettings {
-    return { ...defaultAISettings, ...readSettings().ai }
+    return normalizeAISettings(readSettings().ai ?? {})
   },
   saveAISettings(patch: Partial<AISettings>): AISettings {
     const settings = readSettings()
-    const ai = { ...defaultAISettings, ...settings.ai, ...patch }
+    const ai = normalizeAISettings({ ...settings.ai, ...patch })
     writeSettings({ ...settings, ai })
     return ai
-  },
-  getTheme(): string {
-    return readSettings().theme || 'white'
-  },
-  saveTheme(theme: string): string {
-    writeSettings({ ...readSettings(), theme })
-    return theme
   },
   getHotkeys(): HotkeyConfig[] {
     const saved = readSettings().hotkeys ?? []

@@ -1,5 +1,5 @@
 import { AlertCircle, RotateCcw } from 'lucide-react'
-import { useEffect } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import TitleBar from './components/TitleBar'
 import Sidebar from './components/Sidebar'
 import Editor from './components/Editor'
@@ -16,7 +16,22 @@ import {
   hasPendingSaves,
 } from './utils/pendingSaveCoordinator'
 import { finishPendingSavesBeforeClose } from './utils/closeWorkflow'
-import { isExternalEventForVault, shouldReloadExternalChange } from './utils/knowledgeEventPolicy'
+import { isExternalEventForVault } from './utils/knowledgeEventPolicy'
+import { Alert, AlertDescription, AlertTitle } from './components/ui/alert'
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from './components/ui/alert-dialog'
+import { Button } from './components/ui/button'
+import { Skeleton } from './components/ui/skeleton'
+import { Toaster } from './components/ui/sonner'
+import { TooltipProvider } from './components/ui/tooltip'
+
+type ConfirmationKind = 'close-retry' | 'close-discard' | 'external-reload'
+interface PendingConfirmation {
+  kind: ConfirmationKind
+  resolve: (confirmed: boolean) => void
+}
 
 function App() {
   const {
@@ -30,7 +45,6 @@ function App() {
     sidebarOpen,
     hotkeys,
     loadVaults,
-    loadTheme,
     loadHotkeys,
     selectContent,
     revealContent,
@@ -39,11 +53,27 @@ function App() {
     setSearchOpen,
     setSettingsOpen,
   } = useAppStore()
+  const [confirmation, setConfirmation] = useState<PendingConfirmation | null>(null)
+  const confirmationRef = useRef<PendingConfirmation | null>(null)
+
+  const requestConfirmation = useCallback((kind: ConfirmationKind) => new Promise<boolean>((resolve) => {
+    confirmationRef.current?.resolve(false)
+    const next = { kind, resolve }
+    confirmationRef.current = next
+    setConfirmation(next)
+  }), [])
+
+  const settleConfirmation = useCallback((confirmed: boolean) => {
+    const pending = confirmationRef.current
+    if (!pending) return
+    confirmationRef.current = null
+    setConfirmation(null)
+    pending.resolve(confirmed)
+  }, [])
 
   // 初始化
   useEffect(() => {
     loadVaults()
-    loadTheme()
     loadHotkeys()
     loadXiaolaiFont()
   }, [])
@@ -56,20 +86,17 @@ function App() {
       void finishPendingSavesBeforeClose({
         flush: flushPendingSaves,
         discard: discardPendingSaves,
-        confirmRetry: () => window.confirm(
-          '最后一次保存失败。点击“确定”重试，点击“取消”选择是否放弃更改。',
-        ),
-        confirmDiscard: () => window.confirm(
-          '确定放弃尚未保存的更改并退出吗？此操作无法撤销。',
-        ),
+        confirmRetry: () => requestConfirmation('close-retry'),
+        confirmDiscard: () => requestConfirmation('close-discard'),
         complete: window.electronAPI.window.completeClose,
       }).finally(() => {
           handlingClose = false
       })
     })
-  }, [])
+  }, [requestConfirmation])
 
   useEffect(() => window.electronAPI.knowledge.onChanged((event) => {
+    void (async () => {
     const state = useAppStore.getState()
     if (!isExternalEventForVault(event, state.currentVault?.id)) return
     const selected = state.selectedContent
@@ -77,9 +104,7 @@ function App() {
       event.resourceType === 'document' || event.resourceType === 'canvas'
     )
     if (affectsOpenContent) {
-      if (!shouldReloadExternalChange(hasPendingSaves(), () => window.confirm(
-          '当前内容已被外部工具更新。点击“确定”放弃本地未保存更改并重新加载；点击“取消”保留当前编辑。',
-        ))) return
+      if (hasPendingSaves() && !await requestConfirmation('external-reload')) return
       discardPendingSaves()
       if (event.change === 'deleted') {
         useAppStore.setState({
@@ -95,7 +120,13 @@ function App() {
         event.resourceType === 'canvas') {
       void state.loadContents(event.vaultId)
     }
-  }), [])
+    })()
+  }), [requestConfirmation])
+
+  useEffect(() => () => {
+    confirmationRef.current?.resolve(false)
+    confirmationRef.current = null
+  }, [])
 
   // 键盘快捷键
   useEffect(() => {
@@ -121,14 +152,10 @@ function App() {
         }
       }
       
-      // Escape 关闭搜索
-      if (e.key === 'Escape' && isSearchOpen) {
-        setSearchOpen(false)
-      }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [hotkeys, isSearchOpen, setSearchOpen])
+  }, [hotkeys, setSearchOpen])
 
   // 搜索选择文档
   const handleSearchSelect = (content: SearchHit) => {
@@ -140,42 +167,37 @@ function App() {
   const searchHotkeyDisplay = searchHotkey ? formatHotkeyDisplay(searchHotkey) : formatHotkeyDisplay({ key: 'k', modifiers: ['ctrl'] })
 
   return (
-    <div 
-      className="flex flex-col h-screen" 
-      style={{ backgroundColor: 'var(--bg-primary)' }}
-    >
+    <TooltipProvider delayDuration={300}>
+    <div className="flex h-screen flex-col bg-background text-foreground">
       <TitleBar />
       <div className="flex flex-1 overflow-hidden">
         {sidebarOpen && <Sidebar />}
-        <main className="flex-1 overflow-hidden" style={{ backgroundColor: 'var(--bg-primary)' }}>
+        <main className="flex-1 overflow-hidden bg-background">
           {contentLoading && !currentContent ? (
-            <div className="grid h-full place-items-center" role="status">
-              <div className="flex items-center gap-3 text-sm" style={{ color: 'var(--text-secondary)' }}>
-                <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-                正在加载“{selectedContent?.title}”…
+            <div className="mx-auto flex h-full w-full max-w-3xl flex-col gap-5 px-12 py-14" role="status" aria-label={`正在加载${selectedContent?.title || '内容'}`}>
+              <Skeleton className="h-9 w-2/5" />
+              <Skeleton className="h-4 w-3/5" />
+              <div className="mt-8 space-y-3">
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-11/12" />
+                <Skeleton className="h-4 w-4/5" />
               </div>
             </div>
           ) : contentError && !currentContent ? (
             <div className="grid h-full place-items-center px-8">
-              <div className="max-w-lg text-center">
-                <AlertCircle className="mx-auto mb-4 text-red-500" size={30} strokeWidth={1.7} />
-                <h2 className="text-lg font-medium" style={{ color: 'var(--text-primary)' }}>
-                  无法打开“{selectedContent?.title || '所选内容'}”
-                </h2>
-                <p className="mt-2 break-words text-sm leading-6" style={{ color: 'var(--text-secondary)' }}>
-                  {contentError}
-                </p>
+              <Alert variant="destructive" className="max-w-lg">
+                <AlertCircle className="h-4 w-4" />
+                <AlertTitle>无法打开“{selectedContent?.title || '所选内容'}”</AlertTitle>
+                <AlertDescription className="break-words">{contentError}</AlertDescription>
                 {selectedContent && (
-                  <button
-                    type="button"
-                    className="mt-5 inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm text-white transition-colors hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  <Button variant="outline" size="sm" className="mt-4"
                     onClick={() => void selectContent(selectedContent)}
                   >
-                    <RotateCcw size={15} />
+                    <RotateCcw className="mr-2 h-4 w-4" />
                     重试
-                  </button>
+                  </Button>
                 )}
-              </div>
+              </Alert>
             </div>
           ) : currentContent ? (
             currentContent.contentType === 'canvas' ? (
@@ -193,15 +215,15 @@ function App() {
               />
             )
           ) : (
-            <div className="flex items-center justify-center h-full text-gray-400">
+            <div className="flex h-full items-center justify-center text-muted-foreground">
               {currentVault ? (
                 <div className="text-center">
-                  <p className="text-lg mb-2">选择或创建一个文档开始编辑</p>
+                  <p className="mb-2 text-base text-foreground">选择或创建一个文档开始编辑</p>
                   <p className="text-sm">按 {searchHotkeyDisplay} 快速搜索</p>
                 </div>
               ) : (
                 <div className="text-center">
-                  <p className="text-lg mb-2">欢迎使用 LocalKB</p>
+                  <p className="mb-2 text-base text-foreground">欢迎使用极简笔记</p>
                   <p className="text-sm">请先创建一个知识库</p>
                 </div>
               )}
@@ -224,7 +246,39 @@ function App() {
         isOpen={isSettingsOpen}
         onClose={() => setSettingsOpen(false)}
       />
+      <AlertDialog
+        open={Boolean(confirmation)}
+        onOpenChange={(open) => { if (!open) settleConfirmation(false) }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {confirmation?.kind === 'close-retry' && '保存失败'}
+              {confirmation?.kind === 'close-discard' && '放弃未保存的更改？'}
+              {confirmation?.kind === 'external-reload' && '内容已在外部更新'}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmation?.kind === 'close-retry' && '最后一次保存没有成功。你可以重试，或继续选择是否放弃更改。'}
+              {confirmation?.kind === 'close-discard' && '尚未保存的更改将永久丢失，此操作无法撤销。'}
+              {confirmation?.kind === 'external-reload' && '重新加载会放弃当前未保存的更改；保留当前编辑则暂不载入外部版本。'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => settleConfirmation(false)}>
+              {confirmation?.kind === 'close-retry' ? '不重试' : confirmation?.kind === 'external-reload' ? '保留当前编辑' : '继续编辑'}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className={confirmation?.kind === 'close-discard' ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90' : undefined}
+              onClick={() => settleConfirmation(true)}
+            >
+              {confirmation?.kind === 'close-retry' ? '重试保存' : confirmation?.kind === 'external-reload' ? '重新加载' : '放弃并退出'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <Toaster position="bottom-right" />
     </div>
+    </TooltipProvider>
   )
 }
 

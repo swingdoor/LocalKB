@@ -48,10 +48,16 @@ describe('typed editor contextual menus', () => {
   let container: HTMLDivElement
   let root: ReturnType<typeof createRoot>
   const interaction = createEditorInteractionCoordinator()
+  const onCustom = vi.fn()
 
   beforeEach(() => {
     ;(globalThis as any).IS_REACT_ACT_ENVIRONMENT = true
+    HTMLElement.prototype.hasPointerCapture = () => false
+    HTMLElement.prototype.setPointerCapture = () => undefined
+    HTMLElement.prototype.releasePointerCapture = () => undefined
+    HTMLElement.prototype.scrollIntoView = () => undefined
     interaction.reset()
+    onCustom.mockReset()
     container = document.createElement('div')
     document.body.appendChild(container)
     root = createRoot(container)
@@ -112,6 +118,7 @@ describe('typed editor contextual menus', () => {
           onSelectDocument={async () => null}
           onPolish={() => undefined}
           onExpand={() => undefined}
+          onCustom={onCustom}
         />
       </div>,
     ))
@@ -239,5 +246,28 @@ describe('typed editor contextual menus', () => {
     expect(nextScopeHandler).toHaveBeenCalledOnce()
     expect(toolbar.style.display).toBe('none')
     outside.remove()
+  })
+
+  it('uses frontend preset menus for typography colors and exposes custom AI processing', () => {
+    act(() => editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, 1, 4))))
+    renderMenus(80)
+
+    expect(container.querySelector('select')).toBeNull()
+    expect(container.querySelector('input[type="color"]')).toBeNull()
+    expect(container.querySelector('[aria-label="字体颜色"]')).not.toBeNull()
+    expect(container.querySelector('[aria-label="背景颜色"]')).not.toBeNull()
+
+    const backgroundTrigger = container.querySelector<HTMLElement>('[aria-label="背景颜色"]')!
+    act(() => {
+      backgroundTrigger.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 0 }))
+      backgroundTrigger.click()
+    })
+    const presets = document.body.querySelector<HTMLElement>('[aria-label="背景颜色预设"]')
+    expect(presets).not.toBeNull()
+    expect(presets?.closest('[aria-label="文本格式"]')).not.toBeNull()
+    expect(document.body.querySelector('[aria-label="浅蓝"]')).not.toBeNull()
+
+    act(() => container.querySelector<HTMLButtonElement>('[aria-label="自定义修改"]')!.click())
+    expect(onCustom).toHaveBeenCalledWith('选中文')
   })
 })

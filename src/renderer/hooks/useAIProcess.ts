@@ -1,30 +1,32 @@
-import { useState, useCallback } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Editor } from '@tiptap/react'
+import type { AIProcessMode } from '@shared/types'
 import { looksLikeMarkdown, markdownToHtml, sanitizePastedHtml } from '../utils/richPaste'
 
-export type AIMode = 'polish' | 'expand'
+export type AIMode = AIProcessMode
+export type AIProcessPhase = 'idle' | 'instruction' | 'loading' | 'result' | 'error'
 
-interface PolishState {
+interface SelectionRange {
+  from: number
+  to: number
+}
+
+interface AIProcessState {
   originalText: string
-  polishedText: string
-  isLoading: boolean
+  processedText: string
+  phase: AIProcessPhase
   error?: string
-  selectionRange?: { from: number; to: number }
+  selectionRange?: SelectionRange
 }
 
-const initialPolishState: PolishState = {
+const initialProcessState: AIProcessState = {
   originalText: '',
-  polishedText: '',
-  isLoading: false,
+  processedText: '',
+  phase: 'idle',
 }
 
-/**
- * 判断文本是否包含 Markdown 标记（含单行内联标记）
- * looksLikeMarkdown 要求多行，这里补充单行场景（润色常返回单行带 **粗体** 的文本）
- */
 function containsMarkdown(text: string): boolean {
   if (looksLikeMarkdown(text)) return true
-  // 单行内联标记：粗体/斜体、行内代码、链接、行首标题/列表
   return /(\*\*|__)[^\n*_]+(\*\*|__)/.test(text) ||
     /`[^`\n]+`/.test(text) ||
     /\[[^\]]+\]\([^)]+\)/.test(text) ||
@@ -32,103 +34,154 @@ function containsMarkdown(text: string): boolean {
     /^\s*[-*+]\s+\S/.test(text.trim())
 }
 
+function createRequestId() {
+  return globalThis.crypto?.randomUUID?.() ?? `ai-${Date.now()}-${Math.random().toString(36).slice(2)}`
+}
+
 export function useAIProcess() {
-  const [showPolishModal, setShowPolishModal] = useState(false)
-  const [aiMode, setAiMode] = useState<AIMode>('polish')
-  const [polishState, setPolishState] = useState<PolishState>(initialPolishState)
+  const [showProcessModal, setShowProcessModal] = useState(false)
+  const [mode, setMode] = useState<AIMode>('polish')
+  const [processState, setProcessState] = useState<AIProcessState>(initialProcessState)
+  const activeRequestIdRef = useRef<string | null>(null)
 
-  /**
-   * 统一的 AI 处理函数（润色/扩写）
-   */
-  const handleAIProcess = useCallback(async (
+  const runAIProcess = useCallback(async (
     text: string,
-    mode: AIMode,
-    editor: Editor
+    nextMode: AIMode,
+    selectionRange: SelectionRange,
+    instruction?: string,
   ): Promise<void> => {
-    // 保存选区范围
-    const { from, to } = editor.state.selection
+    const previousRequestId = activeRequestIdRef.current
+    if (previousRequestId) void window.electronAPI.ai.cancel(previousRequestId)
 
-    setAiMode(mode)
-    setPolishState({
+    const requestId = createRequestId()
+    activeRequestIdRef.current = requestId
+    setMode(nextMode)
+    setProcessState({
       originalText: text,
-      polishedText: '',
-      isLoading: true,
-      selectionRange: { from, to },
+      processedText: '',
+      phase: 'loading',
+      selectionRange,
     })
-    setShowPolishModal(true)
+    setShowProcessModal(true)
 
     try {
-      // 根据模式调用不同的 AI 接口
-      const result = mode === 'polish'
-        ? await window.electronAPI.ai.polish(text)
-        : await window.electronAPI.ai.expand(text)
-
+      const result = await window.electronAPI.ai.process({
+        requestId,
+        mode: nextMode,
+        text,
+        instruction,
+      })
+      if (activeRequestIdRef.current !== requestId) return
+      activeRequestIdRef.current = null
       if (result.success && result.text) {
-        setPolishState(prev => ({
-          ...prev,
-          polishedText: result.text!,
-          isLoading: false,
+        setProcessState((previous) => ({
+          ...previous,
+          processedText: result.text!,
+          phase: 'result',
         }))
-      } else {
-        const errorMsg = mode === 'polish' ? '润色失败' : '扩写失败'
-        setPolishState(prev => ({
-          ...prev,
-          isLoading: false,
-          error: result.error || errorMsg,
-        }))
+        return
       }
-    } catch (err: any) {
-      const errorMsg = mode === 'polish' ? '润色请求失败' : '扩写请求失败'
-      setPolishState(prev => ({
-        ...prev,
-        isLoading: false,
-        error: err.message || errorMsg,
+      setProcessState((previous) => ({
+        ...previous,
+        phase: 'error',
+        error: result.error || 'AI 处理失败',
+      }))
+    } catch (error: unknown) {
+      if (activeRequestIdRef.current !== requestId) return
+      activeRequestIdRef.current = null
+      setProcessState((previous) => ({
+        ...previous,
+        phase: 'error',
+        error: error instanceof Error ? error.message : 'AI 请求失败',
       }))
     }
   }, [])
 
-  /**
-   * 确认替换 AI 处理结果
-   * AI 输出通常为 Markdown 格式，转换为富文本后插入，避免出现 ** # 等原始标记
-   */
-  const confirmPolish = useCallback((editor: Editor) => {
-    if (!polishState.selectionRange || !polishState.polishedText) return
+  const handleAIProcess = useCallback((
+    text: string,
+    nextMode: Exclude<AIMode, 'custom'>,
+    editor: Editor,
+  ) => {
+    const { from, to } = editor.state.selection
+    return runAIProcess(text, nextMode, { from, to })
+  }, [runAIProcess])
 
-    const { from, to } = polishState.selectionRange
-    const text = polishState.polishedText
+  const beginCustomProcess = useCallback((text: string, editor: Editor) => {
+    const { from, to } = editor.state.selection
+    setMode('custom')
+    setProcessState({
+      originalText: text,
+      processedText: '',
+      phase: 'instruction',
+      selectionRange: { from, to },
+    })
+    setShowProcessModal(true)
+  }, [])
 
-    const chain = editor
-      .chain()
-      .focus()
-      .setTextSelection({ from, to })
-      .deleteSelection()
+  const submitCustomProcess = useCallback((instruction: string) => {
+    if (!processState.selectionRange || processState.phase !== 'instruction') return Promise.resolve()
+    return runAIProcess(
+      processState.originalText,
+      'custom',
+      processState.selectionRange,
+      instruction.trim(),
+    )
+  }, [processState.originalText, processState.phase, processState.selectionRange, runAIProcess])
 
-    // 若内容包含 Markdown 标记，转为 HTML 插入；否则按纯文本插入
+  const reviseCustomProcess = useCallback(() => {
+    if (mode !== 'custom' || processState.phase !== 'result') return
+    setProcessState((previous) => ({
+      ...previous,
+      processedText: '',
+      phase: 'instruction',
+      error: undefined,
+    }))
+  }, [mode, processState.phase])
+
+  const confirmProcess = useCallback((editor: Editor) => {
+    if (
+      processState.phase !== 'result'
+      || !processState.selectionRange
+      || !processState.processedText
+    ) return
+
+    const { from, to } = processState.selectionRange
+    const text = processState.processedText
+    const chain = editor.chain().focus().setTextSelection({ from, to }).deleteSelection()
+
     if (containsMarkdown(text)) {
-      const html = sanitizePastedHtml(markdownToHtml(text))
-      chain.insertContent(html).run()
+      chain.insertContent(sanitizePastedHtml(markdownToHtml(text))).run()
     } else {
       chain.insertContent(text).run()
     }
 
-    setShowPolishModal(false)
-    setPolishState(initialPolishState)
-  }, [polishState.selectionRange, polishState.polishedText])
+    setShowProcessModal(false)
+    setProcessState(initialProcessState)
+  }, [processState.phase, processState.processedText, processState.selectionRange])
 
-  /**
-   * 取消 AI 处理
-   */
-  const cancelPolish = useCallback(() => {
-    setShowPolishModal(false)
-    setPolishState(initialPolishState)
+  const cancelProcess = useCallback(() => {
+    const requestId = activeRequestIdRef.current
+    activeRequestIdRef.current = null
+    setShowProcessModal(false)
+    setProcessState(initialProcessState)
+    if (requestId) void window.electronAPI.ai.cancel(requestId)
+  }, [])
+
+  useEffect(() => () => {
+    const requestId = activeRequestIdRef.current
+    activeRequestIdRef.current = null
+    if (requestId) void window.electronAPI.ai.cancel(requestId)
   }, [])
 
   return {
-    showPolishModal,
-    aiMode,
-    polishState,
+    showProcessModal,
+    mode,
+    processState,
     handleAIProcess,
-    confirmPolish,
-    cancelPolish,
+    beginCustomProcess,
+    submitCustomProcess,
+    reviseCustomProcess,
+    confirmProcess,
+    cancelProcess,
   }
 }

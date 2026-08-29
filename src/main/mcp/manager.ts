@@ -38,9 +38,9 @@ export class McpManager {
       settingsStore.saveMcpSettings(next)
       return maskMcpSettings(next)
     })
-    ipc.handle(IPC_CHANNELS.SETTINGS.COPY_MCP_URL, () => {
+    ipc.handle(IPC_CHANNELS.SETTINGS.COPY_MCP_URL, async () => {
       const settings = settingsStore.getMcpSettings()
-      clipboard.writeText(this.http.connectionUrl(settings))
+      await clipboard.writeText(this.http.connectionUrl(settings))
       return true
     })
   }

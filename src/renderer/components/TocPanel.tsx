@@ -1,5 +1,8 @@
 import React, { useState, useCallback, useEffect } from 'react'
+import { ChevronRight, X } from 'lucide-react'
 import type { TocNode } from '../utils/headingParser'
+import { Button } from './ui/button'
+import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 
 // ============================================================================
 // Types
@@ -56,10 +59,9 @@ function TocNodeRow({
   return (
     <div className="select-none">
       <div
-        className="flex items-center gap-1 py-1 px-2 rounded cursor-pointer group transition-colors text-sm"
+        className="group flex cursor-pointer items-center gap-1 rounded-md px-2 py-1 text-sm transition-colors hover:bg-muted"
         style={{ 
           paddingLeft: `${indentPx + 8}px`,
-          backgroundColor: 'var(--bg-secondary)',
         }}
         onClick={handleClick}
         title={node.text}
@@ -68,49 +70,37 @@ function TocNodeRow({
       >
         {/* 展开/折叠按钮 */}
         {hasChildren ? (
-          <button
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
             onClick={handleToggle}
-            className="w-4 h-4 flex items-center justify-center flex-shrink-0"
-            style={{ color: 'var(--text-secondary)' }}
+            className="h-4 w-4 flex-shrink-0 text-muted-foreground"
             aria-label={isExpanded ? '折叠' : '展开'}
           >
-            <svg
-              className={`w-3 h-3 transform transition-transform ${isExpanded ? 'rotate-90' : ''}`}
-              fill="currentColor"
-              viewBox="0 0 20 20"
-            >
-              <path
-                fillRule="evenodd"
-                d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
-                clipRule="evenodd"
-              />
-            </svg>
-          </button>
+            <ChevronRight className={`h-3 w-3 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+          </Button>
         ) : (
           <span className="w-4 h-4 flex-shrink-0" />
         )}
 
         {/* 级别指示器 */}
         <span
-          className="text-xs font-medium flex-shrink-0"
-          style={{
-            color: levelColor(node.level),
-            minWidth: '14px',
-          }}
+          className="min-w-[14px] flex-shrink-0 text-xs font-medium text-muted-foreground"
         >
           H{node.level}
         </span>
 
         {/* 章节序号 */}
         {showNumbers && node.number && (
-          <span className="flex-shrink-0 text-xs mr-1" style={{ color: 'var(--text-secondary)' }}>
+          <span className="mr-1 flex-shrink-0 text-xs text-muted-foreground">
             {node.number}
           </span>
         )}
 
         {/* 标题文本 */}
-        <span className="truncate flex-1 group-hover:opacity-80" style={{ color: 'var(--text-primary)' }}>
-          {node.text || <span className="italic" style={{ color: 'var(--text-secondary)' }}>无标题</span>}
+        <span className={`flex-1 truncate ${node.level <= 2 ? 'font-medium' : ''}`}>
+          {node.text || <span className="italic text-muted-foreground">无标题</span>}
         </span>
       </div>
 
@@ -132,23 +122,6 @@ function TocNodeRow({
       )}
     </div>
   )
-}
-
-// ============================================================================
-// Helpers
-// ============================================================================
-
-/** 根据标题级别返回颜色 */
-function levelColor(level: number): string {
-  const colors: Record<number, string> = {
-    1: '#ef4444', // red-500
-    2: '#f97316', // orange-500
-    3: '#eab308', // yellow-500
-    4: '#22c55e', // green-500
-    5: '#3b82f6', // blue-500
-    6: '#8b5cf6', // violet-500
-  }
-  return colors[level] ?? '#6b7280'
 }
 
 // ============================================================================
@@ -203,38 +176,30 @@ function TocPanel({ toc, onNavigate, isVisible = true, onToggle, showNumbers = f
 
   return (
     <div
-      className="flex flex-col h-full border-l transition-all duration-200"
+      className="flex h-full flex-col border-l border-border bg-background transition-all duration-200"
       style={{
         width: isVisible ? '260px' : '0px',
         minWidth: isVisible ? '260px' : '0px',
         overflow: isVisible ? 'visible' : 'hidden',
-        backgroundColor: 'var(--bg-editor)',
-        borderColor: 'var(--border-color)',
       }}
       role="navigation"
       aria-label="文档目录"
     >
       {/* 面板头部 */}
-      <div className="flex items-center justify-between px-3 py-2 border-b flex-shrink-0" style={{ borderColor: 'var(--border-color)' }}>
-        <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>目录</span>
+      <div className="flex flex-shrink-0 items-center justify-between border-b px-3 py-2">
+        <span className="text-sm font-medium">目录</span>
         {onToggle && (
-          <button
-            onClick={onToggle}
-            className="w-6 h-6 flex items-center justify-center text-gray-400 hover:text-gray-600 rounded hover:bg-gray-100 transition-colors"
-            aria-label="关闭目录面板"
-            title="关闭目录"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+          <Tooltip>
+            <TooltipTrigger asChild><Button type="button" variant="ghost" size="icon" className="h-6 w-6" onClick={onToggle} aria-label="关闭目录面板"><X className="h-4 w-4" /></Button></TooltipTrigger>
+            <TooltipContent>关闭目录</TooltipContent>
+          </Tooltip>
         )}
       </div>
 
       {/* 目录内容 */}
       <div className="flex-1 overflow-y-auto py-2">
         {isEmpty ? (
-          <div className="text-center text-gray-400 text-sm py-8 px-4">
+          <div className="px-4 py-8 text-center text-sm text-muted-foreground">
             暂无标题
           </div>
         ) : (
