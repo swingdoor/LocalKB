@@ -34,20 +34,25 @@ export function useMindMapEdit(editor: Editor | null, vaultId: string, documentI
       )
       if (!result.ok) {
         setEditingMindMap((current) => current ? { ...current, error: result.error.message } : null)
-        return
+        throw new Error(result.error.message)
       }
+      setEditingMindMap((current) => current?.error ? { ...current, error: null } : current)
     } else {
       const result = await window.electronAPI.knowledge.createMindMap(vaultId, documentId, content)
       if (!result.ok) {
         setEditingMindMap((current) => current ? { ...current, error: result.error.message } : null)
-        return
+        throw new Error(result.error.message)
       }
-      editor.chain().focus().insertContent({
+      // The document selection is preserved while the modal is open; inserting
+      // must not steal focus from the active mind-map action.
+      editor.chain().insertContent({
         type: 'mindmapReference',
         attrs: { mindmapId: result.data.id, width: null, textAlign: 'left' },
       }).run()
+      // Keep the current editor instance alive. Its native data is the draft
+      // source of truth; only adopt the newly allocated resource ID here.
+      setEditingMindMap((current) => current ? { ...current, id: result.data.id, error: null } : null)
     }
-    setEditingMindMap(null)
   }, [documentId, editingMindMap, editor, vaultId])
 
   const closeMindMapEditor = useCallback(() => setEditingMindMap(null), [])

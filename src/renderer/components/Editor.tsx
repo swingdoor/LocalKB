@@ -24,6 +24,7 @@ import CommandMenu from './CommandMenu'
 import TableMenu from './TableMenu'
 import DrawingEditorModal from './DrawingEditorModal'
 import MindMapEditorModal from './MindMapEditorModal'
+import MindMapEditorErrorBoundary from './MindMapEditorErrorBoundary'
 import AIProcessModal from './AIProcessModal'
 import DocumentReferencePicker from './DocumentReferencePicker'
 import EditorRootBlockControls from './EditorRootBlockControls'
@@ -321,24 +322,28 @@ function Editor({ document, vaultId, onUpdate }: EditorProps) {
   // 思维导图编辑 Hook（需要 editor 实例）
   const mindMapEdit = useMindMapEdit(editor, vaultId, document.id)
 
+  const canvasEditorOpen = Boolean(canvasEdit.editingCanvas)
+  const mindMapEditorOpen = Boolean(mindMapEdit.editingMindMap)
+
   useEffect(() => {
     interaction.setModalOpen('document-reference-picker', documentReferencePickerOpen)
-    interaction.setModalOpen('canvas-editor', Boolean(canvasEdit.editingCanvas))
-    interaction.setModalOpen('mindmap-editor', Boolean(mindMapEdit.editingMindMap))
+    return () => interaction.setModalOpen('document-reference-picker', false)
+  }, [documentReferencePickerOpen, interaction])
+
+  useEffect(() => {
+    interaction.setModalOpen('canvas-editor', canvasEditorOpen)
+    return () => interaction.setModalOpen('canvas-editor', false)
+  }, [canvasEditorOpen, interaction])
+
+  useEffect(() => {
+    interaction.setModalOpen('mindmap-editor', mindMapEditorOpen)
+    return () => interaction.setModalOpen('mindmap-editor', false)
+  }, [interaction, mindMapEditorOpen])
+
+  useEffect(() => {
     interaction.setModalOpen('ai-confirm', aiProcess.showProcessModal)
-    return () => {
-      interaction.setModalOpen('document-reference-picker', false)
-      interaction.setModalOpen('canvas-editor', false)
-      interaction.setModalOpen('mindmap-editor', false)
-      interaction.setModalOpen('ai-confirm', false)
-    }
-  }, [
-    aiProcess.showProcessModal,
-    canvasEdit.editingCanvas,
-    documentReferencePickerOpen,
-    interaction,
-    mindMapEdit.editingMindMap,
-  ])
+    return () => interaction.setModalOpen('ai-confirm', false)
+  }, [aiProcess.showProcessModal, interaction])
 
   // TOC Hook（需要在 editor 初始化后使用）
   const { toc, isPanelVisible, togglePanel, handleNavigate } = useToc(editor)
@@ -573,14 +578,16 @@ function Editor({ document, vaultId, onUpdate }: EditorProps) {
 
       {/* 思维导图编辑模态框 */}
       {mindMapEdit.editingMindMap && (
-        <MindMapEditorModal
-          mindmapData={mindMapEdit.editingMindMap.data}
-          isOpen={!!mindMapEdit.editingMindMap}
-          loading={mindMapEdit.editingMindMap.loading}
-          resourceError={mindMapEdit.editingMindMap.error}
-          onSave={mindMapEdit.handleSaveMindMap}
-          onClose={mindMapEdit.closeMindMapEditor}
-        />
+        <MindMapEditorErrorBoundary onClose={mindMapEdit.closeMindMapEditor}>
+          <MindMapEditorModal
+            mindmapData={mindMapEdit.editingMindMap.data}
+            isOpen={!!mindMapEdit.editingMindMap}
+            loading={mindMapEdit.editingMindMap.loading}
+            resourceError={mindMapEdit.editingMindMap.error}
+            onSave={mindMapEdit.handleSaveMindMap}
+            onClose={mindMapEdit.closeMindMapEditor}
+          />
+        </MindMapEditorErrorBoundary>
       )}
 
       {documentReferencePickerOpen && (

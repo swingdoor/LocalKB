@@ -138,7 +138,7 @@ export function setupIpcHandlers(mainWindow: BrowserWindow) {
     const options = {
       defaultPath: defaultName,
       filters: [
-        { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp'] }
+        { name: 'Images', extensions: ['png', 'svg', 'jpg', 'jpeg', 'gif', 'webp'] }
       ]
     } satisfies Electron.SaveDialogOptions
     const owner = getMainWindow()

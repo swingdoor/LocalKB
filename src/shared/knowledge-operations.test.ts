@@ -43,6 +43,7 @@ import {
 } from './knowledge-operations'
 import {
   assertExcalidrawScene,
+  assertMindMapData,
   assertJsonObject,
   assertPathSegment,
   assertTipTapDocument,
@@ -432,6 +433,38 @@ describe('Excalidraw native operations', () => {
 })
 
 describe('MindElixir native operations', () => {
+  it('accepts Mind Elixir 5.15 persistent fields from UI and MCP payloads', () => {
+    const uiPayload: MindMapData = {
+      nodeData: {
+        id: 'root', topic: 'Root', metadata: { source: 'ui' },
+        children: [{
+          id: 'child', topic: 'Child', expanded: false, branchColor: '#2563eb',
+          style: { fontWeight: '700', background: '#dbeafe' },
+          tags: [{ text: '重点', className: 'important', style: { color: '#1d4ed8' } }],
+          icons: ['⭐'], hyperLink: 'https://example.com', note: 'note',
+        }],
+      },
+      direction: 3,
+      compact: true,
+      meta: { source: 'ui' },
+    }
+    const mcpPayload: MindMapData = {
+      nodeData: { id: 'mcp-root', topic: 'MCP root', children: [{ id: 'mcp-child', topic: 'MCP child' }] },
+      arrows: [{ id: 'arrow-1', label: 'depends on', from: 'mcp-root', to: 'mcp-child', bidirectional: true }],
+      summaries: [{ id: 'summary-1', label: 'summary', parent: 'mcp-root', start: 0, end: 0 }],
+      direction: 2,
+    }
+
+    expect(() => assertMindMapData(uiPayload)).not.toThrow()
+    expect(() => assertMindMapData(mcpPayload)).not.toThrow()
+  })
+
+  it('rejects Mind Elixir runtime parent pointers', () => {
+    expect(() => assertMindMapData({
+      nodeData: { id: 'root', topic: 'Root', parent: { id: 'runtime', topic: 'Runtime' } },
+    })).toThrow(/parent/)
+  })
+
   it('inserts, patches, moves, and deletes nodes while preserving unknown fields', () => {
     let value = insertMindMapNode(mindMap(), 'a', 1, { id: 'a-2', topic: 'A2', future: 1 })
     value = patchMindMapNode(value, { id: 'a-2', changes: { topic: 'Updated' } })

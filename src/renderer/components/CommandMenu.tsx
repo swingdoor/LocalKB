@@ -167,6 +167,7 @@ function CommandMenu({
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [showAbove, setShowAbove] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
+  const listRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   // 构建导航序列并根据搜索过滤
@@ -262,6 +263,12 @@ function CommandMenu({
     setSelectedIndex(0)
   }, [searchQuery])
 
+  // Keep keyboard navigation visible without scrolling the editor page.
+  useEffect(() => {
+    const selectedItem = listRef.current?.querySelector<HTMLElement>(`[data-command-index="${selectedIndex}"]`)
+    selectedItem?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+  }, [navItems, selectedIndex])
+
   // 自动聚焦输入框
   useEffect(() => {
     inputRef.current?.focus()
@@ -325,7 +332,7 @@ function CommandMenu({
       </div>
 
       {/* 命令列表 */}
-      <div className="py-1 max-h-80 overflow-y-auto">
+      <div ref={listRef} className="py-1 max-h-80 overflow-y-auto">
         {navItems.length > 0 ? (
           <>
             {/* 标题行 - H1-H6 合并为一行 */}
@@ -339,6 +346,8 @@ function CommandMenu({
                     return (
                       <button
                         key={level}
+                        data-command-index={idx}
+                        aria-selected={isSelected}
                         className={`heading-btn ${isSelected ? 'selected' : ''}`}
                         onClick={(e) => {
                           e.stopPropagation()
@@ -362,6 +371,8 @@ function CommandMenu({
                 return (
                   <div
                     key={nav.id}
+                    data-command-index={idx}
+                    aria-selected={isSelected}
                     onClick={() => onSelect(nav.id)}
                     className={`command-menu-item-compact ${isSelected ? 'selected' : ''}`}
                   >

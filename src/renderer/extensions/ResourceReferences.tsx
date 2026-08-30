@@ -6,10 +6,10 @@ import { Resizable } from 'react-resizable'
 import type { ResizeCallbackData, ResizeHandleAxis } from 'react-resizable'
 import { TransformComponent, TransformWrapper } from 'react-zoom-pan-pinch'
 import type { ReactZoomPanPinchContentRef } from 'react-zoom-pan-pinch'
-import type { MindElixirInstance } from 'mind-elixir'
 import { TIPTAP_REFERENCE_NODE_TYPES } from '@shared/knowledge-types'
-import type { ExcalidrawScene, MindMapData } from '@shared/knowledge-types'
+import type { ExcalidrawScene } from '@shared/knowledge-types'
 import type { EditorInteractionCoordinator } from '../editor/interactionContext'
+import MindMapPreview from '../components/MindMapPreview'
 
 type Alignment = 'left' | 'center' | 'right'
 const MIN_ZOOM = 0.25
@@ -454,173 +454,7 @@ export function MindMapReferenceView({ node, updateAttributes, selected, extensi
   const { mindmapId, width, height, textAlign } = node.attrs as {
     mindmapId: string; width: number | null; height: number | null; textAlign: Alignment
   }
-  const containerRef = useRef<HTMLDivElement>(null)
-  const mindRef = useRef<MindElixirInstance | null>(null)
-  const manuallyAdjustedRef = useRef(false)
-  const fitFrameRef = useRef<number | null>(null)
-  const viewportSizeRef = useRef<{ width: number; height: number } | null>(null)
-  const [status, setStatus] = useState<'loading' | 'ready' | 'missing' | 'error'>('loading')
-  const [revision, setRevision] = useState(0)
-  const [zoom, setZoom] = useState(1)
-  const panningRef = useRef(false)
-
-  const startPanning = useCallback(() => {
-    panningRef.current = true
-    manuallyAdjustedRef.current = true
-    options.interaction?.beginGesture('resourcePanning', 'mindmapReference')
-  }, [options.interaction])
-
-  const stopPanning = useCallback(() => {
-    if (!panningRef.current) return
-    panningRef.current = false
-    options.interaction?.endGesture('resourcePanning')
-  }, [options.interaction])
-
-  useEffect(() => {
-    window.addEventListener('pointerup', stopPanning)
-    window.addEventListener('pointercancel', stopPanning)
-    return () => {
-      window.removeEventListener('pointerup', stopPanning)
-      window.removeEventListener('pointercancel', stopPanning)
-      stopPanning()
-    }
-  }, [stopPanning])
-
-  const fit = useCallback(() => {
-    const mind = mindRef.current
-    if (!mind) return
-    mind.scaleFit()
-    setZoom((current) => current === mind.scaleVal ? current : mind.scaleVal)
-    manuallyAdjustedRef.current = false
-  }, [])
-
-  const scheduleFit = useCallback(() => {
-    if (fitFrameRef.current !== null) cancelAnimationFrame(fitFrameRef.current)
-    fitFrameRef.current = requestAnimationFrame(() => {
-      fitFrameRef.current = null
-      fit()
-    })
-  }, [fit])
-  const fitAfterFrameResize = scheduleFit
-
-  const changeZoom = useCallback((next: number, event?: { clientX: number; clientY: number }) => {
-    const mind = mindRef.current
-    if (!mind) return
-    const value = clampPreviewZoom(next)
-    mind.scale(value, event ? { x: event.clientX, y: event.clientY } : undefined)
-    setZoom((current) => current === mind.scaleVal ? current : mind.scaleVal)
-    manuallyAdjustedRef.current = true
-  }, [])
-
-  const handleMindMapWheel = useCallback((event: WheelEvent) => {
-    if (!event.metaKey && !event.ctrlKey) return
-    const mind = mindRef.current
-    if (!mind) return
-    event.preventDefault()
-    event.stopPropagation()
-    options.interaction?.beginGesture('resourcePanning', 'mindmapReference')
-    changeZoom(mind.scaleVal + (event.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP), event)
-    options.interaction?.endGesture('resourcePanning')
-  }, [changeZoom, options.interaction])
-
-  useEffect(() => {
-    let cancelled = false
-    let instance: MindElixirInstance | null = null
-
-    setStatus('loading')
-    setZoom(1)
-    manuallyAdjustedRef.current = false
-    mindRef.current = null
-
-    void (async () => {
-      const result = await window.electronAPI.knowledge.getMindMap(
-        options.vaultId, options.documentId, mindmapId,
-      )
-      if (cancelled) return
-      if (!result.ok) {
-        setStatus(result.error.code === 'NOT_FOUND' ? 'missing' : 'error')
-        return
-      }
-
-      try {
-        const { default: MindElixir } = await import('mind-elixir')
-        if (cancelled) return
-        const container = containerRef.current
-        if (!container) return
-
-        container.innerHTML = ''
-        container.style.setProperty('--bgcolor', 'var(--bg-editor)')
-        const mind = new MindElixir({
-          el: container,
-          editable: false,
-          keypress: false,
-          toolBar: false,
-          contextMenu: false,
-          overflowHidden: false,
-          handleWheel: handleMindMapWheel,
-          scaleMin: MIN_ZOOM,
-          scaleMax: MAX_ZOOM,
-        } as any)
-        instance = mind
-        mind.init(result.data as MindMapData as any)
-        if (cancelled) {
-          mind.destroy()
-          instance = null
-          return
-        }
-        mindRef.current = mind
-        setStatus('ready')
-        scheduleFit()
-      } catch {
-        instance?.destroy()
-        instance = null
-        if (!cancelled) setStatus('error')
-      }
-    })()
-
-    return () => {
-      cancelled = true
-      if (fitFrameRef.current !== null) {
-        cancelAnimationFrame(fitFrameRef.current)
-        fitFrameRef.current = null
-      }
-      if (mindRef.current === instance) mindRef.current = null
-      instance?.destroy()
-    }
-  }, [handleMindMapWheel, mindmapId, options.documentId, options.vaultId, revision, scheduleFit])
-
-  useEffect(() => {
-    if (!containerRef.current || typeof ResizeObserver === 'undefined') return
-    const observer = new ResizeObserver((entries) => {
-      const rect = entries[0]?.contentRect
-      if (!rect) return
-      const nextSize = { width: Math.round(rect.width), height: Math.round(rect.height) }
-      const previousSize = viewportSizeRef.current
-      if (previousSize?.width === nextSize.width && previousSize.height === nextSize.height) return
-      viewportSizeRef.current = nextSize
-      if (!manuallyAdjustedRef.current) scheduleFit()
-    })
-    observer.observe(containerRef.current)
-    return () => observer.disconnect()
-  }, [scheduleFit])
-  useEffect(() => window.electronAPI.knowledge.onChanged((event) => {
-    if (event.vaultId === options.vaultId && event.resourceType === 'mindmap' &&
-        event.resourceId === mindmapId) setRevision((value) => value + 1)
-  }), [mindmapId, options.vaultId])
-
-  useEffect(() => {
-    const editorDom = editor?.view?.dom
-    if (!editorDom) return
-    const reload = (event: Event) => {
-      const detail = (event as CustomEvent<{ resourceType: string; resourceId: string }>).detail
-      if (detail?.resourceType === 'mindmap' && detail.resourceId === mindmapId) {
-        setRevision((value) => value + 1)
-      }
-    }
-    editorDom.addEventListener('localkb:resource-preview-reload', reload)
-    return () => editorDom.removeEventListener('localkb:resource-preview-reload', reload)
-  }, [editor, mindmapId])
-
+  const fitRef = useRef<(() => void) | null>(null)
   return (
     <ReferenceShell
       width={width}
@@ -629,7 +463,7 @@ export function MindMapReferenceView({ node, updateAttributes, selected, extensi
       selected={selected}
       resizeHeight
       updateAttributes={updateAttributes}
-      onResize={fitAfterFrameResize}
+      onResize={() => fitRef.current?.()}
       interaction={options.interaction}
       nodeType="mindmapReference"
       onSelect={() => {
@@ -638,32 +472,15 @@ export function MindMapReferenceView({ node, updateAttributes, selected, extensi
       }}
       onDoubleClick={() => options.onEdit(mindmapId)}
     >
-      <div
-        ref={containerRef}
-        data-resource-viewport=""
-        data-resource-interactive="true"
-        className="h-full w-full cursor-grab overflow-hidden rounded-[7px] active:cursor-grabbing"
-        style={{ backgroundColor: 'var(--bg-editor)' }}
-        onPointerDownCapture={(event) => {
-          if (event.button === 0) startPanning()
-        }}
+      <MindMapPreview
+        vaultId={options.vaultId}
+        documentId={options.documentId}
+        mindmapId={mindmapId}
+        selected={selected}
+        interaction={options.interaction}
+        editorDom={editor?.view?.dom}
+        fitRef={fitRef}
       />
-      {status === 'ready' && (
-        <PreviewControls
-          zoom={zoom}
-          selected={selected}
-          onZoomOut={() => changeZoom(zoom - ZOOM_STEP)}
-          onZoomIn={() => changeZoom(zoom + ZOOM_STEP)}
-          onFit={fit}
-        />
-      )}
-      {status === 'loading' && <div className="resource-preview-status absolute inset-0 grid place-items-center text-sm">正在加载思维导图…</div>}
-      {status === 'missing' && <div className="resource-preview-status is-error absolute inset-0 grid place-items-center text-sm">思维导图资源不存在</div>}
-      {status === 'error' && (
-        <button type="button" className="resource-preview-status is-error absolute inset-0 text-sm" onClick={() => setRevision((value) => value + 1)}>
-          思维导图预览失败，点击重试
-        </button>
-      )}
     </ReferenceShell>
   )
 }

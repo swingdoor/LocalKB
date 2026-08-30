@@ -1,4 +1,5 @@
 import type { ExcalidrawScene } from '@shared/knowledge-types'
+import { blobToDataUrl, renderMindMapStatic } from '../mindmap/mindMapExport'
 
 function placeholder(label: string): HTMLElement {
   const element = document.createElement('div')
@@ -52,22 +53,28 @@ async function resolveMindMap(
   if (!mindmapId) { element.replaceWith(placeholder('思维导图引用无效')); return }
   const result = await window.electronAPI.knowledge.getMindMap(vaultId, documentId, mindmapId)
   if (!result.ok) { element.replaceWith(placeholder('思维导图资源不可用')); return }
-  const container = document.createElement('div')
-  container.style.cssText = 'position:fixed;left:-10000px;top:-10000px;width:1200px;height:800px;'
-  document.body.appendChild(container)
   try {
-    const { default: MindElixir } = await import('mind-elixir')
-    const mind = new MindElixir({ el: container, keypress: false, toolBar: false, contextMenu: false } as any)
-    mind.init(result.data as any)
-    const blob = mind.exportSvg(true, '0')
-    if (!blob) throw new Error('思维导图导出失败')
+    const blob = await renderMindMapStatic(result.data, 'svg')
     const svg = new DOMParser().parseFromString(await blob.text(), 'image/svg+xml').documentElement
     svg.setAttribute('style', 'max-width:100%;height:auto')
     element.replaceChildren(document.importNode(svg, true))
   } catch {
     element.replaceWith(placeholder('思维导图预览生成失败'))
-  } finally {
-    container.remove()
+  }
+}
+
+export async function resolveMindMapReferenceForMarkdown(
+  vaultId: string,
+  documentId: string,
+  mindmapId: string,
+): Promise<string> {
+  const result = await window.electronAPI.knowledge.getMindMap(vaultId, documentId, mindmapId)
+  if (!result.ok) return '> 思维导图资源不可用'
+  try {
+    const blob = await renderMindMapStatic(result.data, 'png')
+    return `![思维导图](${await blobToDataUrl(blob)})`
+  } catch {
+    return '> 思维导图预览生成失败'
   }
 }
 

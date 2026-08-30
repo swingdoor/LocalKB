@@ -109,6 +109,17 @@ function createWindow() {
 
   // 加载应用
   if (isDev) {
+    mainWindow.webContents.on('console-message', (details) => {
+      if (details.level === 'error') {
+        console.error(`[renderer error] ${details.message} (${details.sourceId}:${details.lineNumber})`)
+      }
+    })
+    mainWindow.webContents.on('render-process-gone', (_event, details) => {
+      console.error('[renderer process gone]', details)
+    })
+    mainWindow.webContents.on('preload-error', (_event, preloadPath, error) => {
+      console.error('[preload error]', { preloadPath, error })
+    })
     mainWindow.loadURL('http://localhost:5180')
     mainWindow.webContents.openDevTools()
   } else {

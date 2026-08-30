@@ -42,6 +42,7 @@ vi.mock('mind-elixir', () => ({
       mindMock.instances.push(this)
     }
     init() {}
+    changeTheme() {}
     scaleFit() { this.scaleVal = 0.75 }
     scale(value: number) { this.scaleVal = value }
     destroy() {}

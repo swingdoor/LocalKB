@@ -6,6 +6,8 @@ const mocks = vi.hoisted(() => ({
   mindInit: vi.fn(),
   mindExport: vi.fn(async () => new Blob(['mindmap'], { type: 'image/png' })),
   mindDestroy: vi.fn(),
+  mindTheme: vi.fn(),
+  mindFit: vi.fn(),
 }))
 
 vi.mock('@excalidraw/excalidraw', () => ({ exportToBlob: mocks.exportToBlob }))
@@ -14,6 +16,8 @@ vi.mock('mind-elixir', () => ({
     init = mocks.mindInit
     exportPng = mocks.mindExport
     destroy = mocks.mindDestroy
+    changeTheme = mocks.mindTheme
+    scaleFit = mocks.mindFit
   },
 }))
 

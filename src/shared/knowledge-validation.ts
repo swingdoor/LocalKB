@@ -762,7 +762,7 @@ export function assertMindMapData(value: unknown): asserts value is MindMapData 
   assertJsonObject(value, '思维导图')
   const nodeIds = new Set<string>()
   assertMindMapNode(value.nodeData, nodeIds)
-  if (value.direction !== undefined && ![0, 1, 2].includes(Number(value.direction))) {
+  if (value.direction !== undefined && ![0, 1, 2, 3].includes(Number(value.direction))) {
     throw new KnowledgeValidationError('CORRUPT_DATA', '思维导图 direction 无效')
   }
   if (value.compact !== undefined && typeof value.compact !== 'boolean') {

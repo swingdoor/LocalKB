@@ -1,5 +1,16 @@
 import { describe, expect, it, vi } from 'vitest'
-import { resolveResourceReferencesForExport } from './resourceExport'
+import { resolveMindMapReferenceForMarkdown, resolveResourceReferencesForExport } from './resourceExport'
+
+const renderMocks = vi.hoisted(() => ({
+  render: vi.fn(async (_data: unknown, format: 'png' | 'svg') => format === 'svg'
+    ? { text: async () => '<svg xmlns="http://www.w3.org/2000/svg"><text>Map</text></svg>' }
+    : new Blob(['png'], { type: 'image/png' })),
+  dataUrl: vi.fn(async () => 'data:image/png;base64,cG5n'),
+}))
+vi.mock('../mindmap/mindMapExport', () => ({
+  renderMindMapStatic: renderMocks.render,
+  blobToDataUrl: renderMocks.dataUrl,
+}))
 
 describe('resource export', () => {
   it('renders descriptive placeholders for missing resources', async () => {
@@ -35,5 +46,21 @@ describe('resource export', () => {
     expect(html).toContain('文档：目标文档')
     expect(html).toContain('附件：notes.txt（3 字节）')
     expect(html).toContain('<details open="">')
+  })
+
+  it('uses the shared snapshot renderer for PDF HTML and Markdown image references', async () => {
+    const data = { nodeData: { id: 'root', topic: 'Root' } }
+    window.electronAPI = { knowledge: {
+      getMindMap: vi.fn(async () => ({ ok: true, data })),
+    } } as any
+    const html = await resolveResourceReferencesForExport(
+      '<div data-mindmap-reference data-mindmap-id="map"></div>', 'vault', 'document',
+    )
+    const markdown = await resolveMindMapReferenceForMarkdown('vault', 'document', 'map')
+
+    expect(html).toContain('<svg')
+    expect(markdown).toBe('![思维导图](data:image/png;base64,cG5n)')
+    expect(renderMocks.render).toHaveBeenCalledWith(data, 'svg')
+    expect(renderMocks.render).toHaveBeenCalledWith(data, 'png')
   })
 })

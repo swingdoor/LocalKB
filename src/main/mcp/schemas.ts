@@ -292,7 +292,7 @@ export const mindMapDataSchema = z.object({
       stroke: z.string().optional(), labelColor: z.string().optional(),
     }).optional(),
   }).catchall(jsonValueSchema)).optional(),
-  direction: z.union([z.literal(0), z.literal(1), z.literal(2)]).optional(),
+  direction: z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3)]).optional(),
   theme: z.object({
     name: z.string(),
     type: z.enum(['light', 'dark']).optional(),

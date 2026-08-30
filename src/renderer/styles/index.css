@@ -1504,3 +1504,163 @@ body {
     @apply bg-background text-foreground;
   }
 }
+/* Mind Elixir's engine owns layout; these presentation rules make its native
+   nodes match the application's shadcn neutral visual language. */
+.map-container me-tpc {
+  font-family: var(--editor-font-family, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif);
+  letter-spacing: 0.01em;
+}
+
+.map-container me-parent > me-tpc {
+  border: 1px solid #e4e4e7;
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 4%);
+}
+
+.map-container me-root me-tpc {
+  border-color: #18181b;
+  border-radius: 8px;
+  background: #18181b;
+  color: #fafafa;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 12%);
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.map-container me-main > me-wrapper > me-parent > me-tpc {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.map-container me-main me-children me-tpc {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.map-container me-main me-children me-children me-tpc {
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.map-container me-tpc > .tags {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  display: flex;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+/* Tags stay outside the topic border, but must still reserve layout space.
+   Mind Elixir measures me-parent/me-root when arranging sibling branches;
+   absolute tags otherwise overlap the next node. */
+.map-container me-parent:has(> me-tpc > .tags) {
+  padding-bottom: 32px;
+}
+
+.map-container me-root:has(> me-tpc > .tags) {
+  padding-bottom: 26px;
+}
+
+/* Keep horizontal tags on the root-facing side of a branch so a long tag row
+   uses the inter-branch gap instead of extending into that node's children. */
+.map-container .rhs me-tpc > .tags {
+  right: 0;
+  left: auto;
+}
+
+.map-container me-nodes.down me-tpc > .tags {
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.map-container me-tpc > .tags span {
+  margin: 0;
+  padding: 1px 5px;
+  border: 1px solid #e4e4e7;
+  border-radius: 999px;
+  background: #fafafa;
+  color: #52525b;
+  font-size: 10px;
+  line-height: 16px;
+}
+
+.map-container .summary > g[data-mindmap-summary-selected] path {
+  stroke: #2563eb !important;
+  stroke-width: 4;
+  filter: drop-shadow(0 0 3px rgb(37 99 235 / 30%));
+}
+
+.map-container .svg-label[data-type="summary"][data-mindmap-summary-selected] {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+  background: #eff6ff;
+  color: #1d4ed8 !important;
+}
+
+.map-container .topiclinks > g[data-mindmap-arrow-selected] > .arrow-highlight path {
+  stroke: #2563eb !important;
+  stroke-width: 8;
+  opacity: 0.7;
+}
+
+.map-container .topiclinks > g[data-mindmap-arrow-selected] > path {
+  filter: drop-shadow(0 0 2px rgb(37 99 235 / 35%));
+}
+
+.map-container .svg-label[data-type="arrow"][data-mindmap-arrow-selected] {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+  background: #eff6ff;
+  color: #1d4ed8 !important;
+}
+
+.map-container .circle {
+  width: 14px;
+  height: 14px;
+  margin-top: -7px;
+  margin-left: -7px;
+  border-color: #fff;
+  background: #2563eb;
+  box-shadow: 0 0 0 1px #2563eb;
+  cursor: move;
+}
+
+.map-container me-tpc[data-mindmap-workflow-target] {
+  outline: 2px solid #2563eb;
+  outline-offset: 3px;
+  box-shadow: 0 0 0 5px rgb(37 99 235 / 12%);
+}
+
+.mindmap-note-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.mindmap-note-marker {
+  position: absolute;
+  display: grid;
+  width: 14px;
+  height: 14px;
+  place-items: center;
+  border: 1px solid #e4e4e7;
+  border-radius: 999px;
+  background: #fff;
+  color: #71717a;
+  pointer-events: auto !important;
+}
+
+.mindmap-note-marker:hover {
+  color: #18181b;
+  border-color: #a1a1aa;
+}
+
+.mindmap-note-marker svg {
+  width: 9px;
+  height: 9px;
+  pointer-events: none;
+}

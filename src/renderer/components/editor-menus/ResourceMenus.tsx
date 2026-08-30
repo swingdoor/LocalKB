@@ -63,7 +63,7 @@ export function MindMapMenu({ editor, interaction, vaultId, documentId, onEdit }
       {mindmapId && (
         <>
           <MenuButton label="重新加载预览" onClick={() => requestResourceReload(editor, 'mindmap', mindmapId)}><RefreshCw className="h-4 w-4" /></MenuButton>
-          <MenuButton label="导出思维导图" onClick={() => void downloadMindMapReference(vaultId, documentId, mindmapId)}><Download className="h-4 w-4" /></MenuButton>
+          <MenuButton label="导出 PNG" onClick={() => void downloadMindMapReference(vaultId, documentId, mindmapId, 'png')}><Download className="h-4 w-4" /></MenuButton>
         </>
       )}
     </NodeMenuShell>
