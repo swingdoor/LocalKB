@@ -58,6 +58,10 @@ export const IPC_CHANNELS = {
     SELECT_ATTACHMENT: 'file:selectAttachment',
     DOWNLOAD_IMAGE: 'file:downloadImage',
     EXPORT_PDF: 'file:exportPDF',
+    REVEAL_PDF_EXPORT: 'file:revealPDFExport',
+    BEGIN_MARKDOWN_EXPORT: 'file:beginMarkdownExport',
+    COMMIT_MARKDOWN_EXPORT: 'file:commitMarkdownExport',
+    REVEAL_MARKDOWN_EXPORT: 'file:revealMarkdownExport',
     OPEN_LOCAL_FILE: 'file:openLocalFile',
   },
   SETTINGS: {

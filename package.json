@@ -7,12 +7,13 @@
     "dev": "concurrently --kill-others-on-fail \"npm run dev:vite\" \"npm run dev:electron\"",
     "dev:vite": "vite",
     "dev:electron": "wait-on http://localhost:5180 && npm run build:main && npm run build:preload && electron .",
-    "build": "npm run build:main && npm run build:preload && vite build",
+    "check:tiptap-versions": "node scripts/check-tiptap-versions.cjs",
+    "build": "npm run check:tiptap-versions && npm run build:main && npm run build:preload && vite build",
     "build:main": "tsc -p tsconfig.main.json",
     "build:preload": "node scripts/build-preload.js",
     "preview": "vite preview",
     "electron:build": "npm run build && electron-builder",
-    "test": "vitest run"
+    "test": "npm run check:tiptap-versions && vitest run"
   },
   "keywords": [
     "electron",
@@ -79,6 +80,7 @@
     "@tiptap/extension-text-align": "3.30.5",
     "@tiptap/extension-text-style": "3.30.5",
     "@tiptap/extensions": "3.30.5",
+    "@tiptap/markdown": "3.30.5",
     "@tiptap/pm": "3.30.5",
     "@tiptap/react": "3.30.5",
     "@tiptap/starter-kit": "3.30.5",

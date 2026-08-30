@@ -10,6 +10,13 @@ import type {
   ImageFile,
 } from '../shared/types'
 import type { McpStatus, PublicMcpSettings } from '../shared/mcp-types'
+import type { PdfExportResult } from '../shared/pdf-export-types'
+import type {
+  MarkdownExportBeginRequest,
+  MarkdownExportBeginResult,
+  MarkdownExportCommitRequest,
+  MarkdownExportCommitResult,
+} from '../shared/markdown-export-types'
 import type {
   CanvasElementPatch,
   ContentSummary,
@@ -294,7 +301,19 @@ const electronAPI = {
     downloadImage: (imageData: string, defaultName: string) => 
       ipcRenderer.invoke(IPC_CHANNELS.FILE.DOWNLOAD_IMAGE, imageData, defaultName) as Promise<boolean>,
     exportPDF: (title: string, htmlContent: string) =>
-      ipcRenderer.invoke(IPC_CHANNELS.FILE.EXPORT_PDF, title, htmlContent) as Promise<boolean>,
+      ipcRenderer.invoke(IPC_CHANNELS.FILE.EXPORT_PDF, title, htmlContent) as Promise<PdfExportResult>,
+    revealPDFExport: (revealId: string) => (
+      ipcRenderer.invoke(IPC_CHANNELS.FILE.REVEAL_PDF_EXPORT, revealId) as Promise<boolean>
+    ),
+    beginMarkdownExport: (request: MarkdownExportBeginRequest) => (
+      ipcRenderer.invoke(IPC_CHANNELS.FILE.BEGIN_MARKDOWN_EXPORT, request) as Promise<MarkdownExportBeginResult>
+    ),
+    commitMarkdownExport: (request: MarkdownExportCommitRequest) => (
+      ipcRenderer.invoke(IPC_CHANNELS.FILE.COMMIT_MARKDOWN_EXPORT, request) as Promise<MarkdownExportCommitResult>
+    ),
+    revealMarkdownExport: (revealId: string) => (
+      ipcRenderer.invoke(IPC_CHANNELS.FILE.REVEAL_MARKDOWN_EXPORT, revealId) as Promise<boolean>
+    ),
     openLocalFile: (filePath: string) =>
       ipcRenderer.invoke(IPC_CHANNELS.FILE.OPEN_LOCAL_FILE, filePath) as Promise<{ success: boolean; error?: string }>,
   },

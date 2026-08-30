@@ -1,17 +1,18 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { Download, FileText, Hash, ListTree, RotateCcw } from 'lucide-react'
+import { Download, FileDown, FileText, Hash, ListTree, RotateCcw } from 'lucide-react'
+import { toast } from 'sonner'
 import { useEditor, EditorContent, ReactNodeViewRenderer } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
 import { lowlight } from 'lowlight'
 import Link from '@tiptap/extension-link'
 import { TaskItem, TaskList } from '@tiptap/extension-list'
-import { Table, TableCell, TableHeader, TableRow } from '@tiptap/extension-table'
+import { TableCell, TableHeader, TableRow } from '@tiptap/extension-table'
 import TextAlign from '@tiptap/extension-text-align'
 import { Placeholder } from '@tiptap/extensions'
-import { FontFamily, TextStyle } from '@tiptap/extension-text-style'
+import { FontFamily } from '@tiptap/extension-text-style'
 import Highlight from '@tiptap/extension-highlight'
-import { Details, DetailsContent, DetailsSummary } from '@tiptap/extension-details'
+import { Markdown } from '@tiptap/markdown'
 import FontSize from '../extensions/FontSize'
 import Color from '../extensions/Color'
 import ResizableImage from '../extensions/ResizableImage'
@@ -41,6 +42,14 @@ import { addNumbersToHTML } from '../utils/pdfExport'
 import { handleRichPaste } from '../utils/richPaste'
 import { resolveResourceReferencesForExport } from '../utils/resourceExport'
 import { eventMatchesHotkey } from '../utils/hotkeys'
+import {
+  MarkdownDetails,
+  MarkdownDetailsContent,
+  MarkdownDetailsSummary,
+  MarkdownTable,
+  MarkdownTextStyle,
+} from '../markdown/markdownExtensions'
+import { exportDocumentMarkdown } from '../markdown/exportDocumentMarkdown'
 import type { HotkeyConfig } from '@shared/types'
 import type { ContentSummary, LoadedDocument, TipTapDocument } from '@shared/knowledge-types'
 import { createEditorInteractionCoordinator } from '../editor/interactionContext'
@@ -63,6 +72,8 @@ function countContentCharacters(text: string) {
 function Editor({ document, vaultId, onUpdate }: EditorProps) {
   const [title, setTitle] = useState(document.title)
   const [characterCount, setCharacterCount] = useState(0)
+  const [pdfExporting, setPdfExporting] = useState(false)
+  const [markdownExporting, setMarkdownExporting] = useState(false)
   const [documentReferencePickerOpen, setDocumentReferencePickerOpen] = useState(false)
   const interaction = useMemo(() => createEditorInteractionCoordinator(), [])
   const documentReferenceResolverRef = useRef<((value: { documentId: string; label: string } | null) => void) | null>(null)
@@ -172,7 +183,7 @@ function Editor({ document, vaultId, onUpdate }: EditorProps) {
       TaskItem.configure({
         nested: true,
       }),
-      Table.configure({
+      MarkdownTable.configure({
         resizable: true,
       }),
       TableRow,
@@ -189,7 +200,7 @@ function Editor({ document, vaultId, onUpdate }: EditorProps) {
         allowBase64: false,
         interaction,
       }),
-      TextStyle,
+      MarkdownTextStyle,
       FontFamily.configure({
         types: ['textStyle'],
       }),
@@ -200,9 +211,9 @@ function Editor({ document, vaultId, onUpdate }: EditorProps) {
         types: ['textStyle'],
       }),
       Highlight.configure({ multicolor: true }),
-      Details.configure({ persist: false }),
-      DetailsSummary,
-      DetailsContent,
+      MarkdownDetails.configure({ persist: false }),
+      MarkdownDetailsSummary,
+      MarkdownDetailsContent,
       HeadingNumbers,
       CanvasReference.configure({
         vaultId,
@@ -230,6 +241,7 @@ function Editor({ document, vaultId, onUpdate }: EditorProps) {
         lowlight,
         defaultLanguage: 'plaintext',
       }),
+      Markdown,
     ],
     shouldRerenderOnTransaction: false,
     content: document.content,
@@ -418,9 +430,9 @@ function Editor({ document, vaultId, onUpdate }: EditorProps) {
 
   // 导出 PDF
   const handleExportPDF = useCallback(async () => {
-    if (!editor) {
-      return
-    }
+    if (!editor || pdfExporting) return
+    setPdfExporting(true)
+    const toastId = toast.loading('正在导出 PDF…')
     try {
       let htmlContent = await resolveResourceReferencesForExport(
         editor.getHTML(), vaultId, document.id,
@@ -431,18 +443,85 @@ function Editor({ document, vaultId, onUpdate }: EditorProps) {
         htmlContent = addNumbersToHTML(htmlContent, toc)
       }
 
-      await window.electronAPI.file.exportPDF(title, htmlContent)
-    } catch (err: any) {
-      console.error('Export PDF error:', err)
-      // 显示用户友好的错误提示
-      const errorMessage = err?.message || String(err)
-      if (errorMessage.includes('占用') || errorMessage.includes('EBUSY') || errorMessage.includes('locked')) {
-        alert('文件正在被其他程序占用，请关闭后重试')
+      const result = await window.electronAPI.file.exportPDF(title, htmlContent)
+      if (result.canceled) {
+        toast.info('已取消 PDF 导出', { id: toastId })
       } else {
-        alert('导出 PDF 失败，请重试')
+        toast.success('PDF 导出完成', {
+          id: toastId,
+          action: {
+            label: '打开所在文件夹',
+            onClick: () => {
+              void window.electronAPI.file.revealPDFExport(result.revealId)
+                .then((revealed) => {
+                  if (!revealed) toast.error('导出位置已失效，请重新导出')
+                })
+                .catch((error) => {
+                  toast.error(error instanceof Error ? error.message : '无法打开导出位置')
+                })
+            },
+          },
+        })
       }
+    } catch (error: unknown) {
+      console.error('Export PDF error:', error)
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      if (errorMessage.includes('占用') || errorMessage.includes('EBUSY') || errorMessage.includes('locked')) {
+        toast.error('文件正在被其他程序占用，请关闭后重试', { id: toastId })
+      } else {
+        toast.error('导出 PDF 失败，请重试', { id: toastId })
+      }
+    } finally {
+      setPdfExporting(false)
     }
-  }, [document.id, editor, showHeadingNumbers, title, toc, vaultId])
+  }, [document.id, editor, pdfExporting, showHeadingNumbers, title, toc, vaultId])
+
+  const handleExportMarkdown = useCallback(async () => {
+    if (!editor || markdownExporting) return
+    setMarkdownExporting(true)
+    const toastId = toast.loading('正在导出 Markdown…')
+    try {
+      const result = await exportDocumentMarkdown(editor, {
+        document: structuredClone(editor.getJSON()) as TipTapDocument,
+        metadata: {
+          vaultId,
+          documentId: document.id,
+          title,
+          createdAt: document.createdAt,
+          updatedAt: document.updatedAt,
+        },
+      })
+      if (result.canceled) {
+        toast.info('已取消 Markdown 导出', { id: toastId })
+      } else {
+        const action = {
+          label: '打开所在文件夹',
+          onClick: () => {
+            void window.electronAPI.file.revealMarkdownExport(result.result.revealId)
+              .catch((error) => {
+                toast.error(error instanceof Error ? error.message : '无法打开导出位置')
+              })
+          },
+        }
+        if (result.result.warningCount > 0) {
+          const labels = result.result.warnings.slice(0, 3).map((warning) => warning.label).join('、')
+          const suffix = result.result.warningCount > 3 ? '等' : ''
+          toast.warning(`Markdown 已导出，${result.result.warningCount} 项资源未完成：${labels}${suffix}`, {
+            id: toastId,
+            duration: 8000,
+            action,
+          })
+        } else {
+          toast.success('Markdown 导出完成', { id: toastId, action })
+        }
+      }
+    } catch (error) {
+      console.error('Export Markdown error:', error)
+      toast.error(error instanceof Error ? error.message : '导出 Markdown 失败', { id: toastId })
+    } finally {
+      setMarkdownExporting(false)
+    }
+  }, [document.createdAt, document.id, document.updatedAt, editor, markdownExporting, title, vaultId])
 
   // AI 处理回调（润色/扩写）
   const handlePolish = useCallback((text: string) => {
@@ -508,7 +587,20 @@ function Editor({ document, vaultId, onUpdate }: EditorProps) {
             <DropdownMenu>
               <DropdownMenuTrigger asChild><Button type="button" variant="ghost" size="sm"><Download className="mr-2 h-4 w-4" />导出</Button></DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onSelect={() => void handleExportPDF()}><FileText className="mr-2 h-4 w-4" />导出 PDF</DropdownMenuItem>
+                <DropdownMenuItem
+                  disabled={pdfExporting}
+                  onSelect={() => void handleExportPDF()}
+                >
+                  <FileText className="mr-2 h-4 w-4" />
+                  {pdfExporting ? '正在导出 PDF…' : '导出 PDF'}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  disabled={markdownExporting}
+                  onSelect={() => void handleExportMarkdown()}
+                >
+                  <FileDown className="mr-2 h-4 w-4" />
+                  {markdownExporting ? '正在导出 Markdown…' : '导出 Markdown'}
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>

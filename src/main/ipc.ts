@@ -1,9 +1,18 @@
-import { ipcMain, dialog, BrowserWindow, app } from 'electron'
+import { ipcMain, dialog, BrowserWindow, app, shell } from 'electron'
+import { randomUUID } from 'crypto'
 import * as fs from 'fs'
 import * as path from 'path'
 import { settingsStore } from './settings-store'
 import { describeAIError, generateAIText } from './ai-service'
+import { MarkdownExportService } from './markdown-export-service'
+import { buildPdfHtml, waitForPdfLayout } from './pdf-export'
+import type { KnowledgeService } from './knowledge/knowledge-service'
 import { IPC_CHANNELS } from '../shared/ipc-channels'
+import type {
+  MarkdownExportBeginRequest,
+  MarkdownExportCommitRequest,
+} from '../shared/markdown-export-types'
+import type { PdfExportResult } from '../shared/pdf-export-types'
 import type {
   AIProcessRequest,
   AIProcessResult,
@@ -15,8 +24,11 @@ import type {
 
 let mainWindowRef: BrowserWindow | null = null
 let ipcHandlersRegistered = false
+let markdownExportService: MarkdownExportService | null = null
 const MAX_ATTACHMENT_BYTES = 16 * 1024 * 1024
+const PDF_REVEAL_TTL_MS = 30 * 60 * 1000
 const activeAIRequests = new Map<string, AbortController>()
+const completedPdfExports = new Map<string, { filePath: string; expiresAt: number }>()
 
 const ATTACHMENT_MIME_TYPES: Record<string, string> = {
   '.txt': 'text/plain', '.md': 'text/markdown', '.csv': 'text/csv', '.json': 'application/json',
@@ -37,6 +49,26 @@ function getMainWindow(): BrowserWindow | undefined {
     return undefined
   }
   return mainWindowRef
+}
+
+function rememberPdfExport(filePath: string): string {
+  const now = Date.now()
+  for (const [id, entry] of completedPdfExports) {
+    if (entry.expiresAt <= now) completedPdfExports.delete(id)
+  }
+  const revealId = randomUUID()
+  completedPdfExports.set(revealId, { filePath, expiresAt: now + PDF_REVEAL_TTL_MS })
+  return revealId
+}
+
+function revealPdfExport(revealId: string): boolean {
+  const entry = completedPdfExports.get(revealId)
+  if (!entry || entry.expiresAt <= Date.now()) {
+    completedPdfExports.delete(revealId)
+    return false
+  }
+  shell.showItemInFolder(entry.filePath)
+  return true
 }
 
 function aiRequestKey(senderId: number, requestId: string) {
@@ -78,8 +110,41 @@ async function callAI(
   }
 }
 
-export function setupIpcHandlers(mainWindow: BrowserWindow) {
+export function setupIpcHandlers(mainWindow: BrowserWindow, knowledgeService: KnowledgeService) {
   mainWindowRef = mainWindow
+
+  if (!markdownExportService) {
+    markdownExportService = new MarkdownExportService(knowledgeService, {
+      chooseTarget: async (defaultFileName) => {
+        const options = {
+          defaultPath: defaultFileName,
+          filters: [{ name: 'Markdown', extensions: ['md'] }],
+        } satisfies Electron.SaveDialogOptions
+        const owner = getMainWindow()
+        const result = owner
+          ? await dialog.showSaveDialog(owner, options)
+          : await dialog.showSaveDialog(options)
+        return result.canceled || !result.filePath ? null : result.filePath
+      },
+      confirmReplace: async (markdownPath, assetsPath) => {
+        const options = {
+          type: 'warning',
+          buttons: ['取消', '替换整个导出包'],
+          defaultId: 0,
+          cancelId: 0,
+          title: '替换 Markdown 导出包',
+          message: '目标文档或同名资源目录已存在',
+          detail: `继续将同时替换：\n${path.basename(markdownPath)}\n${path.basename(assetsPath)}`,
+        } satisfies Electron.MessageBoxOptions
+        const owner = getMainWindow()
+        const result = owner
+          ? await dialog.showMessageBox(owner, options)
+          : await dialog.showMessageBox(options)
+        return result.response === 1
+      },
+      revealTarget: (markdownPath) => shell.showItemInFolder(markdownPath),
+    })
+  }
 
   if (ipcHandlersRegistered) {
     return
@@ -155,13 +220,7 @@ export function setupIpcHandlers(mainWindow: BrowserWindow) {
   })
 
   // ========== PDF 导出 ==========
-  ipcMain.handle(IPC_CHANNELS.FILE.EXPORT_PDF, async (_, title: string, htmlContent: string) => {
-    const safeTitle = (title || '文档')
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-
+  ipcMain.handle(IPC_CHANNELS.FILE.EXPORT_PDF, async (_, title: string, htmlContent: string): Promise<PdfExportResult> => {
     const options = {
       defaultPath: `${title || '文档'}.pdf`,
       filters: [
@@ -173,122 +232,70 @@ export function setupIpcHandlers(mainWindow: BrowserWindow) {
       ? await dialog.showSaveDialog(owner, options)
       : await dialog.showSaveDialog(options)
 
-    if (!result.canceled && result.filePath) {
-      // 创建隐藏窗口用于渲染 PDF
-      const pdfWindow = new BrowserWindow({
-        width: 800,
-        height: 600,
-        show: false,
-        webPreferences: {
-          nodeIntegration: false,
-          contextIsolation: true,
-        }
+    if (result.canceled || !result.filePath) return { canceled: true }
+
+    const pdfWindow = new BrowserWindow({
+      width: 800,
+      height: 600,
+      show: false,
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+      },
+    })
+    const tempPath = path.join(app.getPath('temp'), `localkb-pdf-${randomUUID()}.html`)
+    fs.writeFileSync(tempPath, buildPdfHtml(title, htmlContent), 'utf-8')
+
+    try {
+      await pdfWindow.loadFile(tempPath)
+      await waitForPdfLayout(pdfWindow.webContents)
+      const pdfData = await pdfWindow.webContents.printToPDF({
+        printBackground: true,
+        margins: {
+          top: 0.5,
+          bottom: 0.5,
+          left: 0.5,
+          right: 0.5,
+        },
       })
 
-      // 构建完整的 HTML 页面
-      const fullHtml = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <style>
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-      padding: 40px;
-      line-height: 1.6;
-      color: #333;
-    }
-    h1 { font-size: 28px; margin-bottom: 20px; }
-    h2 { font-size: 22px; margin-top: 24px; }
-    h3 { font-size: 18px; margin-top: 20px; }
-    p { margin: 12px 0; }
-    ul, ol { padding-left: 24px; }
-    li { margin: 6px 0; }
-    table {
-      border-collapse: collapse;
-      width: 100%;
-      margin: 16px 0;
-    }
-    th, td {
-      border: 1px solid #ddd;
-      padding: 8px 10px;
-      text-align: left;
-      vertical-align: top;
-    }
-    th { background: #f4f4f4; font-weight: 600; }
-    blockquote {
-      border-left: 4px solid #ddd;
-      padding-left: 16px;
-      margin: 16px 0;
-      color: #666;
-    }
-    code {
-      background: #f4f4f4;
-      padding: 2px 6px;
-      border-radius: 4px;
-      font-family: 'Consolas', monospace;
-    }
-    pre {
-      background: #f4f4f4;
-      padding: 16px;
-      border-radius: 8px;
-      overflow-x: auto;
-    }
-    img {
-      max-width: 100%;
-      height: auto;
-    }
-    hr {
-      border: none;
-      border-top: 1px solid #ddd;
-      margin: 24px 0;
-    }
-  </style>
-</head>
-<body>
-  <h1>${safeTitle}</h1>
-  ${htmlContent}
-</body>
-</html>`
-
-      // 写入临时文件
-      const tempPath = path.join(app.getPath('temp'), `localkb-pdf-${Date.now()}.html`)
-      fs.writeFileSync(tempPath, fullHtml, 'utf-8')
-
       try {
-        await pdfWindow.loadFile(tempPath)
-
-        // 等待内容加载完成
-        await new Promise(resolve => setTimeout(resolve, 500))
-
-        const pdfData = await pdfWindow.webContents.printToPDF({
-          printBackground: true,
-          margins: {
-            top: 0.5,
-            bottom: 0.5,
-            left: 0.5,
-            right: 0.5,
-          },
-        })
-
-        try {
-          fs.writeFileSync(result.filePath, pdfData)
-        } catch (writeErr: any) {
-          if (writeErr.code === 'EBUSY' || writeErr.code === 'EPERM') {
-            throw new Error('文件正在被其他程序占用，请关闭后重试')
-          }
-          throw writeErr
+        fs.writeFileSync(result.filePath, pdfData)
+      } catch (error: unknown) {
+        const code = (error as NodeJS.ErrnoException).code
+        if (code === 'EBUSY' || code === 'EPERM') {
+          throw new Error('文件正在被其他程序占用，请关闭后重试')
         }
-        return true
-      } finally {
-        pdfWindow.close()
-        // 清理临时文件
-        try {
-          fs.unlinkSync(tempPath)
-        } catch {}
+        throw error
       }
+      return { canceled: false, revealId: rememberPdfExport(result.filePath) }
+    } finally {
+      if (!pdfWindow.isDestroyed()) pdfWindow.close()
+      try {
+        fs.unlinkSync(tempPath)
+      } catch {}
     }
-    return false
   })
+
+  ipcMain.handle(
+    IPC_CHANNELS.FILE.REVEAL_PDF_EXPORT,
+    async (_, revealId: string) => revealPdfExport(revealId),
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.FILE.BEGIN_MARKDOWN_EXPORT,
+    async (_, request: MarkdownExportBeginRequest) => markdownExportService!.begin(request),
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.FILE.COMMIT_MARKDOWN_EXPORT,
+    async (_, request: MarkdownExportCommitRequest) => markdownExportService!.commit(request),
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.FILE.REVEAL_MARKDOWN_EXPORT,
+    async (_, revealId: string) => markdownExportService!.reveal(revealId),
+  )
 
   // ========== 设置操作 ==========
   ipcMain.handle(IPC_CHANNELS.SETTINGS.GET_GENERAL, async () => {

@@ -87,5 +87,8 @@ describe('Editor runtime mounting', () => {
     act(() => exportTrigger.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 0 })))
     expect(Array.from(document.body.querySelectorAll('[role="menuitem"]'))
       .some((item) => item.textContent?.includes('导出 PDF'))).toBe(true)
+    expect(Array.from(document.body.querySelectorAll('[role="menuitem"]'))
+      .some((item) => item.textContent?.includes('导出 Markdown'))).toBe(true)
+    expect(document.body.textContent).not.toContain('（有损）')
   })
 })

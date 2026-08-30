@@ -128,7 +128,7 @@ export class McpHttpService {
       registerMcpTools(server, this.knowledge)
       return server
     }, {
-      responseMode: 'json',
+      responseMode: 'auto',
       onerror: () => this.onError?.('MCP protocol request failed'),
     })
     const candidate = createServer((request, response) => {

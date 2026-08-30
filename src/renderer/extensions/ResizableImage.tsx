@@ -2,6 +2,7 @@ import { Node, mergeAttributes } from '@tiptap/core'
 import { ReactNodeViewRenderer, NodeViewWrapper } from '@tiptap/react'
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import type { EditorInteractionCoordinator } from '../editor/interactionContext'
+import { renderImageMarkdown } from '../markdown/markdownSerializationContext'
 
 interface ResizableImageOptions {
   inline: boolean
@@ -219,6 +220,8 @@ export const ResizableImage = Node.create<ResizableImageOptions>({
     }
     return ['img', mergeAttributes(this.options.HTMLAttributes, attrs, { style: style.join('; ') })]
   },
+
+  renderMarkdown: renderImageMarkdown,
 
   addNodeView() {
     return ReactNodeViewRenderer(ResizableImageComponent)

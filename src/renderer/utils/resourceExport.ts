@@ -1,5 +1,5 @@
 import type { ExcalidrawScene } from '@shared/knowledge-types'
-import { blobToDataUrl, renderMindMapStatic } from '../mindmap/mindMapExport'
+import { renderMindMapStatic } from '../mindmap/mindMapExport'
 
 function placeholder(label: string): HTMLElement {
   const element = document.createElement('div')
@@ -16,6 +16,39 @@ function blobToDataUrl(blob: Blob): Promise<string> {
     reader.onloadend = () => resolve(reader.result as string)
     reader.readAsDataURL(blob)
   })
+}
+
+const DEFAULT_RESOURCE_WIDTH = 640
+const DEFAULT_RESOURCE_HEIGHT = 320
+
+function positiveDimension(raw: string | undefined, fallback: number): number {
+  const value = Number(raw)
+  return Number.isFinite(value) && value > 0 ? value : fallback
+}
+
+function fitSvgInResourceFrame(element: HTMLElement, svg: SVGElement): void {
+  const width = positiveDimension(element.dataset.width, DEFAULT_RESOURCE_WIDTH)
+  const height = positiveDimension(element.dataset.height, DEFAULT_RESOURCE_HEIGHT)
+  const alignment = element.dataset.textAlign
+
+  element.setAttribute('data-pdf-resource-frame', '')
+  Object.assign(element.style, {
+    display: 'block',
+    width: `${width}px`,
+    maxWidth: '100%',
+    height: `${height}px`,
+    marginTop: '16px',
+    marginBottom: '16px',
+    marginLeft: alignment === 'center' || alignment === 'right' ? 'auto' : '0',
+    marginRight: alignment === 'center' ? 'auto' : '0',
+    overflow: 'hidden',
+    boxSizing: 'border-box',
+    breakInside: 'avoid',
+    pageBreakInside: 'avoid',
+  })
+  svg.setAttribute('preserveAspectRatio', 'xMidYMid meet')
+  svg.setAttribute('style', 'display:block;width:100%;height:100%;max-width:100%;max-height:100%')
+  element.replaceChildren(svg)
 }
 
 async function resolveCanvas(
@@ -36,9 +69,7 @@ async function resolveCanvas(
       files: scene.files as any,
       exportPadding: 20,
     })
-    svg.style.maxWidth = '100%'
-    svg.style.height = 'auto'
-    element.replaceChildren(svg)
+    fitSvgInResourceFrame(element, svg)
   } catch {
     element.replaceWith(placeholder('画布预览生成失败'))
   }
@@ -56,25 +87,9 @@ async function resolveMindMap(
   try {
     const blob = await renderMindMapStatic(result.data, 'svg')
     const svg = new DOMParser().parseFromString(await blob.text(), 'image/svg+xml').documentElement
-    svg.setAttribute('style', 'max-width:100%;height:auto')
-    element.replaceChildren(document.importNode(svg, true))
+    fitSvgInResourceFrame(element, document.importNode(svg, true))
   } catch {
     element.replaceWith(placeholder('思维导图预览生成失败'))
-  }
-}
-
-export async function resolveMindMapReferenceForMarkdown(
-  vaultId: string,
-  documentId: string,
-  mindmapId: string,
-): Promise<string> {
-  const result = await window.electronAPI.knowledge.getMindMap(vaultId, documentId, mindmapId)
-  if (!result.ok) return '> 思维导图资源不可用'
-  try {
-    const blob = await renderMindMapStatic(result.data, 'png')
-    return `![思维导图](${await blobToDataUrl(blob)})`
-  } catch {
-    return '> 思维导图预览生成失败'
   }
 }
 

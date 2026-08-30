@@ -105,7 +105,8 @@ function createWindow() {
   })
 
   // 设置 IPC 处理器
-  setupIpcHandlers(mainWindow)
+  if (!knowledgeService) throw new Error('Knowledge service 尚未初始化')
+  setupIpcHandlers(mainWindow, knowledgeService)
 
   // 加载应用
   if (isDev) {

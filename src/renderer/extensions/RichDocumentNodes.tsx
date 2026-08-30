@@ -4,6 +4,7 @@ import { Download, ExternalLink, FileText } from 'lucide-react'
 import { useState } from 'react'
 import { TIPTAP_REFERENCE_NODE_TYPES } from '@shared/knowledge-types'
 import { useAppStore } from '../stores/appStore'
+import { renderManifestResourceMarkdown } from '../markdown/markdownSerializationContext'
 
 interface DocumentReferenceOptions {
   onOpen: (documentId: string) => void
@@ -137,6 +138,7 @@ export const DocumentReferenceNode = Node.create<DocumentReferenceOptions>({
     mergeAttributes(HTMLAttributes, { 'data-document-reference': '' }),
     String(node.attrs.label ?? '文档引用'),
   ],
+  renderMarkdown: renderManifestResourceMarkdown,
   addNodeView: () => ReactNodeViewRenderer(DocumentReferenceView),
 })
 
@@ -175,5 +177,6 @@ export const FileAttachmentNode = Node.create<FileAttachmentOptions>({
     mergeAttributes(HTMLAttributes, { 'data-file-attachment': '' }),
     `附件：${String(node.attrs.fileName ?? '未命名文件')}`,
   ],
+  renderMarkdown: renderManifestResourceMarkdown,
   addNodeView: () => ReactNodeViewRenderer(FileAttachmentView, { stopEvent: stopFileAttachmentEvent }),
 })

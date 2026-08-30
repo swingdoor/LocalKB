@@ -7,6 +7,7 @@ import type { ResizeCallbackData, ResizeHandleAxis } from 'react-resizable'
 import { TransformComponent, TransformWrapper } from 'react-zoom-pan-pinch'
 import type { ReactZoomPanPinchContentRef } from 'react-zoom-pan-pinch'
 import { TIPTAP_REFERENCE_NODE_TYPES } from '@shared/knowledge-types'
+import { renderManifestResourceMarkdown } from '../markdown/markdownSerializationContext'
 import type { ExcalidrawScene } from '@shared/knowledge-types'
 import type { EditorInteractionCoordinator } from '../editor/interactionContext'
 import MindMapPreview from '../components/MindMapPreview'
@@ -387,7 +388,6 @@ export function CanvasReferenceView({ node, updateAttributes, selected, extensio
         {status === 'ready' && preview && (
           <TransformWrapper
             key={preview.url}
-            ref={transformRef}
             minScale={0.05}
             maxScale={MAX_ZOOM}
             limitToBounds={false}
@@ -396,7 +396,10 @@ export function CanvasReferenceView({ node, updateAttributes, selected, extensio
             trackPadPanning={{ disabled: true }}
             doubleClick={{ disabled: true }}
             panning={{ velocityDisabled: true }}
-            onInit={() => requestAnimationFrame(fit)}
+            onInit={(transform) => {
+              transformRef.current = transform
+              requestAnimationFrame(fit)
+            }}
             onTransform={(_ref, state) => setZoom(state.scale)}
             onPanningStart={() => {
               manuallyAdjustedRef.current = true
@@ -610,6 +613,7 @@ export const CanvasReference = Node.create<ResourceOptions>({
     HTMLAttributes,
     referencePresentationHtml(node.attrs),
   )],
+  renderMarkdown: renderManifestResourceMarkdown,
   addNodeView: () => ReactNodeViewRenderer(CanvasReferenceView, { stopEvent: stopInteractiveResourceEvent }),
 })
 
@@ -626,6 +630,7 @@ export const MindMapReference = Node.create<ResourceOptions>({
     HTMLAttributes,
     referencePresentationHtml(node.attrs),
   )],
+  renderMarkdown: renderManifestResourceMarkdown,
   addNodeView: () => ReactNodeViewRenderer(MindMapReferenceView, { stopEvent: stopInteractiveResourceEvent }),
 })
 
@@ -643,5 +648,6 @@ export const AssetImage = Node.create<Omit<ResourceOptions, 'onEdit'>>({
     HTMLAttributes,
     referencePresentationHtml(node.attrs),
   )],
+  renderMarkdown: renderManifestResourceMarkdown,
   addNodeView: () => ReactNodeViewRenderer(AssetImageView, { stopEvent: stopInteractiveResourceEvent }),
 })
