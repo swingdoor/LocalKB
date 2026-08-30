@@ -54,6 +54,7 @@ import type { HotkeyConfig } from '@shared/types'
 import type { ContentSummary, LoadedDocument, TipTapDocument } from '@shared/knowledge-types'
 import { createEditorInteractionCoordinator } from '../editor/interactionContext'
 import { handleRootBlockDrop } from '../editor/rootBlockDrop'
+import { insertManagedResourceReference } from '../editor/insertManagedResource'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu'
@@ -217,21 +218,19 @@ function Editor({ document, vaultId, onUpdate }: EditorProps) {
       HeadingNumbers,
       CanvasReference.configure({
         vaultId,
-        documentId: document.id,
         interaction,
         onEdit: (canvasId) => { void canvasEditRef.current.handleEditCanvas(canvasId) },
       }),
       MindMapReference.configure({
         vaultId,
-        documentId: document.id,
         interaction,
         onEdit: (mindmapId) => { void mindMapEditRef.current?.handleEditMindMap(mindmapId) },
       }),
-      AssetImage.configure({ vaultId, documentId: document.id, interaction }),
+      AssetImage.configure({ vaultId, interaction }),
       DocumentReferenceNode.configure({
         onOpen: openReferencedDocument,
       }),
-      FileAttachmentNode.configure({ vaultId, documentId: document.id }),
+      FileAttachmentNode.configure({ vaultId }),
       StableNodeId,
       CodeBlockLowlight.extend({
         addNodeView() {
@@ -261,14 +260,18 @@ function Editor({ document, vaultId, onUpdate }: EditorProps) {
             const bytes = imageFile
               ? new Uint8Array(await imageFile.arrayBuffer())
               : Uint8Array.from(atob(htmlDataUrl!.split(',')[1]), (char) => char.charCodeAt(0))
-            const result = await window.electronAPI.knowledge.importAsset(
-              vaultId, document.id, mimeType, bytes, imageFile?.name,
+            const resourceId = crypto.randomUUID()
+            await insertManagedResourceReference(
+              view,
+              vaultId,
+              document.id,
+              {
+                resourceType: 'asset', resourceId, mimeType, bytes,
+                ...(imageFile?.name ? { fileName: imageFile.name } : {}),
+              },
+              'assetImage',
+              { assetId: resourceId, textAlign: 'left', alt: imageFile?.name || null },
             )
-            if (!result.ok) return
-            const node = view.state.schema.nodes.assetImage.create({
-              assetId: result.data.id, textAlign: 'left', alt: imageFile?.name || null,
-            })
-            view.dispatch(view.state.tr.replaceSelectionWith(node).scrollIntoView())
           })()
           return true
         }
@@ -370,10 +373,20 @@ function Editor({ document, vaultId, onUpdate }: EditorProps) {
         const match = image.data.match(/^data:([^;]+);base64,(.+)$/)
         if (!match) return null
         const bytes = Uint8Array.from(atob(match[2]), (char) => char.charCodeAt(0))
-        const result = await window.electronAPI.knowledge.importAsset(
-          vaultId, document.id, match[1], bytes, image.name,
+        const resourceId = crypto.randomUUID()
+        const result = await insertManagedResourceReference(
+          editor!.view,
+          vaultId,
+          document.id,
+          {
+            resourceType: 'asset', resourceId, mimeType: match[1], bytes,
+            fileName: image.name,
+          },
+          'assetImage',
+          { assetId: resourceId, textAlign: 'left', alt: image.name },
         )
-        return result.ok ? { assetId: result.data.id } : null
+        if (!result.ok) toast.error(result.error.message)
+        return null
       } finally {
         interaction.setModalOpen('image-picker', false)
       }
@@ -387,19 +400,23 @@ function Editor({ document, vaultId, onUpdate }: EditorProps) {
         const file = await window.electronAPI.file.selectAttachment()
         if (!file) return null
         const bytes = new Uint8Array(file.bytes)
-        const result = await window.electronAPI.knowledge.importAsset(
-          vaultId, document.id, file.mimeType, bytes, file.name,
+        const resourceId = crypto.randomUUID()
+        const result = await insertManagedResourceReference(
+          editor!.view,
+          vaultId,
+          document.id,
+          {
+            resourceType: 'asset', resourceId, mimeType: file.mimeType, bytes,
+            fileName: file.name,
+          },
+          'fileAttachment',
+          { assetId: resourceId, displayName: file.name },
         )
         if (!result.ok) {
           alert(result.error.message)
           return null
         }
-        return {
-          assetId: result.data.id,
-          fileName: result.data.fileName ?? file.name,
-          mimeType: result.data.mimeType,
-          size: bytes.byteLength,
-        }
+        return null
       } catch (error) {
         alert(error instanceof Error ? error.message : '附件选择失败')
         return null
@@ -435,7 +452,7 @@ function Editor({ document, vaultId, onUpdate }: EditorProps) {
     const toastId = toast.loading('正在导出 PDF…')
     try {
       let htmlContent = await resolveResourceReferencesForExport(
-        editor.getHTML(), vaultId, document.id,
+        editor.getHTML(), vaultId,
       )
 
       // 如果开启了序号显示，则在 HTML 中添加序号
@@ -616,7 +633,6 @@ function Editor({ document, vaultId, onUpdate }: EditorProps) {
                 editor={editor}
                 interaction={interaction}
                 vaultId={vaultId}
-                documentId={document.id}
                 onEditCanvas={canvasEdit.handleEditCanvas}
                 onEditMindMap={mindMapEdit.handleEditMindMap}
                 onOpenDocument={openReferencedDocument}

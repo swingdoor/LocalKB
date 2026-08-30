@@ -77,7 +77,7 @@ describe('typed editor contextual menus', () => {
           { type: 'paragraph', content: [{ type: 'text', text: '选中文本' }] },
           { type: 'image', attrs: { nodeId: 'image' } },
           { type: 'assetImage', attrs: { nodeId: 'asset', assetId: 'asset' } },
-          { type: 'fileAttachment', attrs: { nodeId: 'attachment', assetId: 'file', fileName: '文件' } },
+          { type: 'fileAttachment', attrs: { nodeId: 'attachment', assetId: 'file', displayName: '文件' } },
           { type: 'canvasReference', attrs: { nodeId: 'canvas', canvasId: 'canvas' } },
           { type: 'mindmapReference', attrs: { nodeId: 'mindmap', mindmapId: 'mindmap' } },
           { type: 'paragraph', content: [
@@ -111,7 +111,6 @@ describe('typed editor contextual menus', () => {
           editor={editor}
           interaction={interaction}
           vaultId="vault"
-          documentId="document"
           onEditCanvas={() => undefined}
           onEditMindMap={() => undefined}
           onOpenDocument={() => undefined}

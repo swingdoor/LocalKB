@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react'
 import type { Editor } from '@tiptap/react'
 import type { ExcalidrawScene } from '@shared/knowledge-types'
+import { insertManagedResourceReference } from '../editor/insertManagedResource'
 
 interface EditingCanvas {
   id: string | null
@@ -18,7 +19,7 @@ export function useCanvasEdit(editor: Editor | null, vaultId: string, documentId
 
   const handleEditCanvas = useCallback(async (canvasId: string) => {
     setEditingCanvas({ id: canvasId, data: null, loading: true, error: null })
-    const result = await window.electronAPI.knowledge.getCanvas(vaultId, canvasId, documentId)
+    const result = await window.electronAPI.knowledge.getCanvas(vaultId, canvasId)
     if (!result.ok) {
       setEditingCanvas({ id: canvasId, data: null, loading: false, error: result.error.message })
       return
@@ -26,30 +27,32 @@ export function useCanvasEdit(editor: Editor | null, vaultId: string, documentId
     setEditingCanvas({
       id: canvasId, data: result.data as ExcalidrawScene, loading: false, error: null,
     })
-  }, [documentId, vaultId])
+  }, [vaultId])
 
   const handleSaveCanvas = useCallback(async (content: ExcalidrawScene) => {
     if (!editor || !editingCanvas) return
     if (editingCanvas.id) {
       const result = await window.electronAPI.knowledge.replaceCanvas(
-        vaultId, editingCanvas.id, content, documentId,
+        vaultId, editingCanvas.id, content,
       )
       if (!result.ok) {
         setEditingCanvas((current) => current ? { ...current, error: result.error.message } : null)
         return
       }
     } else {
-      const result = await window.electronAPI.knowledge.createEmbeddedCanvas(
-        vaultId, documentId, content,
+      const resourceId = crypto.randomUUID()
+      const result = await insertManagedResourceReference(
+        editor.view,
+        vaultId,
+        documentId,
+        { resourceType: 'canvas', resourceId, content },
+        'canvasReference',
+        { canvasId: resourceId, width: null, textAlign: 'left' },
       )
       if (!result.ok) {
         setEditingCanvas((current) => current ? { ...current, error: result.error.message } : null)
         return
       }
-      editor.chain().focus().insertContent({
-        type: 'canvasReference',
-        attrs: { canvasId: result.data.id, width: null, textAlign: 'left' },
-      }).run()
     }
     setEditingCanvas(null)
   }, [documentId, editingCanvas, editor, vaultId])

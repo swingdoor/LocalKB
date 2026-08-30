@@ -2,13 +2,15 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAppStore } from '../stores/appStore'
+import { VAULT_FORMAT_VERSIONS } from '@shared/knowledge-types'
 
 vi.mock('./DocumentTree', () => ({ default: () => null }))
 
 import Sidebar from './Sidebar'
 
 const VAULT = {
-  schemaVersion: 2 as const,
+  schemaVersion: 3 as const,
+  formatVersions: VAULT_FORMAT_VERSIONS,
   id: '11111111-1111-4111-8111-111111111111',
   name: '读书笔记',
   createdAt: '',

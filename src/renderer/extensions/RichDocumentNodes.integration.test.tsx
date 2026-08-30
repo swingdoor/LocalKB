@@ -31,6 +31,11 @@ describe('rich document node interaction boundaries', () => {
       }],
     })
     window.electronAPI = { knowledge: {
+      getAssetMetadata: vi.fn(async () => ({ ok: true, data: {
+        id: 'asset-id', fileName: '资料.pdf', extension: 'pdf', mimeType: 'application/pdf',
+        size: 1024, sha256: '0'.repeat(64),
+        createdAt: '2026-08-29T00:00:00.000Z', updatedAt: '2026-08-29T00:00:00.000Z',
+      } })),
       openAsset: vi.fn(async () => ({ ok: true })),
       saveAssetAs: vi.fn(async () => ({ ok: true })),
     } } as any
@@ -46,7 +51,7 @@ describe('rich document node interaction boundaries', () => {
       extensions: [
         StarterKit,
         DocumentReferenceNode.configure({ onOpen }),
-        FileAttachmentNode.configure({ vaultId: 'vault', documentId: 'source-document' }),
+        FileAttachmentNode.configure({ vaultId: 'vault' }),
       ],
       content: {
         type: 'doc',
@@ -56,7 +61,7 @@ describe('rich document node interaction boundaries', () => {
             { type: 'documentReference', attrs: { documentId: 'target-document', label: '目标文档' } },
           ] },
           { type: 'fileAttachment', attrs: {
-            assetId: 'asset-id', fileName: '资料.pdf', mimeType: 'application/pdf', size: 1024,
+            assetId: 'asset-id', displayName: '资料.pdf',
           } },
         ],
       },
@@ -107,7 +112,7 @@ describe('rich document node interaction boundaries', () => {
       await Promise.resolve()
     })
     expect(window.electronAPI.knowledge.openAsset).toHaveBeenCalledWith(
-      'vault', 'source-document', 'asset-id', '资料.pdf',
+      'vault', 'asset-id', '资料.pdf',
     )
 
     await act(async () => {
@@ -115,7 +120,7 @@ describe('rich document node interaction boundaries', () => {
       await Promise.resolve()
     })
     expect(window.electronAPI.knowledge.saveAssetAs).toHaveBeenCalledWith(
-      'vault', 'source-document', 'asset-id', '资料.pdf',
+      'vault', 'asset-id', '资料.pdf',
     )
   })
 })

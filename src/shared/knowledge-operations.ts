@@ -132,17 +132,14 @@ export function collectFileAttachmentReferences(
     const id = nodeId(node)
     if (
       !id || node.type !== TIPTAP_REFERENCE_NODE_TYPES.attachment ||
-      typeof node.attrs?.assetId !== 'string' ||
-      typeof node.attrs.fileName !== 'string' ||
-      typeof node.attrs.mimeType !== 'string' ||
-      typeof node.attrs.size !== 'number'
+      typeof node.attrs?.assetId !== 'string'
     ) return
     references.push({
       assetId: node.attrs.assetId,
       nodeId: id,
-      fileName: node.attrs.fileName,
-      mimeType: node.attrs.mimeType,
-      size: node.attrs.size,
+      ...(typeof node.attrs.displayName === 'string'
+        ? { displayName: node.attrs.displayName }
+        : {}),
     })
   })
   return references

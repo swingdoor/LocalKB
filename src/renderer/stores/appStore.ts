@@ -4,7 +4,7 @@ import { DEFAULT_GENERAL_SETTINGS } from '@shared/editor-fonts'
 import type {
   ContentSummary, ContentType, ExcalidrawScene, KnowledgeErrorData,
   LoadedCanvas, LoadedContent, LoadedDocument, Result, TipTapDocument,
-  VaultTreeV2, VaultV2,
+  VaultTreeV3, VaultV3,
 } from '@shared/knowledge-types'
 import { applyOptimisticMove, getAncestorGroupIds } from '../utils/structureTree'
 import { flushPendingSaves } from '../utils/pendingSaveCoordinator'
@@ -19,7 +19,7 @@ export interface TreeMoveInput {
 
 const expandedStorageKey = (vaultId: string) => `localkb-expanded-groups:${vaultId}`
 
-function readExpandedGroups(vaultId: string, structure: VaultTreeV2): string[] {
+function readExpandedGroups(vaultId: string, structure: VaultTreeV3): string[] {
   try {
     const stored = JSON.parse(localStorage.getItem(expandedStorageKey(vaultId)) || '[]')
     if (!Array.isArray(stored)) return []
@@ -50,10 +50,10 @@ function resultError(error: unknown): KnowledgeErrorData {
 }
 
 interface AppState {
-  vaults: VaultV2[]
-  currentVault: VaultV2 | null
+  vaults: VaultV3[]
+  currentVault: VaultV3 | null
   contents: ContentSummary[]
-  structure: VaultTreeV2 | null
+  structure: VaultTreeV3 | null
   structureLoading: boolean
   structureError: string | null
   selectedContent: Pick<ContentSummary, 'id' | 'contentType' | 'title'> | null
@@ -72,7 +72,7 @@ interface AppState {
   createVault: (name: string) => Promise<void>
   renameVault: (vaultId: string, name: string) => Promise<boolean>
   deleteVault: (vaultId: string) => Promise<void>
-  switchVault: (vault: VaultV2) => Promise<void>
+  switchVault: (vault: VaultV3) => Promise<void>
   loadContents: (vaultId: string) => Promise<void>
   createContent: (title?: string, contentType?: ContentType, parentId?: string | null, index?: number) => Promise<LoadedContent | null>
   selectContent: (content: Pick<ContentSummary, 'id' | 'contentType' | 'title'> | null) => Promise<void>
@@ -249,13 +249,18 @@ export const useAppStore = create<AppState>((set, get) => ({
     })
     const result = content.contentType === 'document'
       ? await window.electronAPI.knowledge.getDocument(vaultId, content.id)
-      : await window.electronAPI.knowledge.getCanvas(vaultId, content.id)
+      : content.contentType === 'canvas'
+        ? await window.electronAPI.knowledge.getCanvas(vaultId, content.id)
+        : await window.electronAPI.knowledge.getMindMap(vaultId, content.id)
     if (get().currentVault?.id !== vaultId || get().selectedContent?.id !== content.id) return
     if (!result.ok) {
       set({ currentContent: null, contentLoading: false, contentError: result.error.message })
       return
     }
-    const loaded = result.data as LoadedContent
+    const summary = get().contents.find((item) => item.id === content.id)
+    const loaded = content.contentType === 'mindmap'
+      ? { ...summary!, ...content, contentType: 'mindmap', content: result.data } as LoadedContent
+      : result.data as LoadedContent
     set({
       selectedContent: loaded,
       currentContent: loaded,

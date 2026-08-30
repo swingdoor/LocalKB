@@ -45,7 +45,6 @@ export function calculatePreviewFit(
 
 interface ResourceOptions {
   vaultId: string
-  documentId: string
   onEdit: (resourceId: string) => void
   interaction?: EditorInteractionCoordinator
 }
@@ -310,7 +309,7 @@ export function CanvasReferenceView({ node, updateAttributes, selected, extensio
     manuallyAdjustedRef.current = false
     void (async () => {
       const result = await window.electronAPI.knowledge.getCanvas(
-        options.vaultId, canvasId, options.documentId,
+        options.vaultId, canvasId,
       )
       if (!result.ok) {
         if (!cancelled) setStatus(result.error.code === 'NOT_FOUND' ? 'missing' : 'error')
@@ -342,7 +341,7 @@ export function CanvasReferenceView({ node, updateAttributes, selected, extensio
       cancelled = true
       if (objectUrl) URL.revokeObjectURL(objectUrl)
     }
-  }, [canvasId, options.documentId, options.vaultId, revision])
+  }, [canvasId, options.vaultId, revision])
 
   useEffect(() => window.electronAPI.knowledge.onChanged((event) => {
     if (event.vaultId === options.vaultId && event.resourceType === 'canvas' &&
@@ -477,7 +476,6 @@ export function MindMapReferenceView({ node, updateAttributes, selected, extensi
     >
       <MindMapPreview
         vaultId={options.vaultId}
-        documentId={options.documentId}
         mindmapId={mindmapId}
         selected={selected}
         interaction={options.interaction}
@@ -494,7 +492,7 @@ function AssetImageView({ node, updateAttributes, selected, extension, editor, g
     assetId: string; width: number | null; textAlign: Alignment; alt: string | null
   }
   const [failed, setFailed] = useState(false)
-  const src = `localkb-resource://asset/${encodeURIComponent(options.vaultId)}/${encodeURIComponent(options.documentId)}/${encodeURIComponent(assetId)}`
+  const src = `localkb-resource://asset/${encodeURIComponent(options.vaultId)}/${encodeURIComponent(assetId)}`
   return (
     <ReferenceShell
       width={width}
@@ -602,7 +600,7 @@ function referencePresentationHtml(attributes: Record<string, unknown>): Record<
 
 export const CanvasReference = Node.create<ResourceOptions>({
   name: TIPTAP_REFERENCE_NODE_TYPES.canvas, group: 'block', atom: true, draggable: false,
-  addOptions: () => ({ vaultId: '', documentId: '', onEdit: () => undefined, interaction: undefined }),
+  addOptions: () => ({ vaultId: '', onEdit: () => undefined, interaction: undefined }),
   addAttributes: () => ({
     canvasId: referenceIdAttribute('canvasId', 'data-canvas-id'),
     ...previewPresentationAttributes,
@@ -619,7 +617,7 @@ export const CanvasReference = Node.create<ResourceOptions>({
 
 export const MindMapReference = Node.create<ResourceOptions>({
   name: TIPTAP_REFERENCE_NODE_TYPES.mindmap, group: 'block', atom: true, draggable: false,
-  addOptions: () => ({ vaultId: '', documentId: '', onEdit: () => undefined, interaction: undefined }),
+  addOptions: () => ({ vaultId: '', onEdit: () => undefined, interaction: undefined }),
   addAttributes: () => ({
     mindmapId: referenceIdAttribute('mindmapId', 'data-mindmap-id'),
     ...previewPresentationAttributes,
@@ -636,7 +634,7 @@ export const MindMapReference = Node.create<ResourceOptions>({
 
 export const AssetImage = Node.create<Omit<ResourceOptions, 'onEdit'>>({
   name: TIPTAP_REFERENCE_NODE_TYPES.asset, group: 'block', atom: true, draggable: false,
-  addOptions: () => ({ vaultId: '', documentId: '', interaction: undefined }),
+  addOptions: () => ({ vaultId: '', interaction: undefined }),
   addAttributes: () => ({
     assetId: referenceIdAttribute('assetId', 'data-asset-id'),
     alt: altAttribute,

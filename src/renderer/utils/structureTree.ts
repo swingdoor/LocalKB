@@ -1,7 +1,7 @@
 import type {
   ContentSummary,
-  TreeEntryV2,
-  VaultTreeV2,
+  TreeEntryV3,
+  VaultTreeV3,
 } from '@shared/knowledge-types'
 import type { TreeMoveInput } from '../stores/appStore'
 
@@ -22,14 +22,14 @@ export interface ContentTreeNode {
 
 export type StructureTreeNode = GroupTreeNode | ContentTreeNode
 
-function orderedChildren(structure: VaultTreeV2, parentId: string | null): TreeEntryV2[] {
+function orderedChildren(structure: VaultTreeV3, parentId: string | null): TreeEntryV3[] {
   return structure.entries
     .filter((entry) => entry.parentId === parentId)
     .sort((a, b) => a.order - b.order || a.id.localeCompare(b.id))
 }
 
 export function buildTreeData(
-  structure: VaultTreeV2 | null,
+  structure: VaultTreeV3 | null,
   contents: ContentSummary[],
 ): StructureTreeNode[] {
   if (!structure) return []
@@ -49,7 +49,7 @@ export function buildTreeData(
 }
 
 export function getAncestorGroupIds(
-  structure: VaultTreeV2 | null,
+  structure: VaultTreeV3 | null,
   contentId: string,
 ): string[] {
   if (!structure) return []
@@ -68,20 +68,20 @@ export function getAncestorGroupIds(
 }
 
 export function getContentBreadcrumb(
-  structure: VaultTreeV2 | null,
+  structure: VaultTreeV3 | null,
   contentId: string,
 ): string {
   if (!structure) return ''
   const byId = new Map(structure.entries.map((entry) => [entry.id, entry]))
   return getAncestorGroupIds(structure, contentId)
     .map((id) => byId.get(id))
-    .filter((entry): entry is Extract<TreeEntryV2, { kind: 'group' }> => entry?.kind === 'group')
+    .filter((entry): entry is Extract<TreeEntryV3, { kind: 'group' }> => entry?.kind === 'group')
     .map((group) => group.name)
     .join(' / ')
 }
 
 export function countDescendantContent(
-  structure: VaultTreeV2 | null,
+  structure: VaultTreeV3 | null,
   groupId: string,
 ): number {
   if (!structure) return 0
@@ -105,7 +105,7 @@ export function countDescendantContent(
 }
 
 export function isInvalidMove(
-  structure: VaultTreeV2 | null,
+  structure: VaultTreeV3 | null,
   itemId: string,
   targetParentId: string | null,
 ): boolean {
@@ -128,15 +128,15 @@ export function isInvalidMove(
 }
 
 export function applyOptimisticMove(
-  structure: VaultTreeV2,
+  structure: VaultTreeV3,
   input: TreeMoveInput,
-): VaultTreeV2 {
+): VaultTreeV3 {
   const entries = structure.entries.map((entry) => ({ ...entry }))
   const item = entries.find((entry) => entry.id === input.id)
   if (!item) return structure
   const oldParentId = item.parentId
   item.parentId = input.targetParentId
-  const reorder = (parentId: string | null, moved?: TreeEntryV2) => {
+  const reorder = (parentId: string | null, moved?: TreeEntryV3) => {
     const siblings = entries
       .filter((entry) => entry.parentId === parentId && entry.id !== moved?.id)
       .sort((a, b) => a.order - b.order || a.id.localeCompare(b.id))
@@ -145,5 +145,5 @@ export function applyOptimisticMove(
   }
   reorder(input.targetParentId, item)
   if (oldParentId !== input.targetParentId) reorder(oldParentId)
-  return { schemaVersion: 2, entries }
+  return { schemaVersion: 3, entries }
 }

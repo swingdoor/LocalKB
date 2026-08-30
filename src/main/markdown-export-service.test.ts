@@ -45,6 +45,16 @@ describe('MarkdownExportService', () => {
       getCanvas: vi.fn(async () => ({ elements: [], appState: {}, files: {} })),
       getMindMap: vi.fn(async () => ({ nodeData: { id: 'root', topic: 'Root' } })),
       getAssetPath: vi.fn(),
+      getAssetMetadata: vi.fn(async () => ({
+        id: RESOURCE_ID,
+        fileName: '资料.txt',
+        extension: 'txt',
+        mimeType: 'text/plain',
+        size: 0,
+        sha256: '0'.repeat(64),
+        createdAt: '2026-08-30T01:02:03.000Z',
+        updatedAt: '2026-08-30T01:02:03.000Z',
+      })),
     }
   })
 
@@ -102,10 +112,14 @@ describe('MarkdownExportService', () => {
     const attachmentBytes = Buffer.alloc(2 * 1024 * 1024, 7)
     await fs.writeFile(sourcePath, attachmentBytes)
     knowledge.getAssetPath.mockResolvedValue(sourcePath)
+    knowledge.getAssetMetadata.mockResolvedValue({
+      id: RESOURCE_ID, fileName: '资料.txt', extension: 'txt', mimeType: 'text/plain',
+      size: attachmentBytes.byteLength, sha256: '0'.repeat(64),
+      createdAt: '2026-08-30T01:02:03.000Z', updatedAt: '2026-08-30T01:02:03.000Z',
+    })
     const descriptor: MarkdownExportResourceDescriptor = {
       kind: 'attachment', resourceKey: `attachment:${RESOURCE_ID}`, assetId: RESOURCE_ID,
-      nodeIds: [NODE_ID], label: '资料.txt', fileName: '资料.txt',
-      mimeType: 'text/plain', size: attachmentBytes.byteLength,
+      nodeIds: [NODE_ID], label: '资料.txt', displayName: '资料.txt',
     }
     const exporter = service()
     const begin = await exporter.begin(request([descriptor]))
@@ -216,10 +230,14 @@ describe('MarkdownExportService', () => {
     const sourcePath = path.join(tempDirectory, 'transient.pdf')
     await fs.writeFile(sourcePath, 'pdf')
     knowledge.getAssetPath.mockResolvedValue(sourcePath)
+    knowledge.getAssetMetadata.mockResolvedValue({
+      id: RESOURCE_ID, fileName: '资料.pdf', extension: 'pdf', mimeType: 'application/pdf',
+      size: 3, sha256: '0'.repeat(64),
+      createdAt: '2026-08-30T01:02:03.000Z', updatedAt: '2026-08-30T01:02:03.000Z',
+    })
     const descriptor: MarkdownExportResourceDescriptor = {
       kind: 'attachment', resourceKey: `attachment:${RESOURCE_ID}`, assetId: RESOURCE_ID,
-      nodeIds: [NODE_ID], label: '资料.pdf', fileName: '资料.pdf',
-      mimeType: 'application/pdf', size: 3,
+      nodeIds: [NODE_ID], label: '资料.pdf', displayName: '资料.pdf',
     }
     const exporter = service()
     const begin = await exporter.begin(request([descriptor]))

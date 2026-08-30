@@ -14,9 +14,7 @@ interface UseCommandMenuOptions {
   onSelectDocument?: () => Promise<{ documentId: string; label: string } | null>
   onSelectAttachment?: () => Promise<{
     assetId: string
-    fileName: string
-    mimeType: string
-    size: number
+    displayName?: string
   } | null>
 }
 

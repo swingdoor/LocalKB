@@ -1,27 +1,28 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type {
-  ContentSummary, LoadedCanvas, LoadedDocument, Result, VaultTreeV2, VaultV2,
+  ContentSummary, LoadedCanvas, LoadedDocument, Result, VaultTreeV3, VaultV3,
 } from '@shared/knowledge-types'
+import { VAULT_FORMAT_VERSIONS } from '@shared/knowledge-types'
 import { useAppStore } from './appStore'
 import { registerPendingSaveFlusher } from '../utils/pendingSaveCoordinator'
 
 const timestamp = '2026-01-01T00:00:00.000Z'
-const VAULT_A: VaultV2 = {
-  schemaVersion: 2, id: '11111111-1111-4111-8111-111111111111', name: 'A', createdAt: timestamp,
+const VAULT_A: VaultV3 = {
+  schemaVersion: 3, formatVersions: VAULT_FORMAT_VERSIONS, id: '11111111-1111-4111-8111-111111111111', name: 'A', createdAt: timestamp,
 }
-const VAULT_B: VaultV2 = {
-  schemaVersion: 2, id: '22222222-2222-4222-8222-222222222222', name: 'B', createdAt: timestamp,
+const VAULT_B: VaultV3 = {
+  schemaVersion: 3, formatVersions: VAULT_FORMAT_VERSIONS, id: '22222222-2222-4222-8222-222222222222', name: 'B', createdAt: timestamp,
 }
 const GROUP = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
 const DOCUMENT = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
 const CANVAS = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
-const structure: VaultTreeV2 = {
-  schemaVersion: 2,
+const structure: VaultTreeV3 = {
+  schemaVersion: 3,
   entries: [
     { kind: 'group', id: GROUP, name: '组', parentId: null, order: 0 },
     {
       kind: 'content', id: DOCUMENT, contentType: 'document', title: '文档',
-      parentId: null, order: 1, createdAt: timestamp, metadataUpdatedAt: timestamp,
+      parentId: null, order: 1, createdAt: timestamp, updatedAt: timestamp,
     },
   ],
 }
@@ -34,7 +35,7 @@ const canvasSummary: ContentSummary = {
   order: 2, createdAt: timestamp, updatedAt: timestamp,
 }
 
-describe('appStore v2 knowledge state', () => {
+describe('appStore v3 knowledge state', () => {
   beforeEach(() => {
     localStorage.clear()
     useAppStore.setState({
@@ -68,11 +69,11 @@ describe('appStore v2 knowledge state', () => {
 
   it('does not apply a completed load from the previously selected vault', async () => {
     let resolveOldContents!: (value: Result<ContentSummary[]>) => void
-    let resolveOldTree!: (value: Result<VaultTreeV2>) => void
+    let resolveOldTree!: (value: Result<VaultTreeV3>) => void
     const oldContents = new Promise<Result<ContentSummary[]>>((resolve) => {
       resolveOldContents = resolve
     })
-    const oldTree = new Promise<Result<VaultTreeV2>>((resolve) => {
+    const oldTree = new Promise<Result<VaultTreeV3>>((resolve) => {
       resolveOldTree = resolve
     })
     window.electronAPI = {
@@ -88,7 +89,7 @@ describe('appStore v2 knowledge state', () => {
     useAppStore.setState({ currentVault: VAULT_B })
     await useAppStore.getState().loadContents(VAULT_B.id)
     resolveOldContents({ ok: true, data: [] })
-    resolveOldTree({ ok: true, data: { schemaVersion: 2, entries: [] } })
+    resolveOldTree({ ok: true, data: { schemaVersion: 3, entries: [] } })
     await oldLoad
 
     expect(useAppStore.getState().currentVault?.id).toBe(VAULT_B.id)
@@ -97,8 +98,8 @@ describe('appStore v2 knowledge state', () => {
   })
 
   it('restores valid expanded groups and expands ancestors for reveal', async () => {
-    const nested: VaultTreeV2 = {
-      schemaVersion: 2,
+    const nested: VaultTreeV3 = {
+      schemaVersion: 3,
       entries: [
         { kind: 'group', id: GROUP, name: '组', parentId: null, order: 0 },
         { ...structure.entries[1], parentId: GROUP, order: 0 },

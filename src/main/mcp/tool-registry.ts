@@ -76,11 +76,11 @@ export function createMcpToolDefinitions(service: KnowledgeService): ToolDefinit
       run: async ({ vaultId }) => jsonData(await service.deleteVault(String(vaultId), 'mcp')),
     },
     {
-      name: 'tree_get', description: '读取知识库原生 VaultTreeV2 扁平树。', inputSchema: vaultInput, readOnly: true,
+      name: 'tree_get', description: '读取知识库原生 VaultTreeV3 扁平树（group/document/canvas/mindmap）。', inputSchema: vaultInput, readOnly: true,
       run: async ({ vaultId }) => jsonData(await service.getTree(String(vaultId))),
     },
     {
-      name: 'tree_insert', description: '在 VaultTreeV2 中插入 group、document 或 canvas 条目；parentId 只能为空或指向 group，不接收任何领域内容 JSON。',
+      name: 'tree_insert', description: '在 VaultTreeV3 中插入 group、document、canvas 或 mindmap 条目；parentId 只能为空或指向 group，不接收任何领域内容 JSON。',
       inputSchema: z.strictObject({
         vaultId: uuidSchema,
         parentId: uuidSchema.nullable().optional(),
@@ -89,10 +89,11 @@ export function createMcpToolDefinitions(service: KnowledgeService): ToolDefinit
           z.strictObject({ kind: z.literal('group'), name: z.string().min(1).max(100) }),
           z.strictObject({ kind: z.literal('document'), title: z.string().min(1).max(100) }),
           z.strictObject({ kind: z.literal('canvas'), title: z.string().min(1).max(100) }),
+          z.strictObject({ kind: z.literal('mindmap'), title: z.string().min(1).max(100) }),
         ]),
       }),
       run: async ({ vaultId, parentId, index, entry }) => {
-        const item = entry as { kind: 'group' | 'document' | 'canvas'; name?: string; title?: string }
+        const item = entry as { kind: 'group' | 'document' | 'canvas' | 'mindmap'; name?: string; title?: string }
         const parent = parentId === undefined ? null : parentId as string | null
         return jsonData(item.kind === 'group'
           ? await service.createGroup(String(vaultId), parent, item.name!, index as number | undefined, 'mcp')
@@ -100,7 +101,7 @@ export function createMcpToolDefinitions(service: KnowledgeService): ToolDefinit
       },
     },
     {
-      name: 'tree_update', description: '按条目类型重命名和/或移动 VaultTreeV2 条目；group 使用 name，document/canvas 使用 title，parentId 只能指向 group。',
+      name: 'tree_update', description: '按条目类型重命名和/或移动 VaultTreeV3 条目；group 使用 name，其余内容使用 title，parentId 只能指向 group。',
       inputSchema: z.strictObject({
         vaultId: uuidSchema, entryId: uuidSchema,
         patch: z.strictObject({
@@ -145,7 +146,7 @@ export function createMcpToolDefinitions(service: KnowledgeService): ToolDefinit
       ),
     },
     {
-      name: 'document_insert', description: '插入编辑器支持的原生 TipTap JSON。根级块节点必须使用 parentNodeId=null；paragraph/heading 只能包含 text、hardBreak、documentReference。内部文档引用使用 documentReference + attrs.documentId；附件须先 asset_import，再插入 fileAttachment + attrs.assetId/fileName/mimeType/size；Details 必须为 details > detailsSummary(text*) + detailsContent(block+)；下划线/高亮写在 text.marks。所有非 text 节点使用稳定 attrs.nodeId。',
+      name: 'document_insert', description: '插入编辑器支持的原生 TipTap JSON。根级块节点必须使用 parentNodeId=null；paragraph/heading 只能包含 text、hardBreak、documentReference。内部文档引用使用 documentReference + attrs.documentId；画布/思维导图先创建资源，再插入 canvasReference/mindmapReference；附件先 asset_import，再插入 fileAttachment + attrs.assetId，可选 attrs.displayName；工作区图片使用 assetImage + attrs.assetId；普通 image.attrs.src 只允许 HTTPS 或 data:image。Details 必须为 details > detailsSummary(text*) + detailsContent(block+)；下划线/高亮写在 text.marks。所有非 text 节点使用稳定 attrs.nodeId。',
       inputSchema: z.strictObject({
         vaultId: uuidSchema, documentId: uuidSchema,
         parentNodeId: uuidSchema.nullable().optional(), index: z.number().int().min(0).optional(),
@@ -159,7 +160,7 @@ export function createMcpToolDefinitions(service: KnowledgeService): ToolDefinit
       ),
     },
     {
-      name: 'document_update', description: '按稳定节点 ID 只更新明确提交的 type、attrs 或完整 content[]，未提交字段保持不变。更新后的整篇文档仍须满足原生 TipTap 内容模型；文档引用改 attrs.documentId/label，附件元数据须与所属资源一致，underline/highlight 属于 text.marks，Details 始终保持 summary + content 两个子节点。',
+      name: 'document_update', description: '按稳定节点 ID 只更新明确提交的 type、attrs 或完整 content[]，未提交字段保持不变。更新后的整篇文档仍须满足原生 TipTap 内容模型；附件只保留 attrs.assetId 与可选 displayName，工作区图片使用 assetImage，普通 image.src 只允许 HTTPS/data:image；underline/highlight 属于 text.marks，Details 始终保持 summary + content 两个子节点。',
       inputSchema: z.strictObject({
         vaultId: uuidSchema, documentId: uuidSchema,
         updates: z.array(z.strictObject({
@@ -185,9 +186,9 @@ export function createMcpToolDefinitions(service: KnowledgeService): ToolDefinit
     },
     {
       name: 'canvas_create', description: '创建经过完整 scene、元素 ID、绑定和文件引用校验的原生 Excalidraw scene，不修改文档；随后用 document_insert 插入 canvasReference。',
-      inputSchema: z.strictObject({ vaultId: uuidSchema, documentId: uuidSchema, scene: excalidrawSceneSchema.optional() }),
-      run: async ({ vaultId, documentId, scene }) => jsonData(await service.createEmbeddedCanvas(
-        String(vaultId), String(documentId), (scene ?? {
+      inputSchema: z.strictObject({ vaultId: uuidSchema, scene: excalidrawSceneSchema.optional() }),
+      run: async ({ vaultId, scene }) => jsonData(await service.createCanvas(
+        String(vaultId), (scene ?? {
           type: 'excalidraw', version: 2, source: 'localkb-mcp', elements: [], appState: {}, files: {},
         }) as never, 'mcp',
       )),
@@ -280,9 +281,9 @@ export function createMcpToolDefinitions(service: KnowledgeService): ToolDefinit
     },
     {
       name: 'mindmap_create', description: '创建具有唯一 node.id、字符串 topic 和合法 children[] 的原生 MindElixir 树，不修改文档；随后用 document_insert 插入 mindmapReference。',
-      inputSchema: z.strictObject({ vaultId: uuidSchema, documentId: uuidSchema, data: mindMapDataSchema }),
-      run: async ({ vaultId, documentId, data }) => jsonData(await service.createMindMap(
-        String(vaultId), String(documentId), data as never, 'mcp',
+      inputSchema: z.strictObject({ vaultId: uuidSchema, data: mindMapDataSchema }),
+      run: async ({ vaultId, data }) => jsonData(await service.createMindMap(
+        String(vaultId), data as never, 'mcp',
       )),
     },
     {
@@ -354,16 +355,16 @@ export function createMcpToolDefinitions(service: KnowledgeService): ToolDefinit
       run: async ({ vaultId, mindMapId }) => jsonData(await service.removeMindMap(String(vaultId), String(mindMapId), 'mcp')),
     },
     {
-      name: 'asset_import', description: '从 canonical base64 无损导入文档所属资产，不修改文档。图片随后插入 assetImage；普通文件随后插入 fileAttachment，并逐字使用返回的 id、mimeType、byteLength 以及输入 fileName 作为 attrs.assetId/mimeType/size/fileName。',
+      name: 'asset_import', description: '从 canonical base64 无损导入知识库资产，不修改文档。图片随后插入 assetImage + attrs.assetId；普通文件随后插入 fileAttachment + attrs.assetId，可选 attrs.displayName。文件名、MIME、大小和 SHA-256 由服务端资产清单维护，不要复制进文档节点。',
       inputSchema: z.strictObject({
-        vaultId: uuidSchema, documentId: uuidSchema, mimeType: z.string().min(1).max(100),
+        vaultId: uuidSchema, mimeType: z.string().min(1).max(100),
         fileName: z.string().min(1).max(255).optional(),
         dataBase64: z.string().min(4).max(Math.ceil(MAX_ASSET_BYTES * 4 / 3) + 4),
       }),
-      run: async ({ vaultId, documentId, mimeType, fileName, dataBase64 }) => {
+      run: async ({ vaultId, mimeType, fileName, dataBase64 }) => {
         const bytes = canonicalBase64(String(dataBase64))
         const result = await service.importAsset(
-          String(vaultId), String(documentId), String(mimeType), bytes, 'mcp',
+          String(vaultId), String(mimeType), bytes, 'mcp',
           fileName === undefined ? undefined : String(fileName),
         )
         return jsonData({ ...result, byteLength: bytes.byteLength })
@@ -375,8 +376,8 @@ export function createMcpToolDefinitions(service: KnowledgeService): ToolDefinit
       run: async ({ vaultId, assetId, includeData }) => {
         const asset = await service.readAssetById(String(vaultId), String(assetId))
         return jsonData({
-          assetId: asset.id, mimeType: asset.mimeType, byteLength: asset.bytes.byteLength,
-          documentId: asset.documentId,
+          assetId: asset.id, fileName: asset.fileName, extension: asset.extension,
+          mimeType: asset.mimeType, byteLength: asset.bytes.byteLength, sha256: asset.sha256,
           ...(includeData ? { dataBase64: Buffer.from(asset.bytes).toString('base64') } : {}),
         })
       },

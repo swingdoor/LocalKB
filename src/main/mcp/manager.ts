@@ -27,15 +27,25 @@ export class McpManager {
       if (typeof enabled !== 'boolean') throw new Error('MCP 启用状态无效')
       const previous = settingsStore.getMcpSettings()
       const next = { ...previous, enabled }
-      await this.http.apply(next)
-      settingsStore.saveMcpSettings(next)
+      await settingsStore.saveMcpSettings(next)
+      try { await this.http.apply(next) }
+      catch (error) {
+        await settingsStore.saveMcpSettings(previous)
+        await this.http.apply(previous).catch(() => undefined)
+        throw error
+      }
       return maskMcpSettings(next)
     })
     ipc.handle(IPC_CHANNELS.SETTINGS.RESET_MCP_TOKEN, async () => {
       const previous = settingsStore.getMcpSettings()
       const next = { ...previous, token: settingsStore.createMcpToken() }
-      await this.http.apply(next)
-      settingsStore.saveMcpSettings(next)
+      await settingsStore.saveMcpSettings(next)
+      try { await this.http.apply(next) }
+      catch (error) {
+        await settingsStore.saveMcpSettings(previous)
+        await this.http.apply(previous).catch(() => undefined)
+        throw error
+      }
       return maskMcpSettings(next)
     })
     ipc.handle(IPC_CHANNELS.SETTINGS.COPY_MCP_URL, async () => {

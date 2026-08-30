@@ -139,9 +139,10 @@ function assertDescriptor(descriptor: MarkdownExportResourceDescriptor): void {
   } else if (descriptor.kind === 'attachment') {
     assertUuid(descriptor.assetId, '附件 ID')
     if (descriptor.resourceKey !== `attachment:${descriptor.assetId}` ||
-      typeof descriptor.fileName !== 'string' || !descriptor.fileName.trim() || descriptor.fileName.length > 255 ||
-      typeof descriptor.mimeType !== 'string' || !descriptor.mimeType.trim() ||
-      typeof descriptor.size !== 'number' || !Number.isSafeInteger(descriptor.size) || descriptor.size < 0) {
+      (descriptor.displayName !== undefined && (
+        typeof descriptor.displayName !== 'string' || !descriptor.displayName.trim() ||
+        descriptor.displayName.length > 255
+      ))) {
       throw new Error('附件资源描述无效')
     }
   } else if (descriptor.kind === 'documentReference') {
@@ -255,15 +256,17 @@ export class MarkdownExportService {
     assetDirectoryName: string,
     descriptor: MarkdownExportResourceDescriptor,
     extension?: string,
+    attachmentFileName?: string,
   ): string | undefined {
     const category = categoryFor(descriptor.kind)
     if (!category) return undefined
     let fileName: string
     if (descriptor.kind === 'attachment') {
-      const currentExtension = path.extname(descriptor.fileName).slice(1).toLowerCase()
+      if (!attachmentFileName) throw new Error('附件清单缺少文件名')
+      const currentExtension = path.extname(attachmentFileName).slice(1).toLowerCase()
       const portableName = currentExtension
-        ? descriptor.fileName
-        : `${descriptor.fileName}.${extension ?? 'bin'}`
+        ? attachmentFileName
+        : `${attachmentFileName}.${extension ?? 'bin'}`
       fileName = appendStableSuffix(portableName, descriptor.assetId)
     } else if (descriptor.kind === 'canvas') {
       fileName = `canvas-${stableResourceSuffix(descriptor.canvasId)}.png`
@@ -294,41 +297,38 @@ export class MarkdownExportService {
       label: descriptor.label,
       status: 'ready' as const,
     }
-    const { vaultId, documentId } = request.metadata
+    const { vaultId } = request.metadata
 
     if (descriptor.kind === 'canvas') {
-      await this.knowledge.getCanvas(vaultId, descriptor.canvasId, documentId)
+      await this.knowledge.getCanvas(vaultId, descriptor.canvasId)
       generatedResourceKeys.add(descriptor.resourceKey)
       return { ...base, mimeType: 'image/png', relativePath: this.relativePath(assetDirectoryName, descriptor) }
     }
     if (descriptor.kind === 'mindmap') {
-      await this.knowledge.getMindMap(vaultId, documentId, descriptor.mindmapId)
+      await this.knowledge.getMindMap(vaultId, descriptor.mindmapId)
       generatedResourceKeys.add(descriptor.resourceKey)
       return { ...base, mimeType: 'image/png', relativePath: this.relativePath(assetDirectoryName, descriptor) }
     }
     if (descriptor.kind === 'assetImage' || descriptor.kind === 'attachment') {
-      const sourcePath = await this.knowledge.getAssetPath(vaultId, documentId, descriptor.assetId)
+      const metadata = await this.knowledge.getAssetMetadata(vaultId, descriptor.assetId)
+      const sourcePath = await this.knowledge.getAssetPath(vaultId, descriptor.assetId)
       const stat = await fs.stat(sourcePath)
       if (!stat.isFile()) throw new Error('工作区资源不是普通文件')
-      if (descriptor.kind === 'attachment' && stat.size !== descriptor.size) {
-        throw new Error('附件大小与文档记录不一致')
-      }
-      const actualExtension = path.extname(sourcePath).slice(1).toLowerCase() ||
-        extensionForMimeType(descriptor.kind === 'attachment' ? descriptor.mimeType : '', 'bin')
-      if (descriptor.kind === 'attachment') {
-        const expectedExtension = extensionForMimeType(descriptor.mimeType, actualExtension)
-        if (expectedExtension !== actualExtension) throw new Error('附件类型与工作区文件不一致')
-        const fileNameExtension = path.extname(descriptor.fileName).slice(1).toLowerCase()
-        if (fileNameExtension && fileNameExtension !== actualExtension) {
-          throw new Error('附件文件名与工作区文件类型不一致')
-        }
-      }
+      if (stat.size !== metadata.size) throw new Error('工作区资源大小与资产清单不一致')
+      const actualExtension = metadata.extension
       workspaceResources.set(descriptor.resourceKey, { sourcePath, size: stat.size })
       return {
         ...base,
-        mimeType: descriptor.kind === 'attachment' ? descriptor.mimeType : undefined,
-        displayName: descriptor.kind === 'attachment' ? descriptor.fileName : descriptor.alt,
-        relativePath: this.relativePath(assetDirectoryName, descriptor, actualExtension),
+        mimeType: metadata.mimeType,
+        displayName: descriptor.kind === 'attachment'
+          ? descriptor.displayName ?? metadata.fileName
+          : descriptor.alt,
+        relativePath: this.relativePath(
+          assetDirectoryName,
+          descriptor,
+          actualExtension,
+          descriptor.kind === 'attachment' ? metadata.fileName : undefined,
+        ),
       }
     }
     if (descriptor.kind === 'documentReference') {

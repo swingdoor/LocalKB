@@ -1,12 +1,14 @@
 import { v4 as uuidv4 } from 'uuid'
+import { VAULT_FORMAT_VERSIONS } from '../../shared/knowledge-types'
 import type {
   AssetData,
+  AssetMetadata,
   CanvasElementPatch,
   CanvasElementSnapshot,
   CanvasPlacement,
   CanvasSearchResult,
   CanvasUpdate,
-  ContentEntryV2,
+  ContentEntryV3,
   ContentSummary,
   ContentType,
   DocumentNodePatch,
@@ -15,7 +17,7 @@ import type {
   DocumentSearchResult,
   ExcalidrawElement,
   ExcalidrawScene,
-  GroupEntryV2,
+  GroupEntryV3,
   JsonObject,
   JsonValue,
   KnowledgeChangeEvent,
@@ -30,14 +32,17 @@ import type {
   MindMapNodeUpdate,
   MindMapSearchResult,
   MutationOrigin,
+  RendererResourceInsertion,
+  RendererResourceInsertionResult,
   Result,
   SearchHit,
   TipTapDocument,
   TipTapNode,
-  TreeEntryV2,
+  TreeEntryV3,
   VaultResourceLocator,
-  VaultTreeV2,
-  VaultV2,
+  VaultTreeV3,
+  VaultV3,
+  VaultIntegrityReport,
 } from '../../shared/knowledge-types'
 import {
   appendDocumentNodes,
@@ -87,6 +92,7 @@ import {
   normalizeName,
 } from '../../shared/knowledge-validation'
 import { FileKnowledgeStore } from './file-knowledge-store'
+import { inspectVaultIntegrity } from './knowledge-integrity'
 
 export class KnowledgeError extends Error {
   constructor(
@@ -129,7 +135,7 @@ export interface KnowledgeLogEntry {
 export type KnowledgeLogger = (entry: KnowledgeLogEntry) => void
 export type KnowledgeEventListener = (event: KnowledgeChangeEvent) => void
 
-function findEntry(tree: VaultTreeV2, id: string): TreeEntryV2 {
+function findEntry(tree: VaultTreeV3, id: string): TreeEntryV3 {
   assertUuid(id, '树条目 ID')
   const entry = tree.entries.find((candidate) => candidate.id === id)
   if (!entry) throw new KnowledgeError('NOT_FOUND', '树条目不存在')
@@ -137,10 +143,10 @@ function findEntry(tree: VaultTreeV2, id: string): TreeEntryV2 {
 }
 
 function findContentEntry(
-  tree: VaultTreeV2,
+  tree: VaultTreeV3,
   id: string,
   expected?: ContentType,
-): ContentEntryV2 {
+): ContentEntryV3 {
   const entry = findEntry(tree, id)
   if (entry.kind !== 'content' || (expected && entry.contentType !== expected)) {
     throw new KnowledgeError('CONFLICT', '内容类型不匹配')
@@ -148,22 +154,22 @@ function findContentEntry(
   return entry
 }
 
-function requireParent(tree: VaultTreeV2, parentId: string | null): void {
+function requireParent(tree: VaultTreeV3, parentId: string | null): void {
   if (parentId === null) return
   const parent = findEntry(tree, parentId)
   if (parent.kind !== 'group') throw new KnowledgeError('CONFLICT', '目标父级不是分组')
 }
 
-function nextOrder(tree: VaultTreeV2, parentId: string | null): number {
+function nextOrder(tree: VaultTreeV3, parentId: string | null): number {
   return tree.entries.filter((entry) => entry.parentId === parentId).length
 }
 
 function reorderSiblings(
-  entries: TreeEntryV2[],
-  moving: TreeEntryV2,
+  entries: TreeEntryV3[],
+  moving: TreeEntryV3,
   targetParentId: string | null,
   index: number,
-): TreeEntryV2[] {
+): TreeEntryV3[] {
   const without = entries.filter((entry) => entry.id !== moving.id)
   const siblings = without.filter((entry) => entry.parentId === targetParentId)
     .sort((a, b) => a.order - b.order)
@@ -194,6 +200,10 @@ function defaultCanvas(): ExcalidrawScene {
   }
 }
 
+function defaultMindMap(): MindMapData {
+  return { nodeData: { id: uuidv4(), topic: '中心主题' } }
+}
+
 function extractText(node: TipTapNode): string {
   if (node.type === 'text') return node.text ?? ''
   return (node.content ?? []).map(extractText).join(' ')
@@ -214,10 +224,6 @@ const MIME_EXTENSIONS: Record<string, string> = {
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
   'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'pptx',
 }
-
-const EXTENSION_MIMES: Record<string, string> = Object.fromEntries(
-  Object.entries(MIME_EXTENSIONS).map(([mime, extension]) => [extension, mime]),
-)
 
 export class KnowledgeService {
   private readonly queues = new Map<string, Promise<void>>()
@@ -268,18 +274,24 @@ export class KnowledgeService {
     return this.resourceLocator(vaultId)
   }
 
+  async inspectIntegrity(vaultId: string, fullAssetHash = false): Promise<VaultIntegrityReport> {
+    return inspectVaultIntegrity(this.storage, vaultId, { fullAssetHash })
+  }
+
   async locateCanvas(vaultId: string, canvasId: string) {
     assertUuid(canvasId, '画布 ID')
-    const location = (await this.resourceLocator(vaultId)).canvases.get(canvasId)
-    if (!location) throw new KnowledgeError('NOT_FOUND', '画布不存在')
-    return location
+    if (!(await this.resourceLocator(vaultId)).canvases.has(canvasId)) {
+      throw new KnowledgeError('NOT_FOUND', '画布不存在')
+    }
+    return { id: canvasId }
   }
 
   async locateMindMap(vaultId: string, mindMapId: string) {
     assertUuid(mindMapId, '思维导图 ID')
-    const location = (await this.resourceLocator(vaultId)).mindMaps.get(mindMapId)
-    if (!location) throw new KnowledgeError('NOT_FOUND', '思维导图不存在')
-    return location
+    if (!(await this.resourceLocator(vaultId)).mindMaps.has(mindMapId)) {
+      throw new KnowledgeError('NOT_FOUND', '思维导图不存在')
+    }
+    return { id: mindMapId }
   }
 
   async locateAsset(vaultId: string, assetId: string) {
@@ -312,23 +324,25 @@ export class KnowledgeService {
     }
   }
 
-  async listVaults(): Promise<VaultV2[]> {
+  async listVaults(): Promise<VaultV3[]> {
     return this.storage.listVaults()
   }
 
-  async getVault(vaultId: string): Promise<VaultV2> {
+  async getVault(vaultId: string): Promise<VaultV3> {
     return this.storage.readVault(vaultId)
   }
 
-  async createVault(name: string, origin: MutationOrigin = 'renderer'): Promise<VaultV2> {
+  async createVault(name: string, origin: MutationOrigin = 'renderer'): Promise<VaultV3> {
     const id = uuidv4()
-    const vault: VaultV2 = {
-      schemaVersion: 2, id, name: normalizeName(name, '知识库名称'), createdAt: new Date().toISOString(),
+    const vault: VaultV3 = {
+      schemaVersion: 3, formatVersions: { ...VAULT_FORMAT_VERSIONS },
+      id, name: normalizeName(name, '知识库名称'), createdAt: new Date().toISOString(),
     }
     return this.mutate(id, 'vault.create', id, async () => {
       try {
         await this.storage.writeVault(vault)
-        await this.storage.writeTree(id, { schemaVersion: 2, entries: [] })
+        await this.storage.writeTree(id, { schemaVersion: 3, entries: [] })
+        await this.storage.initializeAssetManifest(id)
       } catch (error) {
         await this.storage.removeVault(id).catch(() => undefined)
         throw error
@@ -342,7 +356,7 @@ export class KnowledgeService {
     vaultId: string,
     name: string,
     origin: MutationOrigin = 'renderer',
-  ): Promise<VaultV2> {
+  ): Promise<VaultV3> {
     return this.mutate(vaultId, 'vault.rename', vaultId, async () => {
       const vault = await this.storage.readVault(vaultId)
       const updated = { ...vault, name: normalizeName(name, '知识库名称') }
@@ -360,7 +374,7 @@ export class KnowledgeService {
     })
   }
 
-  async getTree(vaultId: string): Promise<VaultTreeV2> {
+  async getTree(vaultId: string): Promise<VaultTreeV3> {
     return this.storage.readTree(vaultId)
   }
 
@@ -370,11 +384,11 @@ export class KnowledgeService {
     name: string,
     index?: number,
     origin: MutationOrigin = 'renderer',
-  ): Promise<GroupEntryV2> {
+  ): Promise<GroupEntryV3> {
     return this.mutate(vaultId, 'tree.group.create', undefined, async () => {
       const tree = await this.storage.readTree(vaultId)
       requireParent(tree, parentId)
-      const entry: GroupEntryV2 = {
+      const entry: GroupEntryV3 = {
         kind: 'group', id: uuidv4(), name: normalizeName(name, '分组名称'), parentId,
         order: 0,
       }
@@ -394,12 +408,12 @@ export class KnowledgeService {
     groupId: string,
     name: string,
     origin: MutationOrigin = 'renderer',
-  ): Promise<GroupEntryV2> {
+  ): Promise<GroupEntryV3> {
     return this.mutate(vaultId, 'tree.group.rename', groupId, async () => {
       const tree = await this.storage.readTree(vaultId)
       const group = findEntry(tree, groupId)
       if (group.kind !== 'group') throw new KnowledgeError('CONFLICT', '树条目不是分组')
-      const updated: GroupEntryV2 = { ...group, name: normalizeName(name, '分组名称') }
+      const updated: GroupEntryV3 = { ...group, name: normalizeName(name, '分组名称') }
       await this.storage.writeTree(vaultId, {
         ...tree, entries: tree.entries.map((entry) => entry.id === groupId ? updated : entry),
       })
@@ -447,6 +461,13 @@ export class KnowledgeService {
       }
       if (entry.contentType === 'document') {
         await this.assertDocumentNotReferenced(vaultId, entryId, tree)
+      } else {
+        const references = await this.findResourceReferences(vaultId, entry.contentType, entryId)
+        if (references.length > 0) {
+          throw new KnowledgeError(
+            'CONFLICT', `资源仍被 ${references.length} 处引用，不能删除`, references,
+          )
+        }
       }
       await this.storage.stageContentDeletion(vaultId, entry.contentType, entryId)
       try {
@@ -468,7 +489,7 @@ export class KnowledgeService {
     targetParentId: string | null,
     index: number,
     origin: MutationOrigin = 'renderer',
-  ): Promise<TreeEntryV2> {
+  ): Promise<TreeEntryV3> {
     return this.mutate(vaultId, 'tree.move', entryId, async () => {
       const tree = await this.storage.readTree(vaultId)
       const moving = findEntry(tree, entryId)
@@ -493,12 +514,12 @@ export class KnowledgeService {
     entryId: string,
     patch: { name?: string; title?: string; parentId?: string | null; index?: number },
     origin: MutationOrigin = 'renderer',
-  ): Promise<TreeEntryV2> {
+  ): Promise<TreeEntryV3> {
     return this.mutate(vaultId, 'tree.update', entryId, async () => {
       if (!Object.keys(patch).length) throw new KnowledgeError('INVALID_INPUT', '树条目更新不能为空')
       const tree = await this.storage.readTree(vaultId)
       const current = findEntry(tree, entryId)
-      let updated: TreeEntryV2
+      let updated: TreeEntryV3
       if (current.kind === 'group') {
         if (patch.title !== undefined) throw new KnowledgeError('INVALID_INPUT', '分组不能设置标题')
         updated = patch.name === undefined ? current : { ...current, name: normalizeName(patch.name, '分组名称') }
@@ -507,7 +528,7 @@ export class KnowledgeService {
         updated = patch.title === undefined ? current : {
           ...current,
           title: normalizeName(patch.title, '内容标题'),
-          metadataUpdatedAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
         }
       }
       let entries = tree.entries.map((entry) => entry.id === entryId ? updated : entry)
@@ -549,13 +570,14 @@ export class KnowledgeService {
       requireParent(tree, parentId)
       const id = uuidv4()
       const now = new Date().toISOString()
-      const entry: ContentEntryV2 = {
+      const entry: ContentEntryV3 = {
         kind: 'content', id, contentType, title: normalizeName(title, '内容标题'), parentId,
-        order: 0, createdAt: now, metadataUpdatedAt: now,
+        order: 0, createdAt: now, updatedAt: now,
       }
       const entries = reorderSiblings(tree.entries, entry, parentId, index ?? nextOrder(tree, parentId))
       if (contentType === 'document') await this.storage.stageNewDocument(vaultId, id, defaultDocument())
-      else await this.storage.stageNewCanvas(vaultId, id, defaultCanvas())
+      else if (contentType === 'canvas') await this.storage.stageNewCanvas(vaultId, id, defaultCanvas())
+      else await this.storage.stageNewMindMap(vaultId, id, defaultMindMap())
       try {
         await this.storage.writeTree(vaultId, { ...tree, entries })
         await this.storage.activateStagedContent(vaultId, contentType, id)
@@ -578,10 +600,10 @@ export class KnowledgeService {
     return this.mutate(vaultId, 'content.rename', contentId, async () => {
       const tree = await this.storage.readTree(vaultId)
       const entry = findContentEntry(tree, contentId)
-      const updated: ContentEntryV2 = {
+      const updated: ContentEntryV3 = {
         ...entry,
         title: normalizeName(title, '内容标题'),
-        metadataUpdatedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
       }
       await this.storage.writeTree(vaultId, {
         ...tree, entries: tree.entries.map((candidate) => candidate.id === contentId ? updated : candidate),
@@ -601,6 +623,13 @@ export class KnowledgeService {
       const entry = findContentEntry(tree, contentId)
       if (entry.contentType === 'document') {
         await this.assertDocumentNotReferenced(vaultId, contentId, tree)
+      } else {
+        const references = await this.findResourceReferences(vaultId, entry.contentType, contentId)
+        if (references.length > 0) {
+          throw new KnowledgeError(
+            'CONFLICT', `资源仍被 ${references.length} 处引用，不能删除`, references,
+          )
+        }
       }
       await this.storage.stageContentDeletion(vaultId, entry.contentType, contentId)
       try {
@@ -627,35 +656,28 @@ export class KnowledgeService {
 
   private async validateDocumentReferences(
     vaultId: string,
-    documentId: string,
+    _documentId: string,
     document: TipTapDocument,
   ): Promise<void> {
     for (const reference of collectDocumentReferences(document)) {
       assertUuid(reference.id, '文档资源引用 ID')
-      if (reference.type === 'canvas') await this.storage.readCanvas(vaultId, reference.id, documentId)
-      else if (reference.type === 'mindmap') await this.storage.readMindMap(vaultId, documentId, reference.id)
-      else await this.storage.findAsset(vaultId, documentId, reference.id)
+      if (reference.type === 'canvas') await this.storage.readCanvas(vaultId, reference.id)
+      else if (reference.type === 'mindmap') await this.storage.readMindMap(vaultId, reference.id)
+      else await this.storage.readAsset(vaultId, reference.id)
     }
     const tree = await this.storage.readTree(vaultId)
     for (const reference of collectInternalDocumentReferences(document)) {
       findContentEntry(tree, reference.documentId, 'document')
     }
     for (const attachment of collectFileAttachmentReferences(document)) {
-      const bytes = await this.storage.readAsset(vaultId, documentId, attachment.assetId)
-      if (bytes.byteLength !== attachment.size) {
-        throw new KnowledgeError(
-          'INVALID_INPUT',
-          `附件 ${attachment.fileName} 的 attrs.size 与资源字节数不一致`,
-          { nodeId: attachment.nodeId, expected: bytes.byteLength, actual: attachment.size },
-        )
-      }
+      await this.storage.readAsset(vaultId, attachment.assetId)
     }
   }
 
   private async assertDocumentNotReferenced(
     vaultId: string,
     targetDocumentId: string,
-    tree: VaultTreeV2,
+    tree: VaultTreeV3,
   ): Promise<void> {
     const sources: Array<{ documentId: string; title: string; nodeId: string }> = []
     for (const entry of tree.entries) {
@@ -687,9 +709,20 @@ export class KnowledgeService {
   ): Promise<LoadedDocument> {
     const normalized = normalizeDocumentNodeIds(value)
     const tree = await this.storage.readTree(vaultId)
-    findContentEntry(tree, documentId, 'document')
+    const entry = findContentEntry(tree, documentId, 'document')
     await this.validateDocumentReferences(vaultId, documentId, normalized)
-    await this.storage.writeDocument(vaultId, documentId, normalized)
+    const previous = await this.storage.readDocument(vaultId, documentId)
+    const updatedEntry: ContentEntryV3 = { ...entry, updatedAt: new Date().toISOString() }
+    try {
+      await this.storage.writeDocument(vaultId, documentId, normalized)
+      await this.storage.writeTree(vaultId, {
+        ...tree,
+        entries: tree.entries.map((candidate) => candidate.id === documentId ? updatedEntry : candidate),
+      })
+    } catch (error) {
+      await this.storage.writeDocument(vaultId, documentId, previous).catch(() => undefined)
+      throw error
+    }
     this.event(vaultId, 'document', documentId, 'updated', origin)
     return this.getDocument(vaultId, documentId)
   }
@@ -705,6 +738,93 @@ export class KnowledgeService {
     ))
   }
 
+  async insertRendererResource(
+    vaultId: string,
+    documentId: string,
+    nextDocument: TipTapDocument,
+    resource: RendererResourceInsertion,
+    origin: MutationOrigin = 'renderer',
+  ): Promise<RendererResourceInsertionResult> {
+    return this.mutate(vaultId, 'document.resource.insert', documentId, async () => {
+      assertUuid(resource.resourceId, '新资源 ID')
+      const inventory = await this.storage.scanResourceLocator(vaultId)
+      if (
+        inventory.documents.has(resource.resourceId) || inventory.canvases.has(resource.resourceId) ||
+        inventory.mindMaps.has(resource.resourceId) || inventory.assets.has(resource.resourceId)
+      ) throw new KnowledgeError('CONFLICT', '新资源 ID 已存在')
+
+      const normalized = normalizeDocumentNodeIds(nextDocument)
+      if (!collectDocumentReferences(normalized).some((reference) => (
+        reference.type === resource.resourceType && reference.id === resource.resourceId
+      ))) throw new KnowledgeError('INVALID_INPUT', '文档未包含新资源的引用节点')
+
+      const tree = await this.storage.readTree(vaultId)
+      const entry = findContentEntry(tree, documentId, 'document')
+      const previousDocument = await this.storage.readDocument(vaultId, documentId)
+      const updatedEntry: ContentEntryV3 = { ...entry, updatedAt: new Date().toISOString() }
+      let resourceCreated = false
+      let documentWritten = false
+      let treeWritten = false
+      let asset: AssetMetadata | undefined
+      try {
+        if (resource.resourceType === 'canvas') {
+          await this.storage.writeCanvas(
+            vaultId, resource.resourceId, replaceCanvasScene(resource.content),
+          )
+        } else if (resource.resourceType === 'mindmap') {
+          await this.storage.writeMindMap(
+            vaultId, resource.resourceId, replaceMindMapData(resource.content),
+          )
+        } else {
+          const input = this.normalizeAssetImport(
+            resource.mimeType, resource.bytes, resource.fileName,
+          )
+          const created = await this.storage.writeAsset(
+            vaultId, resource.resourceId, input.fileName, input.mimeType, input.bytes,
+          )
+          const { bytes: _bytes, ...metadata } = created
+          asset = metadata
+        }
+        resourceCreated = true
+        this.resourceLocators.delete(vaultId)
+        await this.validateDocumentReferences(vaultId, documentId, normalized)
+        await this.storage.writeDocument(vaultId, documentId, normalized)
+        documentWritten = true
+        await this.storage.writeTree(vaultId, {
+          ...tree,
+          entries: tree.entries.map((candidate) => candidate.id === documentId ? updatedEntry : candidate),
+        })
+        treeWritten = true
+      } catch (error) {
+        if (treeWritten) await this.storage.writeTree(vaultId, tree).catch(() => undefined)
+        if (documentWritten) {
+          await this.storage.writeDocument(vaultId, documentId, previousDocument).catch(() => undefined)
+        }
+        if (resourceCreated) {
+          if (resource.resourceType === 'canvas') {
+            await this.storage.deleteCanvas(vaultId, resource.resourceId).catch(() => undefined)
+          } else if (resource.resourceType === 'mindmap') {
+            await this.storage.deleteMindMap(vaultId, resource.resourceId).catch(() => undefined)
+          } else {
+            await this.storage.deleteAsset(vaultId, resource.resourceId).catch(() => undefined)
+          }
+        }
+        this.resourceLocators.delete(vaultId)
+        throw error
+      }
+
+      this.resourceLocators.delete(vaultId)
+      this.event(vaultId, resource.resourceType, resource.resourceId, 'created', origin)
+      this.event(vaultId, 'document', documentId, 'updated', origin)
+      return {
+        resourceType: resource.resourceType,
+        resourceId: resource.resourceId,
+        document: await this.getDocument(vaultId, documentId),
+        ...(asset ? { asset } : {}),
+      }
+    })
+  }
+
   async updateDocument(
     vaultId: string,
     documentId: string,
@@ -717,12 +837,12 @@ export class KnowledgeService {
       }
       const tree = await this.storage.readTree(vaultId)
       const entry = findContentEntry(tree, documentId, 'document')
-      const updatedEntry: ContentEntryV2 = patch.title === undefined ? entry : {
+      const updatedEntry: ContentEntryV3 = {
         ...entry,
-        title: normalizeName(patch.title, '内容标题'),
-        metadataUpdatedAt: new Date().toISOString(),
+        ...(patch.title === undefined ? {} : { title: normalizeName(patch.title, '内容标题') }),
+        updatedAt: new Date().toISOString(),
       }
-      const nextTree: VaultTreeV2 = {
+      const nextTree: VaultTreeV3 = {
         ...tree,
         entries: tree.entries.map((candidate) => candidate.id === documentId ? updatedEntry : candidate),
       }
@@ -733,12 +853,12 @@ export class KnowledgeService {
       if (normalized) await this.validateDocumentReferences(vaultId, documentId, normalized)
       try {
         if (normalized) await this.storage.writeDocument(vaultId, documentId, normalized)
-        if (patch.title !== undefined) await this.storage.writeTree(vaultId, nextTree)
+        await this.storage.writeTree(vaultId, nextTree)
       } catch (error) {
         if (normalized && previousDocument) {
           await this.storage.writeDocument(vaultId, documentId, previousDocument).catch(() => undefined)
         }
-        if (patch.title !== undefined) await this.storage.writeTree(vaultId, tree).catch(() => undefined)
+        await this.storage.writeTree(vaultId, tree).catch(() => undefined)
         throw error
       }
       this.event(vaultId, 'document', documentId, 'updated', origin)
@@ -852,28 +972,28 @@ export class KnowledgeService {
       (value) => updateDocumentNodes(value, updates))
   }
 
-  async getCanvas(vaultId: string, canvasId: string, documentId?: string): Promise<ExcalidrawScene | LoadedCanvas> {
-    if (documentId) return this.storage.readCanvas(vaultId, canvasId, documentId)
-    const location = await this.locateCanvas(vaultId, canvasId)
-    if (location.scope === 'embedded') return this.storage.readCanvas(vaultId, canvasId, location.documentId)
-    const entry = findContentEntry(await this.storage.readTree(vaultId), canvasId, 'canvas')
-    const [summary, content] = await Promise.all([
-      this.storage.contentSummary(vaultId, entry), this.storage.readCanvas(vaultId, canvasId),
-    ])
-    return { ...summary, contentType: 'canvas', content }
+  async getCanvas(vaultId: string, canvasId: string): Promise<ExcalidrawScene | LoadedCanvas> {
+    await this.locateCanvas(vaultId, canvasId)
+    const tree = await this.storage.readTree(vaultId)
+    const entry = tree.entries.find((candidate) => candidate.id === canvasId)
+    const content = await this.storage.readCanvas(vaultId, canvasId)
+    if (!entry) return content
+    if (entry.kind !== 'content' || entry.contentType !== 'canvas') {
+      throw new KnowledgeError('CONFLICT', '画布 ID 与其他树条目冲突')
+    }
+    return { ...await this.storage.contentSummary(vaultId, entry), contentType: 'canvas', content }
   }
 
-  async createEmbeddedCanvas(
+  async createCanvas(
     vaultId: string,
-    documentId: string,
     value: ExcalidrawScene,
     origin: MutationOrigin = 'renderer',
   ): Promise<{ id: string; content: ExcalidrawScene }> {
-    return this.mutate(vaultId, 'canvas.embedded.create', documentId, async () => {
-      await this.getDocument(vaultId, documentId)
+    return this.mutate(vaultId, 'canvas.create', undefined, async () => {
+      await this.storage.readVault(vaultId)
       const id = uuidv4()
       const content = replaceCanvasScene(value)
-      await this.storage.writeCanvas(vaultId, id, content, documentId)
+      await this.storage.writeCanvas(vaultId, id, content)
       this.event(vaultId, 'canvas', id, 'created', origin)
       return { id, content }
     })
@@ -882,63 +1002,62 @@ export class KnowledgeService {
   private async mutateCanvas(
     vaultId: string,
     canvasId: string,
-    documentId: string | undefined,
     origin: MutationOrigin,
     operation: string,
     edit: (value: ExcalidrawScene) => ExcalidrawScene,
   ): Promise<ExcalidrawScene> {
     return this.mutate(vaultId, operation, canvasId, async () => {
-      const location = documentId
-        ? { scope: 'embedded' as const, documentId }
-        : await this.locateCanvas(vaultId, canvasId)
-      if (location.scope === 'top-level') findContentEntry(await this.storage.readTree(vaultId), canvasId, 'canvas')
-      const owner = location.scope === 'embedded' ? location.documentId : undefined
-      const value = await this.storage.readCanvas(vaultId, canvasId, owner)
+      await this.locateCanvas(vaultId, canvasId)
+      const value = await this.storage.readCanvas(vaultId, canvasId)
       const updated = edit(value)
       assertExcalidrawScene(updated)
-      await this.storage.writeCanvas(vaultId, canvasId, updated, owner)
+      const tree = await this.storage.readTree(vaultId)
+      const entry = tree.entries.find((candidate): candidate is ContentEntryV3 => (
+        candidate.kind === 'content' && candidate.contentType === 'canvas' && candidate.id === canvasId
+      ))
+      try {
+        await this.storage.writeCanvas(vaultId, canvasId, updated)
+        if (entry) await this.storage.writeTree(vaultId, {
+          ...tree,
+          entries: tree.entries.map((candidate) => candidate.id === canvasId
+            ? { ...entry, updatedAt: new Date().toISOString() }
+            : candidate),
+        })
+      } catch (error) {
+        await this.storage.writeCanvas(vaultId, canvasId, value).catch(() => undefined)
+        throw error
+      }
       this.event(vaultId, 'canvas', canvasId, 'updated', origin)
       return updated
     })
   }
 
-  replaceCanvas(vaultId: string, canvasId: string, value: ExcalidrawScene, documentId?: string, origin: MutationOrigin = 'renderer'): Promise<ExcalidrawScene> {
-    return this.mutateCanvas(vaultId, canvasId, documentId, origin, 'canvas.replace', () => replaceCanvasScene(value))
+  replaceCanvas(vaultId: string, canvasId: string, value: ExcalidrawScene, origin: MutationOrigin = 'renderer'): Promise<ExcalidrawScene> {
+    return this.mutateCanvas(vaultId, canvasId, origin, 'canvas.replace', () => replaceCanvasScene(value))
   }
 
-  upsertCanvasElements(vaultId: string, canvasId: string, elements: ExcalidrawElement[], documentId?: string, origin: MutationOrigin = 'renderer'): Promise<ExcalidrawScene> {
-    return this.mutateCanvas(vaultId, canvasId, documentId, origin, 'canvas.elements.upsert', (value) => upsertCanvasElements(value, elements))
+  upsertCanvasElements(vaultId: string, canvasId: string, elements: ExcalidrawElement[], origin: MutationOrigin = 'renderer'): Promise<ExcalidrawScene> {
+    return this.mutateCanvas(vaultId, canvasId, origin, 'canvas.elements.upsert', (value) => upsertCanvasElements(value, elements))
   }
 
-  patchCanvasElements(vaultId: string, canvasId: string, patches: CanvasElementPatch[], documentId?: string, origin: MutationOrigin = 'renderer'): Promise<ExcalidrawScene> {
-    return this.mutateCanvas(vaultId, canvasId, documentId, origin, 'canvas.elements.patch', (value) => patchCanvasElements(value, patches))
+  patchCanvasElements(vaultId: string, canvasId: string, patches: CanvasElementPatch[], origin: MutationOrigin = 'renderer'): Promise<ExcalidrawScene> {
+    return this.mutateCanvas(vaultId, canvasId, origin, 'canvas.elements.patch', (value) => patchCanvasElements(value, patches))
   }
 
-  deleteCanvasElements(vaultId: string, canvasId: string, elementIds: string[], documentId?: string, origin: MutationOrigin = 'renderer'): Promise<ExcalidrawScene> {
-    return this.mutateCanvas(vaultId, canvasId, documentId, origin, 'canvas.elements.delete', (value) => deleteCanvasElements(value, elementIds))
+  deleteCanvasElements(vaultId: string, canvasId: string, elementIds: string[], origin: MutationOrigin = 'renderer'): Promise<ExcalidrawScene> {
+    return this.mutateCanvas(vaultId, canvasId, origin, 'canvas.elements.delete', (value) => deleteCanvasElements(value, elementIds))
   }
 
-  reorderCanvasElements(vaultId: string, canvasId: string, orderedIds: string[], documentId?: string, origin: MutationOrigin = 'renderer'): Promise<ExcalidrawScene> {
-    return this.mutateCanvas(vaultId, canvasId, documentId, origin, 'canvas.elements.reorder', (value) => reorderCanvasElements(value, orderedIds))
+  reorderCanvasElements(vaultId: string, canvasId: string, orderedIds: string[], origin: MutationOrigin = 'renderer'): Promise<ExcalidrawScene> {
+    return this.mutateCanvas(vaultId, canvasId, origin, 'canvas.elements.reorder', (value) => reorderCanvasElements(value, orderedIds))
   }
 
-  upsertCanvasFiles(vaultId: string, canvasId: string, files: Record<string, JsonObject>, documentId?: string, origin: MutationOrigin = 'renderer'): Promise<ExcalidrawScene> {
-    return this.mutateCanvas(vaultId, canvasId, documentId, origin, 'canvas.files.upsert', (value) => upsertCanvasFiles(value, files))
+  upsertCanvasFiles(vaultId: string, canvasId: string, files: Record<string, JsonObject>, origin: MutationOrigin = 'renderer'): Promise<ExcalidrawScene> {
+    return this.mutateCanvas(vaultId, canvasId, origin, 'canvas.files.upsert', (value) => upsertCanvasFiles(value, files))
   }
 
-  deleteCanvasFiles(vaultId: string, canvasId: string, fileIds: string[], documentId?: string, origin: MutationOrigin = 'renderer'): Promise<ExcalidrawScene> {
-    return this.mutateCanvas(vaultId, canvasId, documentId, origin, 'canvas.files.delete', (value) => deleteCanvasFiles(value, fileIds))
-  }
-
-  async deleteEmbeddedCanvas(vaultId: string, documentId: string, canvasId: string, origin: MutationOrigin = 'renderer'): Promise<void> {
-    return this.mutate(vaultId, 'canvas.embedded.delete', canvasId, async () => {
-      const document = await this.storage.readDocument(vaultId, documentId)
-      if (collectDocumentReferences(document).some((reference) => reference.type === 'canvas' && reference.id === canvasId)) {
-        throw new KnowledgeError('CONFLICT', '画布仍被文档引用')
-      }
-      await this.storage.deleteCanvas(vaultId, canvasId, documentId)
-      this.event(vaultId, 'canvas', canvasId, 'deleted', origin)
-    })
+  deleteCanvasFiles(vaultId: string, canvasId: string, fileIds: string[], origin: MutationOrigin = 'renderer'): Promise<ExcalidrawScene> {
+    return this.mutateCanvas(vaultId, canvasId, origin, 'canvas.files.delete', (value) => deleteCanvasFiles(value, fileIds))
   }
 
   async getCanvasScene(vaultId: string, canvasId: string): Promise<ExcalidrawScene> {
@@ -973,7 +1092,7 @@ export class KnowledgeService {
     placement: CanvasPlacement,
     origin: MutationOrigin = 'renderer',
   ): Promise<ExcalidrawScene> {
-    return this.mutateCanvas(vaultId, canvasId, undefined, origin, 'canvas.elements.insert',
+    return this.mutateCanvas(vaultId, canvasId, origin, 'canvas.elements.insert',
       (value) => insertCanvasElements(value, elements, files, placement))
   }
 
@@ -983,7 +1102,7 @@ export class KnowledgeService {
     update: CanvasUpdate,
     origin: MutationOrigin = 'renderer',
   ): Promise<ExcalidrawScene> {
-    return this.mutateCanvas(vaultId, canvasId, undefined, origin, 'canvas.update',
+    return this.mutateCanvas(vaultId, canvasId, origin, 'canvas.update',
       (value) => updateCanvasScene(value, update))
   }
 
@@ -994,76 +1113,83 @@ export class KnowledgeService {
     removeUnreferencedFiles = false,
     origin: MutationOrigin = 'renderer',
   ): Promise<ExcalidrawScene> {
-    return this.mutateCanvas(vaultId, canvasId, undefined, origin, 'canvas.elements.delete-strict',
+    return this.mutateCanvas(vaultId, canvasId, origin, 'canvas.elements.delete-strict',
       (value) => deleteCanvasElementsStrict(value, elementIds, removeUnreferencedFiles))
   }
 
   async removeCanvas(vaultId: string, canvasId: string, origin: MutationOrigin = 'renderer'): Promise<void> {
-    const location = await this.locateCanvas(vaultId, canvasId)
-    if (location.scope === 'top-level') throw new KnowledgeError('CONFLICT', '顶层画布请使用 tree_delete 删除')
-    return this.deleteEmbeddedCanvas(vaultId, location.documentId, canvasId, origin)
+    return this.removeResource(vaultId, 'canvas', canvasId, origin)
   }
 
-  async createMindMap(vaultId: string, documentId: string, value: MindMapData, origin: MutationOrigin = 'renderer'): Promise<{ id: string; content: MindMapData }> {
-    return this.mutate(vaultId, 'mindmap.create', documentId, async () => {
-      await this.getDocument(vaultId, documentId)
+  async createMindMap(vaultId: string, value: MindMapData, origin: MutationOrigin = 'renderer'): Promise<{ id: string; content: MindMapData }> {
+    return this.mutate(vaultId, 'mindmap.create', undefined, async () => {
+      await this.storage.readVault(vaultId)
       const id = uuidv4()
       const content = replaceMindMapData(value)
-      await this.storage.writeMindMap(vaultId, documentId, id, content)
+      await this.storage.writeMindMap(vaultId, id, content)
       this.event(vaultId, 'mindmap', id, 'created', origin)
       return { id, content }
     })
   }
 
-  getMindMap(vaultId: string, documentId: string, mindMapId: string): Promise<MindMapData> {
-    return this.storage.readMindMap(vaultId, documentId, mindMapId)
+  getMindMap(vaultId: string, mindMapId: string): Promise<MindMapData> {
+    return this.storage.readMindMap(vaultId, mindMapId)
   }
 
-  private async mutateMindMap(vaultId: string, documentId: string, mindMapId: string, origin: MutationOrigin, operation: string, edit: (value: MindMapData) => MindMapData): Promise<MindMapData> {
+  private async mutateMindMap(vaultId: string, mindMapId: string, origin: MutationOrigin, operation: string, edit: (value: MindMapData) => MindMapData): Promise<MindMapData> {
     return this.mutate(vaultId, operation, mindMapId, async () => {
-      const value = await this.storage.readMindMap(vaultId, documentId, mindMapId)
+      await this.locateMindMap(vaultId, mindMapId)
+      const value = await this.storage.readMindMap(vaultId, mindMapId)
       const updated = edit(value)
       assertMindMapData(updated)
-      await this.storage.writeMindMap(vaultId, documentId, mindMapId, updated)
+      const tree = await this.storage.readTree(vaultId)
+      const entry = tree.entries.find((candidate): candidate is ContentEntryV3 => (
+        candidate.kind === 'content' && candidate.contentType === 'mindmap' && candidate.id === mindMapId
+      ))
+      try {
+        await this.storage.writeMindMap(vaultId, mindMapId, updated)
+        if (entry) await this.storage.writeTree(vaultId, {
+          ...tree,
+          entries: tree.entries.map((candidate) => candidate.id === mindMapId
+            ? { ...entry, updatedAt: new Date().toISOString() }
+            : candidate),
+        })
+      } catch (error) {
+        await this.storage.writeMindMap(vaultId, mindMapId, value).catch(() => undefined)
+        throw error
+      }
       this.event(vaultId, 'mindmap', mindMapId, 'updated', origin)
       return updated
     })
   }
 
-  replaceMindMap(vaultId: string, documentId: string, mindMapId: string, value: MindMapData, origin: MutationOrigin = 'renderer'): Promise<MindMapData> {
-    return this.mutateMindMap(vaultId, documentId, mindMapId, origin, 'mindmap.replace', () => replaceMindMapData(value))
+  replaceMindMap(vaultId: string, mindMapId: string, value: MindMapData, origin: MutationOrigin = 'renderer'): Promise<MindMapData> {
+    return this.mutateMindMap(vaultId, mindMapId, origin, 'mindmap.replace', () => replaceMindMapData(value))
   }
 
-  insertMindMapNode(vaultId: string, documentId: string, mindMapId: string, parentId: string, index: number | undefined, node: MindMapNodeData, origin: MutationOrigin = 'renderer'): Promise<MindMapData> {
-    return this.mutateMindMap(vaultId, documentId, mindMapId, origin, 'mindmap.node.insert', (value) => insertMindMapNode(value, parentId, index, node))
+  insertMindMapNode(vaultId: string, mindMapId: string, parentId: string, index: number | undefined, node: MindMapNodeData, origin: MutationOrigin = 'renderer'): Promise<MindMapData> {
+    return this.mutateMindMap(vaultId, mindMapId, origin, 'mindmap.node.insert', (value) => insertMindMapNode(value, parentId, index, node))
   }
 
-  patchMindMapNode(vaultId: string, documentId: string, mindMapId: string, patch: MindMapNodePatch, origin: MutationOrigin = 'renderer'): Promise<MindMapData> {
-    return this.mutateMindMap(vaultId, documentId, mindMapId, origin, 'mindmap.node.patch', (value) => patchMindMapNode(value, patch))
+  patchMindMapNode(vaultId: string, mindMapId: string, patch: MindMapNodePatch, origin: MutationOrigin = 'renderer'): Promise<MindMapData> {
+    return this.mutateMindMap(vaultId, mindMapId, origin, 'mindmap.node.patch', (value) => patchMindMapNode(value, patch))
   }
 
-  moveMindMapNode(vaultId: string, documentId: string, mindMapId: string, nodeId: string, parentId: string, index: number | undefined, origin: MutationOrigin = 'renderer'): Promise<MindMapData> {
-    return this.mutateMindMap(vaultId, documentId, mindMapId, origin, 'mindmap.node.move', (value) => moveMindMapNode(value, nodeId, parentId, index))
+  moveMindMapNode(vaultId: string, mindMapId: string, nodeId: string, parentId: string, index: number | undefined, origin: MutationOrigin = 'renderer'): Promise<MindMapData> {
+    return this.mutateMindMap(vaultId, mindMapId, origin, 'mindmap.node.move', (value) => moveMindMapNode(value, nodeId, parentId, index))
   }
 
-  deleteMindMapNode(vaultId: string, documentId: string, mindMapId: string, nodeId: string, origin: MutationOrigin = 'renderer'): Promise<MindMapData> {
-    return this.mutateMindMap(vaultId, documentId, mindMapId, origin, 'mindmap.node.delete', (value) => deleteMindMapNode(value, nodeId))
+  deleteMindMapNode(vaultId: string, mindMapId: string, nodeId: string, origin: MutationOrigin = 'renderer'): Promise<MindMapData> {
+    return this.mutateMindMap(vaultId, mindMapId, origin, 'mindmap.node.delete', (value) => deleteMindMapNode(value, nodeId))
   }
 
-  async deleteMindMap(vaultId: string, documentId: string, mindMapId: string, origin: MutationOrigin = 'renderer'): Promise<void> {
-    return this.mutate(vaultId, 'mindmap.delete', mindMapId, async () => {
-      const document = await this.storage.readDocument(vaultId, documentId)
-      if (collectDocumentReferences(document).some((reference) => reference.type === 'mindmap' && reference.id === mindMapId)) {
-        throw new KnowledgeError('CONFLICT', '思维导图仍被文档引用')
-      }
-      await this.storage.deleteMindMap(vaultId, documentId, mindMapId)
-      this.event(vaultId, 'mindmap', mindMapId, 'deleted', origin)
-    })
+  async deleteMindMap(vaultId: string, mindMapId: string, origin: MutationOrigin = 'renderer'): Promise<void> {
+    return this.removeResource(vaultId, 'mindmap', mindMapId, origin)
   }
 
   async getMindMapById(vaultId: string, mindMapId: string): Promise<MindMapData> {
-    const { documentId } = await this.locateMindMap(vaultId, mindMapId)
-    return this.storage.readMindMap(vaultId, documentId, mindMapId)
+    await this.locateMindMap(vaultId, mindMapId)
+    return this.storage.readMindMap(vaultId, mindMapId)
   }
 
   async getMindMapNodeSnapshots(
@@ -1090,8 +1216,7 @@ export class KnowledgeService {
     operation: string,
     edit: (value: MindMapData) => MindMapData,
   ): Promise<MindMapData> {
-    const { documentId } = await this.locateMindMap(vaultId, mindMapId)
-    return this.mutateMindMap(vaultId, documentId, mindMapId, origin, operation, edit)
+    return this.mutateMindMap(vaultId, mindMapId, origin, operation, edit)
   }
 
   insertMindMapNodeBatch(
@@ -1137,78 +1262,93 @@ export class KnowledgeService {
   }
 
   async removeMindMap(vaultId: string, mindMapId: string, origin: MutationOrigin = 'renderer'): Promise<void> {
-    const { documentId } = await this.locateMindMap(vaultId, mindMapId)
-    return this.deleteMindMap(vaultId, documentId, mindMapId, origin)
+    return this.deleteMindMap(vaultId, mindMapId, origin)
   }
 
   async importAsset(
     vaultId: string,
-    documentId: string,
     mimeType: string,
     bytes: Uint8Array,
     origin: MutationOrigin = 'renderer',
     fileName?: string,
-  ): Promise<{ id: string; mimeType: string; fileName?: string }> {
-    return this.mutate(vaultId, 'asset.import', documentId, async () => {
-      await this.getDocument(vaultId, documentId)
-      const normalizedMimeType = mimeType.trim().toLowerCase()
-      if (
-        !/^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/.test(normalizedMimeType) ||
-        normalizedMimeType.length > 255 || !(bytes instanceof Uint8Array) || bytes.byteLength === 0
-      ) {
-        throw new KnowledgeError('INVALID_INPUT', '附件类型或内容无效')
-      }
-      if (fileName !== undefined) {
-        if (fileName.length > 255) throw new KnowledgeError('INVALID_INPUT', '附件文件名过长')
-        assertPathSegment(fileName, '附件文件名')
-      }
-      const suppliedExtension = fileName?.match(/\.([A-Za-z0-9]{1,16})$/)?.[1].toLowerCase()
-      const extension = MIME_EXTENSIONS[normalizedMimeType] ?? suppliedExtension ?? 'bin'
+  ): Promise<AssetData> {
+    return this.mutate(vaultId, 'asset.import', undefined, async () => {
+      await this.storage.readVault(vaultId)
+      const input = this.normalizeAssetImport(mimeType, bytes, fileName)
       const id = uuidv4()
-      await this.storage.writeAsset(vaultId, documentId, id, extension, bytes)
+      const result = await this.storage.writeAsset(
+        vaultId, id, input.fileName, input.mimeType, input.bytes,
+      )
       this.event(vaultId, 'asset', id, 'created', origin)
-      return {
-        id,
-        mimeType: normalizedMimeType,
-        ...(fileName === undefined ? {} : { fileName }),
-      }
+      return result
     })
   }
 
-  async getAssetPath(vaultId: string, documentId: string, assetId: string): Promise<string> {
-    await this.getDocument(vaultId, documentId)
-    return this.storage.findAsset(vaultId, documentId, assetId)
-  }
-
-  async readAsset(vaultId: string, documentId: string, assetId: string): Promise<AssetData> {
-    const target = await this.storage.findAsset(vaultId, documentId, assetId)
-    const extension = target.slice(target.lastIndexOf('.') + 1).toLowerCase()
-    return {
-      id: assetId,
-      mimeType: EXTENSION_MIMES[extension] ?? 'application/octet-stream',
-      bytes: await this.storage.readAsset(vaultId, documentId, assetId),
+  private normalizeAssetImport(
+    mimeType: string,
+    bytes: Uint8Array,
+    fileName?: string,
+  ): { mimeType: string; bytes: Uint8Array; fileName: string } {
+    const normalizedMimeType = mimeType.trim().toLowerCase()
+    if (
+      !/^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/.test(normalizedMimeType) ||
+      normalizedMimeType.length > 255 || !(bytes instanceof Uint8Array) || bytes.byteLength === 0
+    ) throw new KnowledgeError('INVALID_INPUT', '附件类型或内容无效')
+    if (fileName !== undefined) {
+      if (fileName.length > 255) throw new KnowledgeError('INVALID_INPUT', '附件文件名过长')
+      assertPathSegment(fileName, '附件文件名')
     }
+    const suppliedExtension = fileName?.match(/\.([A-Za-z0-9]{1,16})$/)?.[1].toLowerCase()
+    const extension = MIME_EXTENSIONS[normalizedMimeType] ?? suppliedExtension ?? 'bin'
+    return { mimeType: normalizedMimeType, bytes, fileName: fileName ?? `附件.${extension}` }
   }
 
-  async deleteAsset(vaultId: string, documentId: string, assetId: string, origin: MutationOrigin = 'renderer'): Promise<void> {
-    return this.mutate(vaultId, 'asset.delete', assetId, async () => {
-      const document = await this.storage.readDocument(vaultId, documentId)
-      if (collectDocumentReferences(document).some((reference) => reference.type === 'asset' && reference.id === assetId)) {
-        throw new KnowledgeError('CONFLICT', '附件资源仍被文档引用')
-      }
-      await this.storage.deleteAsset(vaultId, documentId, assetId)
-      this.event(vaultId, 'asset', assetId, 'deleted', origin)
-    })
+  async getAssetPath(vaultId: string, assetId: string): Promise<string> {
+    const asset = await this.storage.readAsset(vaultId, assetId)
+    return this.storage.paths.assetFile(vaultId, assetId, asset.extension)
   }
 
-  async readAssetById(vaultId: string, assetId: string): Promise<AssetData & { documentId: string }> {
-    const { documentId } = await this.locateAsset(vaultId, assetId)
-    return { ...await this.readAsset(vaultId, documentId, assetId), documentId }
+  async readAsset(vaultId: string, assetId: string): Promise<AssetData> {
+    return this.storage.readAsset(vaultId, assetId)
+  }
+
+  async getAssetMetadata(vaultId: string, assetId: string): Promise<AssetMetadata> {
+    return this.storage.readAssetMetadata(vaultId, assetId)
+  }
+
+  async deleteAsset(vaultId: string, assetId: string, origin: MutationOrigin = 'renderer'): Promise<void> {
+    return this.removeResource(vaultId, 'asset', assetId, origin)
+  }
+
+  async readAssetById(vaultId: string, assetId: string): Promise<AssetData> {
+    await this.locateAsset(vaultId, assetId)
+    return this.readAsset(vaultId, assetId)
   }
 
   async removeAsset(vaultId: string, assetId: string, origin: MutationOrigin = 'renderer'): Promise<void> {
-    const { documentId } = await this.locateAsset(vaultId, assetId)
-    return this.deleteAsset(vaultId, documentId, assetId, origin)
+    return this.deleteAsset(vaultId, assetId, origin)
+  }
+
+  private async removeResource(
+    vaultId: string,
+    type: 'canvas' | 'mindmap' | 'asset',
+    resourceId: string,
+    origin: MutationOrigin,
+  ): Promise<void> {
+    return this.mutate(vaultId, `${type}.delete`, resourceId, async () => {
+      const tree = await this.storage.readTree(vaultId)
+      if (tree.entries.some((entry) => entry.kind === 'content' && entry.id === resourceId)) {
+        throw new KnowledgeError('CONFLICT', '资源仍在文档树中，不能直接删除')
+      }
+      const references = await this.findResourceReferences(vaultId, type, resourceId)
+      if (references.length > 0) {
+        throw new KnowledgeError('CONFLICT', `资源仍被 ${references.length} 处引用，不能删除`, references)
+      }
+      if (type === 'canvas') await this.storage.deleteCanvas(vaultId, resourceId)
+      else if (type === 'mindmap') await this.storage.deleteMindMap(vaultId, resourceId)
+      else await this.storage.deleteAsset(vaultId, resourceId)
+      this.event(vaultId, type, resourceId, 'deleted', origin)
+    })
   }
 
   async findResourceReferences(

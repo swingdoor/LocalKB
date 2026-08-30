@@ -18,10 +18,6 @@ function text(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined
 }
 
-function numberValue(value: unknown): number | undefined {
-  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
-}
-
 export function collectMarkdownExportResources(document: TipTapDocument): MarkdownExportPlan {
   assertMarkdownExportDocument(document)
   const resources = new Map<string, MarkdownExportResourceDescriptor>()
@@ -77,14 +73,12 @@ export function collectMarkdownExportResources(document: TipTapDocument): Markdo
       })
     } else if (node.type === 'fileAttachment') {
       const assetId = String(node.attrs?.assetId)
-      const fileName = String(node.attrs?.fileName)
+      const displayName = text(node.attrs?.displayName)
       add({
-        ...descriptorBase(node, `attachment:${assetId}`, 'attachment', fileName),
+        ...descriptorBase(node, `attachment:${assetId}`, 'attachment', displayName ?? '附件'),
         kind: 'attachment',
         assetId,
-        fileName,
-        mimeType: String(node.attrs?.mimeType),
-        size: numberValue(node.attrs?.size) ?? 0,
+        ...(displayName ? { displayName } : {}),
       })
     } else if (node.type === 'documentReference') {
       const referencedDocumentId = String(node.attrs?.documentId)

@@ -3,10 +3,9 @@ import { blobToDataUrl, renderMindMapStatic, type MindMapExportFormat } from '..
 
 export async function downloadCanvasReference(
   vaultId: string,
-  documentId: string,
   canvasId: string,
 ) {
-  const result = await window.electronAPI.knowledge.getCanvas(vaultId, canvasId, documentId)
+  const result = await window.electronAPI.knowledge.getCanvas(vaultId, canvasId)
   if (!result.ok) return false
   const { exportToBlob } = await import('@excalidraw/excalidraw')
   const scene = result.data as ExcalidrawScene
@@ -23,11 +22,10 @@ export async function downloadCanvasReference(
 
 export async function downloadMindMapReference(
   vaultId: string,
-  documentId: string,
   mindmapId: string,
   format: MindMapExportFormat = 'png',
 ) {
-  const result = await window.electronAPI.knowledge.getMindMap(vaultId, documentId, mindmapId)
+  const result = await window.electronAPI.knowledge.getMindMap(vaultId, mindmapId)
   if (!result.ok) return false
   const blob = await renderMindMapStatic(result.data, format)
   await window.electronAPI.file.downloadImage(await blobToDataUrl(blob), `思维导图.${format}`)

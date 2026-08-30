@@ -104,9 +104,7 @@ export function createFullDocumentFixture(): TipTapDocument {
         type: 'fileAttachment',
         attrs: attrs({
           assetId: FULL_DOCUMENT_RESOURCE_IDS.attachment,
-          fileName: '资料.pdf',
-          mimeType: 'application/pdf',
-          size: 4,
+          displayName: '资料.pdf',
         }),
       },
       {

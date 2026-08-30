@@ -5,6 +5,8 @@ import {
   TIPTAP_REFERENCE_NODE_TYPES,
 } from './knowledge-types'
 import type {
+  AssetManifest,
+  AssetManifestEntry,
   ExcalidrawElement,
   ExcalidrawScene,
   JsonObject,
@@ -65,12 +67,18 @@ function assertOptionalNodeId(node: TipTapNode, path: string): void {
   }
 }
 
-function assertMimeType(value: unknown, label: string): asserts value is string {
+export function assertMimeType(value: unknown, label: string): asserts value is string {
   if (
     typeof value !== 'string' || value.length === 0 || value.length > 255 ||
     !/^[A-Za-z0-9!#$&^_.+-]+\/[A-Za-z0-9!#$&^_.+-]+$/.test(value)
   ) {
     throw new KnowledgeValidationError('INVALID_INPUT', `${label} 无效`)
+  }
+}
+
+export function assertIsoTimestamp(value: unknown, label: string): asserts value is string {
+  if (typeof value !== 'string' || !Number.isFinite(Date.parse(value))) {
+    throw new KnowledgeValidationError('CORRUPT_DATA', `${label} 无效`)
   }
 }
 
@@ -350,13 +358,16 @@ function assertTipTapNodeStructure(node: TipTapNode, path: string): void {
           'INVALID_INPUT', `TipTap 节点 ${path} (${node.type}) 不能包含 content`,
         )
       }
-      if (
-        node.type === 'image' &&
-        (typeof node.attrs?.src !== 'string' || node.attrs.src.length === 0)
-      ) {
-        throw new KnowledgeValidationError(
-          'INVALID_INPUT', `TipTap 节点 ${path} (image) 必须提供 attrs.src`,
-        )
+      if (node.type === 'image') {
+        const source = node.attrs?.src
+        if (
+          typeof source !== 'string' || source.length === 0 ||
+          (!/^https:\/\//i.test(source) && !/^data:image\/(?:png|jpeg|gif|webp|svg\+xml);base64,[a-z0-9+/]+={0,2}$/i.test(source))
+        ) {
+          throw new KnowledgeValidationError(
+            'INVALID_INPUT', `TipTap 节点 ${path} (image) 的 attrs.src 只支持 HTTPS 或 data:image`,
+          )
+        }
       }
       return
     case 'documentReference':
@@ -371,24 +382,65 @@ function assertTipTapNodeStructure(node: TipTapNode, path: string): void {
       }
       return
     case 'fileAttachment': {
-      assertNodeAttributeKeys(node, path, ['nodeId', 'assetId', 'fileName', 'mimeType', 'size'])
-      const fileName = node.attrs?.fileName
-      if (typeof fileName !== 'string' || fileName.length > 255) {
+      assertNodeAttributeKeys(node, path, ['nodeId', 'assetId', 'displayName'])
+      const displayName = node.attrs?.displayName
+      if (
+        displayName !== undefined && displayName !== null &&
+        (typeof displayName !== 'string' || displayName.trim().length === 0 || displayName.length > 255)
+      ) {
         throw new KnowledgeValidationError(
-          'INVALID_INPUT', `TipTap 节点 ${path} (fileAttachment) 的 attrs.fileName 无效`,
-        )
-      }
-      assertPathSegment(fileName, `TipTap 节点 ${path} (fileAttachment) 的 attrs.fileName`)
-      assertMimeType(node.attrs?.mimeType, `TipTap 节点 ${path} (fileAttachment) 的 attrs.mimeType`)
-      if (!Number.isSafeInteger(node.attrs?.size) || Number(node.attrs?.size) < 0) {
-        throw new KnowledgeValidationError(
-          'INVALID_INPUT', `TipTap 节点 ${path} (fileAttachment) 的 attrs.size 无效`,
+          'INVALID_INPUT', `TipTap 节点 ${path} (fileAttachment) 的 attrs.displayName 无效`,
         )
       }
       return
     }
     default:
       return
+  }
+}
+
+export function assertAssetManifestEntry(
+  value: unknown,
+  label = '附件元数据',
+): asserts value is AssetManifestEntry {
+  assertJsonObject(value, label)
+  const allowed = new Set([
+    'fileName', 'extension', 'mimeType', 'size', 'sha256', 'createdAt', 'updatedAt',
+  ])
+  const unexpected = Object.keys(value).find((key) => !allowed.has(key))
+  if (unexpected) {
+    throw new KnowledgeValidationError('CORRUPT_DATA', `${label} 包含未知字段: ${unexpected}`)
+  }
+  assertPathSegment(value.fileName, `${label} fileName`)
+  if (
+    typeof value.extension !== 'string' || !/^[a-z0-9]{1,16}$/i.test(value.extension)
+  ) {
+    throw new KnowledgeValidationError('CORRUPT_DATA', `${label} extension 无效`)
+  }
+  const fileExtension = String(value.fileName).match(/\.([a-z0-9]{1,16})$/i)?.[1].toLowerCase()
+  if (fileExtension !== value.extension.toLowerCase()) {
+    throw new KnowledgeValidationError('CORRUPT_DATA', `${label} extension 与 fileName 不一致`)
+  }
+  assertMimeType(value.mimeType, `${label} mimeType`)
+  if (!Number.isSafeInteger(value.size) || Number(value.size) < 0) {
+    throw new KnowledgeValidationError('CORRUPT_DATA', `${label} size 无效`)
+  }
+  if (typeof value.sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(value.sha256)) {
+    throw new KnowledgeValidationError('CORRUPT_DATA', `${label} sha256 无效`)
+  }
+  assertIsoTimestamp(value.createdAt, `${label} createdAt`)
+  assertIsoTimestamp(value.updatedAt, `${label} updatedAt`)
+}
+
+export function assertAssetManifest(value: unknown): asserts value is AssetManifest {
+  assertJsonObject(value, '附件清单')
+  if (value.schemaVersion !== 1) {
+    throw new KnowledgeValidationError('UNSUPPORTED_VERSION', '不支持的附件清单版本')
+  }
+  assertJsonObject(value.assets, '附件清单 assets')
+  for (const [assetId, entry] of Object.entries(value.assets)) {
+    assertUuid(assetId, '附件清单资源 ID')
+    assertAssetManifestEntry(entry, `附件 ${assetId} 元数据`)
   }
 }
 
@@ -576,7 +628,10 @@ export function assertExcalidrawElement(
         throw new KnowledgeValidationError('CORRUPT_DATA', `Excalidraw 线性元素 ${index} 箭头属性无效`)
       }
     }
-    if (value.type === 'arrow' && typeof value.elbowed !== 'boolean') {
+    if (
+      value.type === 'arrow' && value.elbowed !== undefined &&
+      typeof value.elbowed !== 'boolean'
+    ) {
       throw new KnowledgeValidationError('CORRUPT_DATA', `Excalidraw 箭头元素 ${index} elbowed 无效`)
     }
   }
@@ -677,19 +732,10 @@ export function assertExcalidrawScene(value: unknown): asserts value is Excalidr
   }
 }
 
-/**
- * Repairs the one incomplete arrow shape emitted by the original MCP canvas
- * schema. Excalidraw treats a missing `elbowed` flag as a regular arrow; all
- * other persisted fields remain subject to strict native validation.
- */
+/** Validate and clone a native scene without inventing engine-owned fields. */
 export function normalizeExcalidrawSceneStructure(value: unknown): ExcalidrawScene {
   assertJsonObject(value, 'Excalidraw 场景')
   const scene = cloneJson(value) as unknown as ExcalidrawScene
-  if (Array.isArray(scene.elements)) {
-    for (const element of scene.elements) {
-      if (element.type === 'arrow' && element.elbowed === undefined) element.elbowed = false
-    }
-  }
   assertExcalidrawScene(scene)
   return scene
 }

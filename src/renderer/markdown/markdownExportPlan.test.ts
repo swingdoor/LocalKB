@@ -54,15 +54,12 @@ describe('collectMarkdownExportResources', () => {
     )
   })
 
-  it('classifies arbitrary local image paths as failed resources', () => {
+  it('rejects arbitrary local image paths before export planning', () => {
     const document: TipTapDocument = {
       type: 'doc',
       content: [{ type: 'image', attrs: { nodeId: id(1), src: '/Users/me/private.png' } }],
     }
 
-    expect(collectMarkdownExportResources(document).resources[0]).toMatchObject({
-      kind: 'unsupportedImage',
-      reason: '不支持读取本地路径或未知图片协议',
-    })
+    expect(() => collectMarkdownExportResources(document)).toThrow(/https|data:image/)
   })
 })

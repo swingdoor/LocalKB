@@ -87,7 +87,7 @@ function App() {
       '--editor-font-family',
       getEditorFont(generalSettings.editorFont).fontFamily,
     )
-    return () => document.documentElement.style.removeProperty('--editor-font-family')
+    return () => { document.documentElement.style.removeProperty('--editor-font-family') }
   }, [generalSettings.editorFont])
 
   useEffect(() => {
@@ -218,13 +218,17 @@ function App() {
                 canvas={currentContent}
                 onUpdate={replaceCanvas}
               />
-            ) : (
+            ) : currentContent.contentType === 'document' ? (
               <Editor
                 key={currentContent.id}
                 document={currentContent}
                 vaultId={currentVault?.id || ''}
                 onUpdate={updateDocument}
               />
+            ) : (
+              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                思维导图资源已就绪，请从文档引用中打开编辑。
+              </div>
             )
           ) : (
             <div className="flex h-full items-center justify-center text-muted-foreground">

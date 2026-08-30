@@ -10,7 +10,6 @@ interface ResourceMenuProps {
   editor: Editor
   interaction: EditorInteractionCoordinator
   vaultId: string
-  documentId: string
   onEdit: (resourceId: string) => void
 }
 
@@ -20,7 +19,7 @@ function requestResourceReload(editor: Editor, resourceType: 'canvas' | 'mindmap
   }))
 }
 
-export function CanvasMenu({ editor, interaction, vaultId, documentId, onEdit }: ResourceMenuProps) {
+export function CanvasMenu({ editor, interaction, vaultId, onEdit }: ResourceMenuProps) {
   const snapshot = useSelectedNodeSnapshot(editor, 'canvasReference')
   const target = snapshot?.target ?? null
   const attrs = snapshot?.attrs
@@ -38,14 +37,14 @@ export function CanvasMenu({ editor, interaction, vaultId, documentId, onEdit }:
       {canvasId && (
         <>
           <MenuButton label="重新加载预览" onClick={() => requestResourceReload(editor, 'canvas', canvasId)}><RefreshCw className="h-4 w-4" /></MenuButton>
-          <MenuButton label="导出画布" onClick={() => void downloadCanvasReference(vaultId, documentId, canvasId)}><Download className="h-4 w-4" /></MenuButton>
+          <MenuButton label="导出画布" onClick={() => void downloadCanvasReference(vaultId, canvasId)}><Download className="h-4 w-4" /></MenuButton>
         </>
       )}
     </NodeMenuShell>
   )
 }
 
-export function MindMapMenu({ editor, interaction, vaultId, documentId, onEdit }: ResourceMenuProps) {
+export function MindMapMenu({ editor, interaction, vaultId, onEdit }: ResourceMenuProps) {
   const snapshot = useSelectedNodeSnapshot(editor, 'mindmapReference')
   const target = snapshot?.target ?? null
   const attrs = snapshot?.attrs
@@ -63,7 +62,7 @@ export function MindMapMenu({ editor, interaction, vaultId, documentId, onEdit }
       {mindmapId && (
         <>
           <MenuButton label="重新加载预览" onClick={() => requestResourceReload(editor, 'mindmap', mindmapId)}><RefreshCw className="h-4 w-4" /></MenuButton>
-          <MenuButton label="导出 PNG" onClick={() => void downloadMindMapReference(vaultId, documentId, mindmapId, 'png')}><Download className="h-4 w-4" /></MenuButton>
+          <MenuButton label="导出 PNG" onClick={() => void downloadMindMapReference(vaultId, mindmapId, 'png')}><Download className="h-4 w-4" /></MenuButton>
         </>
       )}
     </NodeMenuShell>

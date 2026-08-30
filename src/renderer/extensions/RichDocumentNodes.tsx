@@ -1,7 +1,8 @@
 import { Node, mergeAttributes } from '@tiptap/core'
 import { NodeViewWrapper, ReactNodeViewRenderer } from '@tiptap/react'
 import { Download, ExternalLink, FileText } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import type { AssetMetadata } from '@shared/knowledge-types'
 import { TIPTAP_REFERENCE_NODE_TYPES } from '@shared/knowledge-types'
 import { useAppStore } from '../stores/appStore'
 import { renderManifestResourceMarkdown } from '../markdown/markdownSerializationContext'
@@ -12,7 +13,6 @@ interface DocumentReferenceOptions {
 
 interface FileAttachmentOptions {
   vaultId: string
-  documentId: string
 }
 
 function DocumentReferenceView({ node, extension, selected, editor, getPos }: any) {
@@ -55,13 +55,25 @@ function formatFileSize(bytes: number): string {
 }
 
 function FileAttachmentView({ node, selected, extension, editor, getPos }: any) {
-  const { assetId, fileName, size } = node.attrs as {
+  const { assetId, displayName } = node.attrs as {
     assetId: string
-    fileName: string
-    size: number
+    displayName?: string
   }
   const options = extension.options as FileAttachmentOptions
   const [error, setError] = useState<string | null>(null)
+  const [metadata, setMetadata] = useState<AssetMetadata | null>(null)
+  const fileName = displayName || metadata?.fileName || '未命名文件'
+
+  useEffect(() => {
+    let cancelled = false
+    setMetadata(null)
+    void window.electronAPI.knowledge.getAssetMetadata(options.vaultId, assetId).then((result) => {
+      if (cancelled) return
+      if (result.ok) setMetadata(result.data)
+      else setError(result.error.message)
+    })
+    return () => { cancelled = true }
+  }, [assetId, options.vaultId])
 
   const selectNode = () => {
     const position = getPos()
@@ -71,7 +83,7 @@ function FileAttachmentView({ node, selected, extension, editor, getPos }: any) 
   const open = async () => {
     setError(null)
     const result = await window.electronAPI.knowledge.openAsset(
-      options.vaultId, options.documentId, assetId, fileName,
+      options.vaultId, assetId, fileName,
     )
     if (!result.ok) setError(result.error.message)
   }
@@ -79,7 +91,7 @@ function FileAttachmentView({ node, selected, extension, editor, getPos }: any) 
   const saveAs = async () => {
     setError(null)
     const result = await window.electronAPI.knowledge.saveAssetAs(
-      options.vaultId, options.documentId, assetId, fileName,
+      options.vaultId, assetId, fileName,
     )
     if (!result.ok) setError(result.error.message)
   }
@@ -93,7 +105,9 @@ function FileAttachmentView({ node, selected, extension, editor, getPos }: any) 
       <div className="file-attachment-icon"><FileText aria-hidden="true" size={20} /></div>
       <div className="file-attachment-meta">
         <div className="file-attachment-name" title={fileName}>{fileName}</div>
-        <div className="file-attachment-detail">{formatFileSize(size)}</div>
+        <div className="file-attachment-detail">
+          {metadata ? formatFileSize(metadata.size) : '读取中…'}
+        </div>
         {error && <div className="file-attachment-error">{error}</div>}
       </div>
       <div className="file-attachment-actions" data-file-attachment-control="">
@@ -148,34 +162,26 @@ export const FileAttachmentNode = Node.create<FileAttachmentOptions>({
   atom: true,
   selectable: true,
   draggable: false,
-  addOptions: () => ({ vaultId: '', documentId: '' }),
+  addOptions: () => ({ vaultId: '' }),
   addAttributes: () => ({
     assetId: {
       default: null,
       parseHTML: (element) => element.getAttribute('data-asset-id'),
       renderHTML: (attributes) => ({ 'data-asset-id': attributes.assetId }),
     },
-    fileName: {
+    displayName: {
       default: null,
-      parseHTML: (element) => element.getAttribute('data-file-name'),
-      renderHTML: (attributes) => ({ 'data-file-name': attributes.fileName }),
-    },
-    mimeType: {
-      default: 'application/octet-stream',
-      parseHTML: (element) => element.getAttribute('data-mime-type'),
-      renderHTML: (attributes) => ({ 'data-mime-type': attributes.mimeType }),
-    },
-    size: {
-      default: 0,
-      parseHTML: (element) => Number(element.getAttribute('data-size') ?? 0),
-      renderHTML: (attributes) => ({ 'data-size': String(attributes.size ?? 0) }),
+      parseHTML: (element) => element.getAttribute('data-display-name'),
+      renderHTML: (attributes) => attributes.displayName
+        ? { 'data-display-name': attributes.displayName }
+        : {},
     },
   }),
   parseHTML: () => [{ tag: 'div[data-file-attachment]' }],
   renderHTML: ({ node, HTMLAttributes }) => [
     'div',
     mergeAttributes(HTMLAttributes, { 'data-file-attachment': '' }),
-    `附件：${String(node.attrs.fileName ?? '未命名文件')}`,
+    `附件：${String(node.attrs.displayName ?? '未命名文件')}`,
   ],
   renderMarkdown: renderManifestResourceMarkdown,
   addNodeView: () => ReactNodeViewRenderer(FileAttachmentView, { stopEvent: stopFileAttachmentEvent }),

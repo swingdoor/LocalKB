@@ -33,7 +33,7 @@ function adapter(
 }
 
 describe('knowledge IPC adapter', () => {
-  it('registers every v2 request channel and calls the service once with renderer origin', async () => {
+  it('registers every v3 request channel and calls the service once with renderer origin', async () => {
     const createVault = vi.fn(async (name: string, origin: string) => ({ id: 'v', name, origin }))
     const subject = adapter({ createVault })
     const requestChannels = Object.values(IPC_CHANNELS.KNOWLEDGE).filter(
@@ -103,14 +103,14 @@ describe('knowledge IPC adapter', () => {
     const saveAs = vi.fn(async () => true)
     const subject = adapter({ importAsset }, { open, saveAs })
     const input = {
-      vaultId: 'vault', documentId: 'document', assetId: 'asset', fileName: 'notes.txt',
+      vaultId: 'vault', assetId: 'asset', fileName: 'notes.txt',
     }
     await subject.handlers.get(IPC_CHANNELS.KNOWLEDGE.ASSET_IMPORT)!(null, {
-      vaultId: input.vaultId, documentId: input.documentId,
+      vaultId: input.vaultId,
       mimeType: 'text/plain', fileName: input.fileName, bytes: [1, 2, 3],
     })
     expect(importAsset).toHaveBeenCalledWith(
-      input.vaultId, input.documentId, 'text/plain', new Uint8Array([1, 2, 3]),
+      input.vaultId, 'text/plain', new Uint8Array([1, 2, 3]),
       'renderer', input.fileName,
     )
     expect(await subject.handlers.get(IPC_CHANNELS.KNOWLEDGE.ASSET_OPEN)!(null, input))
@@ -120,21 +120,44 @@ describe('knowledge IPC adapter', () => {
     expect(open).toHaveBeenCalledWith(input)
     expect(saveAs).toHaveBeenCalledWith(input)
   })
+
+  it('routes renderer-composed asset insertion through one service call', async () => {
+    const insertRendererResource = vi.fn(async () => ({ resourceId: 'asset' }))
+    const subject = adapter({ insertRendererResource })
+    const content: TipTapDocument = { type: 'doc', content: [{ type: 'paragraph' }] }
+    await subject.handlers.get(IPC_CHANNELS.KNOWLEDGE.DOCUMENT_RESOURCE_INSERT)!(null, {
+      vaultId: 'vault', documentId: 'document', content,
+      resource: {
+        resourceType: 'asset', resourceId: 'asset', mimeType: 'text/plain',
+        fileName: 'notes.txt', bytes: [1, 2, 3],
+      },
+    })
+    expect(insertRendererResource).toHaveBeenCalledWith(
+      'vault', 'document', content,
+      {
+        resourceType: 'asset', resourceId: 'asset', mimeType: 'text/plain',
+        fileName: 'notes.txt', bytes: new Uint8Array([1, 2, 3]),
+      },
+      'renderer',
+    )
+  })
 })
 
 describe('localkb-resource protocol adapter', () => {
-  it('serves owned bytes only through KnowledgeService', async () => {
+  it('serves vault-scoped bytes only through KnowledgeService', async () => {
     const readAsset = vi.fn(async () => ({
-      id: 'asset', mimeType: 'image/png', bytes: new Uint8Array([1, 2, 3]),
+      id: 'asset', fileName: 'image.png', extension: 'png', mimeType: 'image/png',
+      size: 3, sha256: '0'.repeat(64), createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z', bytes: new Uint8Array([1, 2, 3]),
     }))
     const response = await handleKnowledgeResourceRequest(
       { readAsset } as Pick<KnowledgeService, 'readAsset'>,
-      'localkb-resource://asset/vault/document/asset',
+      'localkb-resource://asset/vault/asset',
     )
     expect(response.status).toBe(200)
     expect(response.headers.get('content-type')).toBe('image/png')
     expect([...new Uint8Array(await response.arrayBuffer())]).toEqual([1, 2, 3])
-    expect(readAsset).toHaveBeenCalledWith('vault', 'document', 'asset')
+    expect(readAsset).toHaveBeenCalledWith('vault', 'asset')
   })
 
   it('returns a safe failure for forged shapes and service validation failures', async () => {

@@ -18,6 +18,8 @@ import type {
   MarkdownExportCommitResult,
 } from '../shared/markdown-export-types'
 import type {
+  AssetData,
+  AssetMetadata,
   CanvasElementPatch,
   ContentSummary,
   ContentType,
@@ -31,13 +33,15 @@ import type {
   MindMapData,
   MindMapNodeData,
   MindMapNodePatch,
+  RendererResourceInsertion,
+  RendererResourceInsertionResult,
   Result,
   SearchHit,
   TipTapDocument,
   TipTapNode,
-  TreeEntryV2,
-  VaultTreeV2,
-  VaultV2,
+  TreeEntryV3,
+  VaultTreeV3,
+  VaultV3,
 } from '../shared/knowledge-types'
 
 const invokeKnowledge = <T>(channel: string, request?: JsonObject) => (
@@ -71,29 +75,29 @@ const electronAPI = {
   },
 
   knowledge: {
-    listVaults: () => invokeKnowledge<VaultV2[]>(IPC_CHANNELS.KNOWLEDGE.VAULT_LIST),
-    getVault: (vaultId: string) => invokeKnowledge<VaultV2>(
+    listVaults: () => invokeKnowledge<VaultV3[]>(IPC_CHANNELS.KNOWLEDGE.VAULT_LIST),
+    getVault: (vaultId: string) => invokeKnowledge<VaultV3>(
       IPC_CHANNELS.KNOWLEDGE.VAULT_GET, { vaultId },
     ),
-    createVault: (name: string) => invokeKnowledge<VaultV2>(
+    createVault: (name: string) => invokeKnowledge<VaultV3>(
       IPC_CHANNELS.KNOWLEDGE.VAULT_CREATE, { name },
     ),
-    renameVault: (vaultId: string, name: string) => invokeKnowledge<VaultV2>(
+    renameVault: (vaultId: string, name: string) => invokeKnowledge<VaultV3>(
       IPC_CHANNELS.KNOWLEDGE.VAULT_RENAME, { vaultId, name },
     ),
     deleteVault: (vaultId: string) => invokeKnowledge<void>(
       IPC_CHANNELS.KNOWLEDGE.VAULT_DELETE, { vaultId },
     ),
-    getTree: (vaultId: string) => invokeKnowledge<VaultTreeV2>(
+    getTree: (vaultId: string) => invokeKnowledge<VaultTreeV3>(
       IPC_CHANNELS.KNOWLEDGE.TREE_GET, { vaultId },
     ),
     createGroup: (vaultId: string, parentId: string | null, name: string, index?: number) => (
-      invokeKnowledge<TreeEntryV2>(IPC_CHANNELS.KNOWLEDGE.GROUP_CREATE, {
+      invokeKnowledge<TreeEntryV3>(IPC_CHANNELS.KNOWLEDGE.GROUP_CREATE, {
         vaultId, parentId, name, index,
       })
     ),
     renameGroup: (vaultId: string, groupId: string, name: string) => (
-      invokeKnowledge<TreeEntryV2>(IPC_CHANNELS.KNOWLEDGE.GROUP_RENAME, {
+      invokeKnowledge<TreeEntryV3>(IPC_CHANNELS.KNOWLEDGE.GROUP_RENAME, {
         vaultId, groupId, name,
       })
     ),
@@ -102,7 +106,7 @@ const electronAPI = {
     ),
     moveTreeEntry: (
       vaultId: string, entryId: string, parentId: string | null, index: number,
-    ) => invokeKnowledge<TreeEntryV2>(IPC_CHANNELS.KNOWLEDGE.TREE_MOVE, {
+    ) => invokeKnowledge<TreeEntryV3>(IPC_CHANNELS.KNOWLEDGE.TREE_MOVE, {
       vaultId, entryId, parentId, index,
     }),
     listContent: (vaultId: string) => invokeKnowledge<ContentSummary[]>(
@@ -172,116 +176,135 @@ const electronAPI = {
         vaultId, documentId, nodeIds,
       })
     ),
-    getCanvas: (vaultId: string, canvasId: string, documentId?: string) => (
+    insertRendererResource: (
+      vaultId: string,
+      documentId: string,
+      content: TipTapDocument,
+      resource: RendererResourceInsertion,
+    ) => invokeKnowledge<RendererResourceInsertionResult>(
+      IPC_CHANNELS.KNOWLEDGE.DOCUMENT_RESOURCE_INSERT,
+      {
+        vaultId,
+        documentId,
+        content,
+        resource: resource.resourceType === 'asset'
+          ? { ...resource, bytes: [...resource.bytes] }
+          : resource,
+      },
+    ),
+    getCanvas: (vaultId: string, canvasId: string) => (
       invokeKnowledge<LoadedCanvas | ExcalidrawScene>(IPC_CHANNELS.KNOWLEDGE.CANVAS_GET, {
-        vaultId, canvasId, documentId,
+        vaultId, canvasId,
       })
     ),
-    createEmbeddedCanvas: (
-      vaultId: string, documentId: string, content: ExcalidrawScene,
+    createCanvas: (
+      vaultId: string, content: ExcalidrawScene,
     ) => invokeKnowledge<{ id: string; content: ExcalidrawScene }>(
-      IPC_CHANNELS.KNOWLEDGE.CANVAS_EMBEDDED_CREATE, { vaultId, documentId, content },
+      IPC_CHANNELS.KNOWLEDGE.CANVAS_CREATE, { vaultId, content },
     ),
     replaceCanvas: (
-      vaultId: string, canvasId: string, content: ExcalidrawScene, documentId?: string,
+      vaultId: string, canvasId: string, content: ExcalidrawScene,
     ) => invokeKnowledge<ExcalidrawScene>(IPC_CHANNELS.KNOWLEDGE.CANVAS_REPLACE, {
-      vaultId, canvasId, content, documentId,
+      vaultId, canvasId, content,
     }),
     upsertCanvasElements: (
-      vaultId: string, canvasId: string, elements: ExcalidrawElement[], documentId?: string,
+      vaultId: string, canvasId: string, elements: ExcalidrawElement[],
     ) => invokeKnowledge<ExcalidrawScene>(IPC_CHANNELS.KNOWLEDGE.CANVAS_ELEMENTS_UPSERT, {
-      vaultId, canvasId, elements, documentId,
+      vaultId, canvasId, elements,
     }),
     patchCanvasElements: (
-      vaultId: string, canvasId: string, patches: CanvasElementPatch[], documentId?: string,
+      vaultId: string, canvasId: string, patches: CanvasElementPatch[],
     ) => invokeKnowledge<ExcalidrawScene>(IPC_CHANNELS.KNOWLEDGE.CANVAS_ELEMENTS_PATCH, {
-      vaultId, canvasId, patches: patches as unknown as JsonObject[], documentId,
+      vaultId, canvasId, patches: patches as unknown as JsonObject[],
     }),
     deleteCanvasElements: (
-      vaultId: string, canvasId: string, elementIds: string[], documentId?: string,
+      vaultId: string, canvasId: string, elementIds: string[],
     ) => invokeKnowledge<ExcalidrawScene>(IPC_CHANNELS.KNOWLEDGE.CANVAS_ELEMENTS_DELETE, {
-      vaultId, canvasId, elementIds, documentId,
+      vaultId, canvasId, elementIds,
     }),
     reorderCanvasElements: (
-      vaultId: string, canvasId: string, orderedIds: string[], documentId?: string,
+      vaultId: string, canvasId: string, orderedIds: string[],
     ) => invokeKnowledge<ExcalidrawScene>(IPC_CHANNELS.KNOWLEDGE.CANVAS_ELEMENTS_REORDER, {
-      vaultId, canvasId, orderedIds, documentId,
+      vaultId, canvasId, orderedIds,
     }),
     upsertCanvasFiles: (
-      vaultId: string, canvasId: string, files: Record<string, JsonObject>, documentId?: string,
+      vaultId: string, canvasId: string, files: Record<string, JsonObject>,
     ) => invokeKnowledge<ExcalidrawScene>(IPC_CHANNELS.KNOWLEDGE.CANVAS_FILES_UPSERT, {
-      vaultId, canvasId, files, documentId,
+      vaultId, canvasId, files,
     }),
     deleteCanvasFiles: (
-      vaultId: string, canvasId: string, fileIds: string[], documentId?: string,
+      vaultId: string, canvasId: string, fileIds: string[],
     ) => invokeKnowledge<ExcalidrawScene>(IPC_CHANNELS.KNOWLEDGE.CANVAS_FILES_DELETE, {
-      vaultId, canvasId, fileIds, documentId,
+      vaultId, canvasId, fileIds,
     }),
-    deleteEmbeddedCanvas: (vaultId: string, documentId: string, canvasId: string) => (
-      invokeKnowledge<void>(IPC_CHANNELS.KNOWLEDGE.CANVAS_EMBEDDED_DELETE, {
-        vaultId, documentId, canvasId,
+    deleteCanvas: (vaultId: string, canvasId: string) => (
+      invokeKnowledge<void>(IPC_CHANNELS.KNOWLEDGE.CANVAS_DELETE, {
+        vaultId, canvasId,
       })
     ),
-    getMindMap: (vaultId: string, documentId: string, mindMapId: string) => (
+    getMindMap: (vaultId: string, mindMapId: string) => (
       invokeKnowledge<MindMapData>(IPC_CHANNELS.KNOWLEDGE.MINDMAP_GET, {
-        vaultId, documentId, mindMapId,
+        vaultId, mindMapId,
       })
     ),
-    createMindMap: (vaultId: string, documentId: string, content: MindMapData) => (
+    createMindMap: (vaultId: string, content: MindMapData) => (
       invokeKnowledge<{ id: string; content: MindMapData }>(IPC_CHANNELS.KNOWLEDGE.MINDMAP_CREATE, {
-        vaultId, documentId, content,
+        vaultId, content,
       })
     ),
     replaceMindMap: (
-      vaultId: string, documentId: string, mindMapId: string, content: MindMapData,
+      vaultId: string, mindMapId: string, content: MindMapData,
     ) => invokeKnowledge<MindMapData>(IPC_CHANNELS.KNOWLEDGE.MINDMAP_REPLACE, {
-      vaultId, documentId, mindMapId, content,
+      vaultId, mindMapId, content,
     }),
     insertMindMapNode: (
-      vaultId: string, documentId: string, mindMapId: string,
+      vaultId: string, mindMapId: string,
       parentId: string, index: number | undefined, node: MindMapNodeData,
     ) => invokeKnowledge<MindMapData>(IPC_CHANNELS.KNOWLEDGE.MINDMAP_NODE_INSERT, {
-      vaultId, documentId, mindMapId, parentId, index, node,
+      vaultId, mindMapId, parentId, index, node,
     }),
     patchMindMapNode: (
-      vaultId: string, documentId: string, mindMapId: string, patch: MindMapNodePatch,
+      vaultId: string, mindMapId: string, patch: MindMapNodePatch,
     ) => invokeKnowledge<MindMapData>(IPC_CHANNELS.KNOWLEDGE.MINDMAP_NODE_PATCH, {
-      vaultId, documentId, mindMapId, patch: patch as unknown as JsonObject,
+      vaultId, mindMapId, patch: patch as unknown as JsonObject,
     }),
     moveMindMapNode: (
-      vaultId: string, documentId: string, mindMapId: string,
+      vaultId: string, mindMapId: string,
       nodeId: string, parentId: string, index?: number,
     ) => invokeKnowledge<MindMapData>(IPC_CHANNELS.KNOWLEDGE.MINDMAP_NODE_MOVE, {
-      vaultId, documentId, mindMapId, nodeId, parentId, index,
+      vaultId, mindMapId, nodeId, parentId, index,
     }),
     deleteMindMapNode: (
-      vaultId: string, documentId: string, mindMapId: string, nodeId: string,
+      vaultId: string, mindMapId: string, nodeId: string,
     ) => invokeKnowledge<MindMapData>(IPC_CHANNELS.KNOWLEDGE.MINDMAP_NODE_DELETE, {
-      vaultId, documentId, mindMapId, nodeId,
+      vaultId, mindMapId, nodeId,
     }),
-    deleteMindMap: (vaultId: string, documentId: string, mindMapId: string) => (
+    deleteMindMap: (vaultId: string, mindMapId: string) => (
       invokeKnowledge<void>(IPC_CHANNELS.KNOWLEDGE.MINDMAP_DELETE, {
-        vaultId, documentId, mindMapId,
+        vaultId, mindMapId,
       })
     ),
     importAsset: (
-      vaultId: string, documentId: string, mimeType: string, bytes: Uint8Array, fileName?: string,
-    ) => invokeKnowledge<{ id: string; mimeType: string; fileName?: string }>(IPC_CHANNELS.KNOWLEDGE.ASSET_IMPORT, {
-      vaultId, documentId, mimeType, bytes: [...bytes], fileName,
+      vaultId: string, mimeType: string, bytes: Uint8Array, fileName?: string,
+    ) => invokeKnowledge<AssetData>(IPC_CHANNELS.KNOWLEDGE.ASSET_IMPORT, {
+      vaultId, mimeType, bytes: [...bytes], fileName,
     }),
-    deleteAsset: (vaultId: string, documentId: string, assetId: string) => (
+    getAssetMetadata: (vaultId: string, assetId: string) => (
+      invokeKnowledge<AssetMetadata>(IPC_CHANNELS.KNOWLEDGE.ASSET_GET, { vaultId, assetId })
+    ),
+    deleteAsset: (vaultId: string, assetId: string) => (
       invokeKnowledge<void>(IPC_CHANNELS.KNOWLEDGE.ASSET_DELETE, {
-        vaultId, documentId, assetId,
+        vaultId, assetId,
       })
     ),
-    openAsset: (vaultId: string, documentId: string, assetId: string, fileName: string) => (
+    openAsset: (vaultId: string, assetId: string, fileName: string) => (
       invokeKnowledge<void>(IPC_CHANNELS.KNOWLEDGE.ASSET_OPEN, {
-        vaultId, documentId, assetId, fileName,
+        vaultId, assetId, fileName,
       })
     ),
-    saveAssetAs: (vaultId: string, documentId: string, assetId: string, fileName: string) => (
+    saveAssetAs: (vaultId: string, assetId: string, fileName: string) => (
       invokeKnowledge<boolean>(IPC_CHANNELS.KNOWLEDGE.ASSET_SAVE_AS, {
-        vaultId, documentId, assetId, fileName,
+        vaultId, assetId, fileName,
       })
     ),
     search: (vaultId: string, query: string, limit?: number) => invokeKnowledge<SearchHit[]>(

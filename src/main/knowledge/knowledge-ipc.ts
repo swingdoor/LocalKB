@@ -8,6 +8,7 @@ import type {
   MindMapData,
   MindMapNodeData,
   MindMapNodePatch,
+  RendererResourceInsertion,
   TipTapDocument,
   TipTapNode,
 } from '../../shared/knowledge-types'
@@ -24,8 +25,8 @@ export interface KnowledgeEventTarget {
 }
 
 export interface KnowledgeAssetActions {
-  open(input: { vaultId: string; documentId: string; assetId: string; fileName: string }): Promise<void>
-  saveAs(input: { vaultId: string; documentId: string; assetId: string; fileName: string }): Promise<boolean>
+  open(input: { vaultId: string; assetId: string; fileName: string }): Promise<void>
+  saveAs(input: { vaultId: string; assetId: string; fileName: string }): Promise<boolean>
 }
 
 function request<T>(value: unknown): T {
@@ -161,129 +162,137 @@ export function registerKnowledgeIpc(
       input.vaultId, input.documentId, input.nodeIds, 'renderer',
     ),
   )
+  handle<{
+    vaultId: string
+    documentId: string
+    content: TipTapDocument
+    resource: RendererResourceInsertion
+  }>(K.DOCUMENT_RESOURCE_INSERT, (input) => {
+    const resource = input.resource.resourceType === 'asset'
+      ? { ...input.resource, bytes: byteArray(input.resource.bytes) }
+      : input.resource
+    return service.insertRendererResource(
+      input.vaultId, input.documentId, input.content, resource, 'renderer',
+    )
+  })
 
-  handle<{ vaultId: string; canvasId: string; documentId?: string }>(K.CANVAS_GET, (input) => (
-    service.getCanvas(input.vaultId, input.canvasId, input.documentId)
+  handle<{ vaultId: string; canvasId: string }>(K.CANVAS_GET, (input) => (
+    service.getCanvas(input.vaultId, input.canvasId)
   ))
-  handle<{ vaultId: string; documentId: string; content: ExcalidrawScene }>(
-    K.CANVAS_EMBEDDED_CREATE,
-    (input) => service.createEmbeddedCanvas(
-      input.vaultId, input.documentId, input.content, 'renderer',
-    ),
+  handle<{ vaultId: string; content: ExcalidrawScene }>(
+    K.CANVAS_CREATE,
+    (input) => service.createCanvas(input.vaultId, input.content, 'renderer'),
   )
-  handle<{ vaultId: string; canvasId: string; documentId?: string; content: ExcalidrawScene }>(
+  handle<{ vaultId: string; canvasId: string; content: ExcalidrawScene }>(
     K.CANVAS_REPLACE,
     (input) => service.replaceCanvas(
-      input.vaultId, input.canvasId, input.content, input.documentId, 'renderer',
+      input.vaultId, input.canvasId, input.content, 'renderer',
     ),
   )
-  handle<{ vaultId: string; canvasId: string; documentId?: string; elements: ExcalidrawElement[] }>(
+  handle<{ vaultId: string; canvasId: string; elements: ExcalidrawElement[] }>(
     K.CANVAS_ELEMENTS_UPSERT,
     (input) => service.upsertCanvasElements(
-      input.vaultId, input.canvasId, input.elements, input.documentId, 'renderer',
+      input.vaultId, input.canvasId, input.elements, 'renderer',
     ),
   )
-  handle<{ vaultId: string; canvasId: string; documentId?: string; patches: CanvasElementPatch[] }>(
+  handle<{ vaultId: string; canvasId: string; patches: CanvasElementPatch[] }>(
     K.CANVAS_ELEMENTS_PATCH,
     (input) => service.patchCanvasElements(
-      input.vaultId, input.canvasId, input.patches, input.documentId, 'renderer',
+      input.vaultId, input.canvasId, input.patches, 'renderer',
     ),
   )
-  handle<{ vaultId: string; canvasId: string; documentId?: string; elementIds: string[] }>(
+  handle<{ vaultId: string; canvasId: string; elementIds: string[] }>(
     K.CANVAS_ELEMENTS_DELETE,
     (input) => service.deleteCanvasElements(
-      input.vaultId, input.canvasId, input.elementIds, input.documentId, 'renderer',
+      input.vaultId, input.canvasId, input.elementIds, 'renderer',
     ),
   )
-  handle<{ vaultId: string; canvasId: string; documentId?: string; orderedIds: string[] }>(
+  handle<{ vaultId: string; canvasId: string; orderedIds: string[] }>(
     K.CANVAS_ELEMENTS_REORDER,
     (input) => service.reorderCanvasElements(
-      input.vaultId, input.canvasId, input.orderedIds, input.documentId, 'renderer',
+      input.vaultId, input.canvasId, input.orderedIds, 'renderer',
     ),
   )
-  handle<{ vaultId: string; canvasId: string; documentId?: string; files: Record<string, JsonObject> }>(
+  handle<{ vaultId: string; canvasId: string; files: Record<string, JsonObject> }>(
     K.CANVAS_FILES_UPSERT,
     (input) => service.upsertCanvasFiles(
-      input.vaultId, input.canvasId, input.files, input.documentId, 'renderer',
+      input.vaultId, input.canvasId, input.files, 'renderer',
     ),
   )
-  handle<{ vaultId: string; canvasId: string; documentId?: string; fileIds: string[] }>(
+  handle<{ vaultId: string; canvasId: string; fileIds: string[] }>(
     K.CANVAS_FILES_DELETE,
     (input) => service.deleteCanvasFiles(
-      input.vaultId, input.canvasId, input.fileIds, input.documentId, 'renderer',
+      input.vaultId, input.canvasId, input.fileIds, 'renderer',
     ),
   )
-  handle<{ vaultId: string; documentId: string; canvasId: string }>(
-    K.CANVAS_EMBEDDED_DELETE,
-    (input) => service.deleteEmbeddedCanvas(
-      input.vaultId, input.documentId, input.canvasId, 'renderer',
-    ),
+  handle<{ vaultId: string; canvasId: string }>(
+    K.CANVAS_DELETE,
+    (input) => service.removeCanvas(input.vaultId, input.canvasId, 'renderer'),
   )
 
-  handle<{ vaultId: string; documentId: string; mindMapId: string }>(K.MINDMAP_GET, (input) => (
-    service.getMindMap(input.vaultId, input.documentId, input.mindMapId)
+  handle<{ vaultId: string; mindMapId: string }>(K.MINDMAP_GET, (input) => (
+    service.getMindMap(input.vaultId, input.mindMapId)
   ))
-  handle<{ vaultId: string; documentId: string; content: MindMapData }>(
+  handle<{ vaultId: string; content: MindMapData }>(
     K.MINDMAP_CREATE,
-    (input) => service.createMindMap(input.vaultId, input.documentId, input.content, 'renderer'),
+    (input) => service.createMindMap(input.vaultId, input.content, 'renderer'),
   )
-  handle<{ vaultId: string; documentId: string; mindMapId: string; content: MindMapData }>(
+  handle<{ vaultId: string; mindMapId: string; content: MindMapData }>(
     K.MINDMAP_REPLACE,
     (input) => service.replaceMindMap(
-      input.vaultId, input.documentId, input.mindMapId, input.content, 'renderer',
+      input.vaultId, input.mindMapId, input.content, 'renderer',
     ),
   )
   handle<{
     vaultId: string
-    documentId: string
     mindMapId: string
     parentId: string
     index?: number
     node: MindMapNodeData
   }>(K.MINDMAP_NODE_INSERT, (input) => service.insertMindMapNode(
-    input.vaultId, input.documentId, input.mindMapId,
-    input.parentId, input.index, input.node, 'renderer',
+    input.vaultId, input.mindMapId, input.parentId, input.index, input.node, 'renderer',
   ))
-  handle<{ vaultId: string; documentId: string; mindMapId: string; patch: MindMapNodePatch }>(
+  handle<{ vaultId: string; mindMapId: string; patch: MindMapNodePatch }>(
     K.MINDMAP_NODE_PATCH,
     (input) => service.patchMindMapNode(
-      input.vaultId, input.documentId, input.mindMapId, input.patch, 'renderer',
+      input.vaultId, input.mindMapId, input.patch, 'renderer',
     ),
   )
   handle<{
     vaultId: string
-    documentId: string
     mindMapId: string
     nodeId: string
     parentId: string
     index?: number
   }>(K.MINDMAP_NODE_MOVE, (input) => service.moveMindMapNode(
-    input.vaultId, input.documentId, input.mindMapId,
-    input.nodeId, input.parentId, input.index, 'renderer',
+    input.vaultId, input.mindMapId, input.nodeId, input.parentId, input.index, 'renderer',
   ))
-  handle<{ vaultId: string; documentId: string; mindMapId: string; nodeId: string }>(
+  handle<{ vaultId: string; mindMapId: string; nodeId: string }>(
     K.MINDMAP_NODE_DELETE,
     (input) => service.deleteMindMapNode(
-      input.vaultId, input.documentId, input.mindMapId, input.nodeId, 'renderer',
+      input.vaultId, input.mindMapId, input.nodeId, 'renderer',
     ),
   )
-  handle<{ vaultId: string; documentId: string; mindMapId: string }>(
+  handle<{ vaultId: string; mindMapId: string }>(
     K.MINDMAP_DELETE,
     (input) => service.deleteMindMap(
-      input.vaultId, input.documentId, input.mindMapId, 'renderer',
+      input.vaultId, input.mindMapId, 'renderer',
     ),
   )
 
-  handle<{ vaultId: string; documentId: string; mimeType: string; bytes: number[]; fileName?: string }>(
+  handle<{ vaultId: string; mimeType: string; bytes: number[]; fileName?: string }>(
     K.ASSET_IMPORT,
     (input) => service.importAsset(
-      input.vaultId, input.documentId, input.mimeType, byteArray(input.bytes), 'renderer', input.fileName,
+      input.vaultId, input.mimeType, byteArray(input.bytes), 'renderer', input.fileName,
     ),
   )
-  handle<{ vaultId: string; documentId: string; assetId: string }>(K.ASSET_DELETE, (input) => (
-    service.deleteAsset(input.vaultId, input.documentId, input.assetId, 'renderer')
+  handle<{ vaultId: string; assetId: string }>(K.ASSET_GET, (input) => (
+    service.getAssetMetadata(input.vaultId, input.assetId)
   ))
-  handle<{ vaultId: string; documentId: string; assetId: string; fileName: string }>(
+  handle<{ vaultId: string; assetId: string }>(K.ASSET_DELETE, (input) => (
+    service.deleteAsset(input.vaultId, input.assetId, 'renderer')
+  ))
+  handle<{ vaultId: string; assetId: string; fileName: string }>(
     K.ASSET_OPEN,
     async (input) => {
       if (!assetActions) throw new KnowledgeValidationError('PERSISTENCE_ERROR', '附件打开服务不可用')
@@ -291,7 +300,7 @@ export function registerKnowledgeIpc(
       return assetActions.open(input)
     },
   )
-  handle<{ vaultId: string; documentId: string; assetId: string; fileName: string }>(
+  handle<{ vaultId: string; assetId: string; fileName: string }>(
     K.ASSET_SAVE_AS,
     async (input) => {
       if (!assetActions) throw new KnowledgeValidationError('PERSISTENCE_ERROR', '附件另存为服务不可用')

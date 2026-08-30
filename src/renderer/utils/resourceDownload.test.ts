@@ -38,8 +38,8 @@ describe('resource menu downloads', () => {
   })
 
   it('exports a canvas through Excalidraw and the existing Electron save dialog', async () => {
-    await expect(downloadCanvasReference('vault', 'document', 'canvas')).resolves.toBe(true)
-    expect(window.electronAPI.knowledge.getCanvas).toHaveBeenCalledWith('vault', 'canvas', 'document')
+    await expect(downloadCanvasReference('vault', 'canvas')).resolves.toBe(true)
+    expect(window.electronAPI.knowledge.getCanvas).toHaveBeenCalledWith('vault', 'canvas')
     expect(mocks.exportToBlob).toHaveBeenCalledOnce()
     expect(window.electronAPI.file.downloadImage).toHaveBeenCalledWith(
       expect.stringMatching(/^data:image\/png;base64,/),
@@ -48,8 +48,8 @@ describe('resource menu downloads', () => {
   })
 
   it('exports a mind map and always destroys its temporary renderer', async () => {
-    await expect(downloadMindMapReference('vault', 'document', 'mindmap')).resolves.toBe(true)
-    expect(window.electronAPI.knowledge.getMindMap).toHaveBeenCalledWith('vault', 'document', 'mindmap')
+    await expect(downloadMindMapReference('vault', 'mindmap')).resolves.toBe(true)
+    expect(window.electronAPI.knowledge.getMindMap).toHaveBeenCalledWith('vault', 'mindmap')
     expect(mocks.mindInit).toHaveBeenCalledOnce()
     expect(mocks.mindExport).toHaveBeenCalledOnce()
     expect(mocks.mindDestroy).toHaveBeenCalledOnce()

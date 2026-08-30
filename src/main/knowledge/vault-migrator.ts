@@ -1,24 +1,31 @@
 import * as path from 'path'
-import { fileURLToPath } from 'url'
+import { createHash } from 'crypto'
 import { promises as fs } from 'fs'
-import { v5 as uuidv5 } from 'uuid'
 import type {
+  AssetManifest,
+  AssetManifestEntry,
   ExcalidrawScene,
-  JsonObject,
+  JsonValue,
   MindMapData,
   TipTapDocument,
   TipTapNode,
-  TreeEntryV2,
-  VaultTreeV2,
-  VaultV2,
+  TreeEntryV3,
+  VaultTreeV3,
+  VaultV3,
 } from '../../shared/knowledge-types'
-import { collectDocumentReferences, normalizeDocumentNodeIds } from '../../shared/knowledge-operations'
+import { VAULT_FORMAT_VERSIONS } from '../../shared/knowledge-types'
+import {
+  collectDocumentReferences,
+  collectInternalDocumentReferences,
+} from '../../shared/knowledge-operations'
 import {
   assertExcalidrawScene,
   assertJsonObject,
   assertMindMapData,
+  assertPathSegment,
   assertTipTapDocument,
   assertUuid,
+  cloneJson,
   isPlainObject,
   KnowledgeValidationError,
   normalizeName,
@@ -29,31 +36,18 @@ import {
   resolveInside,
   validateAndNormalizeTree,
 } from './file-knowledge-store'
+import { inspectVaultIntegrity } from './knowledge-integrity'
 
 const nodeFs = fs as unknown as FileSystemApi
-const MIGRATION_NAMESPACE = '68d423b0-d5d6-4f54-a9e8-f5e3e50f4e6a'
 
-interface LegacyVault {
+interface VaultV2 {
+  schemaVersion: 2
   id: string
   name: string
   createdAt: string
 }
 
-interface LegacyMeta {
-  vault: LegacyVault
-  documents?: string[]
-}
-
-export interface LegacyDocument {
-  id: string
-  title: string
-  content: string
-  type: 'document' | 'drawing'
-  createdAt: string
-  updatedAt: string
-}
-
-interface LegacyGroupEntry {
+interface GroupEntryV2 {
   kind: 'group'
   id: string
   name: string
@@ -61,64 +55,64 @@ interface LegacyGroupEntry {
   order: number
 }
 
-interface LegacyDocumentEntry {
-  kind: 'document'
+interface ContentEntryV2 {
+  kind: 'content'
   id: string
+  contentType: 'document' | 'canvas'
+  title: string
   parentId: string | null
   order: number
+  createdAt: string
+  metadataUpdatedAt: string
 }
 
-interface LegacyStructure {
-  version: 1
-  entries: Array<LegacyGroupEntry | LegacyDocumentEntry>
+type TreeEntryV2 = GroupEntryV2 | ContentEntryV2
+
+interface VaultTreeV2 {
+  schemaVersion: 2
+  entries: TreeEntryV2[]
 }
 
 export interface MigrationIssue {
   severity: 'warning' | 'error'
   code: string
   scope: 'vault' | 'tree' | 'document' | 'canvas' | 'mindmap' | 'asset'
-  documentId?: string
+  resourceId?: string
   message: string
 }
 
 export interface MigrationInventory {
   vaultId: string
-  sourceVersion: 1 | 2 | 'unknown'
-  totalBytes: number
-  topLevelDocuments: number
-  topLevelCanvases: number
-  groups: number
-  embeddedCanvases: number
-  embeddedMindMaps: number
-  ownedAssets: number
-  ownedAssetBytes: number
-  remoteImages: number
-  preservedLegacyNodes: number
+  sourceVersion: 2 | 3 | 'unknown'
+  documents: number
+  canvases: number
+  mindMaps: number
+  assets: number
+  assetBytes: number
+  references: number
   issues: MigrationIssue[]
   canMigrate: boolean
 }
 
-interface ConvertedAsset {
+interface V2Asset {
   id: string
   extension: string
+  fileName: string
+  mimeType: string
   bytes: Uint8Array
+  createdAt: string
+  updatedAt: string
 }
 
-interface ConvertedDocument {
-  document: TipTapDocument
-  canvases: Array<{ id: string; value: ExcalidrawScene }>
-  mindMaps: Array<{ id: string; value: MindMapData }>
-  assets: ConvertedAsset[]
-  remoteImages: number
-  preservedLegacyNodes: number
-  warnings: MigrationIssue[]
-}
-
-interface LegacyVaultData {
-  meta: LegacyMeta
-  structure: LegacyStructure | null
-  documents: LegacyDocument[]
-  totalBytes: number
+interface V2Snapshot {
+  vault: VaultV2
+  tree: VaultTreeV2
+  v3Tree: VaultTreeV3
+  documents: Map<string, TipTapDocument>
+  canvases: Map<string, ExcalidrawScene>
+  mindMaps: Map<string, MindMapData>
+  assets: Map<string, V2Asset>
+  inventory: MigrationInventory
 }
 
 export interface StagedMigration {
@@ -133,323 +127,143 @@ export interface ActivatedMigration {
   backupPath: string
 }
 
-function migrationError(message: string): KnowledgeValidationError {
-  return new KnowledgeValidationError('MIGRATION_FAILED', message)
+const EXTENSION_MIMES: Record<string, string> = {
+  png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif',
+  webp: 'image/webp', svg: 'image/svg+xml', pdf: 'application/pdf', txt: 'text/plain',
+  md: 'text/markdown', json: 'application/json', zip: 'application/zip',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
 }
 
-function parseIso(value: unknown, label: string): string {
+function migrationError(message: string, details?: JsonValue): KnowledgeValidationError {
+  return new KnowledgeValidationError('MIGRATION_FAILED', message, details)
+}
+
+function timestamp(value: unknown, label: string): string {
   if (typeof value !== 'string' || !Number.isFinite(Date.parse(value))) throw migrationError(`${label}无效`)
   return value
 }
 
-function deterministicId(...parts: string[]): string {
-  return uuidv5(parts.join(':'), MIGRATION_NAMESPACE)
+function optionalDirectoryError(error: unknown): boolean {
+  return isPlainObject(error) && error.code === 'ENOENT'
 }
 
-function asLegacyDocument(value: unknown, expectedId: string): LegacyDocument {
-  assertJsonObject(value, '旧版文档')
-  assertUuid(value.id, '旧版文档 ID')
-  if (value.id !== expectedId) throw migrationError('旧版文档 ID 与文件名不一致')
-  if (value.type !== 'document' && value.type !== 'drawing') throw migrationError('旧版文档类型无效')
-  if (typeof value.content !== 'string') throw migrationError('旧版文档内容无效')
-  return {
-    id: value.id,
-    title: normalizeName(value.title, '旧版文档标题'),
-    content: value.content,
-    type: value.type,
-    createdAt: parseIso(value.createdAt, '旧版文档创建时间'),
-    updatedAt: parseIso(value.updatedAt, '旧版文档更新时间'),
-  }
-}
-
-function asLegacyMeta(value: unknown, vaultId: string): LegacyMeta {
-  assertJsonObject(value, '旧版知识库元数据')
-  assertJsonObject(value.vault, '旧版知识库')
-  assertUuid(value.vault.id, '旧版知识库 ID')
-  if (value.vault.id !== vaultId) throw migrationError('旧版知识库 ID 不一致')
-  return {
-    vault: {
-      id: value.vault.id,
-      name: normalizeName(value.vault.name, '知识库名称'),
-      createdAt: parseIso(value.vault.createdAt, '知识库创建时间'),
-    },
-    documents: Array.isArray(value.documents)
-      ? value.documents.filter((item): item is string => typeof item === 'string')
-      : undefined,
-  }
-}
-
-function asLegacyStructure(value: unknown): LegacyStructure {
-  assertJsonObject(value, '旧版知识库结构')
-  if (value.version !== 1 || !Array.isArray(value.entries)) throw migrationError('旧版知识库结构无效')
-  const entries = value.entries.map((raw, index) => {
-    assertJsonObject(raw, `旧版结构条目 ${index}`)
-    assertUuid(raw.id, '旧版结构条目 ID')
-    if (raw.parentId !== null) assertUuid(raw.parentId, '旧版结构父级 ID')
-    if (!Number.isInteger(raw.order) || Number(raw.order) < 0) throw migrationError('旧版结构顺序无效')
+function normalizeV2Tree(value: unknown): { legacy: VaultTreeV2; current: VaultTreeV3 } {
+  assertJsonObject(value, '版本 2 知识库树')
+  if (value.schemaVersion !== 2 || !Array.isArray(value.entries)) throw migrationError('版本 2 知识库树无效')
+  const legacy: TreeEntryV2[] = []
+  const current: TreeEntryV3[] = []
+  value.entries.forEach((raw, index) => {
+    assertJsonObject(raw, `版本 2 树条目 ${index}`)
+    assertUuid(raw.id, '版本 2 树条目 ID')
+    if (raw.parentId !== null) assertUuid(raw.parentId, '版本 2 父级 ID')
+    if (!Number.isInteger(raw.order) || Number(raw.order) < 0) throw migrationError('版本 2 树顺序无效')
     if (raw.kind === 'group') {
-      return {
-        kind: 'group',
-        id: raw.id,
-        name: normalizeName(raw.name, '旧版分组名称'),
-        parentId: raw.parentId,
-        order: Number(raw.order),
-      } as LegacyGroupEntry
+      const entry: GroupEntryV2 = {
+        kind: 'group', id: raw.id, name: normalizeName(raw.name),
+        parentId: raw.parentId as string | null, order: Number(raw.order),
+      }
+      legacy.push(entry)
+      current.push({ ...entry })
+      return
     }
-    if (raw.kind === 'document') {
-      return {
-        kind: 'document',
-        id: raw.id,
-        parentId: raw.parentId,
-        order: Number(raw.order),
-      } as LegacyDocumentEntry
+    if (raw.kind !== 'content' || (raw.contentType !== 'document' && raw.contentType !== 'canvas')) {
+      throw migrationError('版本 2 树包含未知条目')
     }
-    throw migrationError('旧版结构条目类型无效')
+    const createdAt = timestamp(raw.createdAt, '版本 2 创建时间')
+    const updatedAt = timestamp(raw.metadataUpdatedAt, '版本 2 更新时间')
+    const entry: ContentEntryV2 = {
+      kind: 'content', id: raw.id, contentType: raw.contentType,
+      title: normalizeName(raw.title), parentId: raw.parentId as string | null,
+      order: Number(raw.order), createdAt, metadataUpdatedAt: updatedAt,
+    }
+    legacy.push(entry)
+    current.push({
+      kind: 'content', id: entry.id, contentType: entry.contentType,
+      title: entry.title, parentId: entry.parentId, order: entry.order,
+      createdAt, updatedAt,
+    })
   })
-  return { version: 1, entries }
-}
-
-function decodeEmbeddedCanvas(encoded: string): ExcalidrawScene {
-  let serialized: string
-  try {
-    serialized = decodeURIComponent(Buffer.from(encoded, 'base64').toString('utf8'))
-  } catch {
-    throw migrationError('内嵌画布编码无效')
-  }
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(serialized)
-  } catch {
-    throw migrationError('内嵌画布 JSON 无效')
-  }
-  return normalizeLegacyCanvas(parsed)
-}
-
-export function normalizeLegacyCanvas(value: unknown): ExcalidrawScene {
-  assertJsonObject(value, '旧版画布')
-  if (!Array.isArray(value.elements) || !isPlainObject(value.appState) || !isPlainObject(value.files)) {
-    throw migrationError('旧版画布根结构无效')
-  }
-  const scene = {
-    ...value,
-    type: 'excalidraw',
-    version: typeof value.version === 'number' && Number.isInteger(value.version) && value.version > 0
-      ? value.version
-      : 2,
-    source: typeof value.source === 'string' ? value.source : 'localkb-migrated',
-  } as unknown as ExcalidrawScene
-  assertExcalidrawScene(scene)
-  return scene
-}
-
-function parseMindMap(value: unknown): MindMapData {
-  if (typeof value !== 'string') throw migrationError('思维导图数据无效')
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(value)
-  } catch {
-    throw migrationError('思维导图 JSON 无效')
-  }
-  assertJsonObject(parsed, '旧版思维导图封装')
-  const data = parsed.data
-  assertMindMapData(data)
-  return data
-}
-
-function decodeDataUrl(source: string): { extension: string; bytes: Uint8Array } | null {
-  const match = /^data:(image\/(?:png|jpe?g|gif|webp|svg\+xml));(?:charset=[^;,]+;)?(base64)?,([\s\S]*)$/i.exec(source)
-  if (!match) return null
-  const mime = match[1].toLowerCase()
-  let bytes: Uint8Array
-  try {
-    bytes = match[2]
-      ? new Uint8Array(Buffer.from(match[3], 'base64'))
-      : new Uint8Array(Buffer.from(decodeURIComponent(match[3]), 'utf8'))
-  } catch {
-    throw migrationError('图片 data URL 无法解码')
-  }
-  const extension = mime === 'image/jpeg'
-    ? 'jpg'
-    : mime === 'image/svg+xml' ? 'svg' : mime.slice('image/'.length)
-  return { extension, bytes }
-}
-
-function localImagePath(source: string): string | null {
-  if (source.startsWith('file://')) {
-    try {
-      return fileURLToPath(source)
-    } catch {
-      throw migrationError('本地图片 URL 无效')
-    }
-  }
-  return path.isAbsolute(source) ? source : null
-}
-
-function extensionForLocalImage(target: string): string {
-  const extension = path.extname(target).slice(1).toLowerCase()
-  if (!['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(extension)) {
-    throw migrationError('本地图片格式不受支持')
-  }
-  return extension === 'jpeg' ? 'jpg' : extension
-}
-
-function referenceAttrs(
-  source: JsonObject | undefined,
-  idKey: 'canvasId' | 'mindmapId' | 'assetId',
-  id: string,
-): JsonObject {
-  const attrs: JsonObject = { [idKey]: id }
-  if (typeof source?.width === 'number' || typeof source?.width === 'string') attrs.width = source.width
-  if (source?.textAlign === 'left' || source?.textAlign === 'center' || source?.textAlign === 'right') {
-    attrs.textAlign = source.textAlign
-  }
-  return attrs
-}
-
-async function convertLegacyDocument(
-  vaultId: string,
-  legacy: LegacyDocument,
-  fileSystem: FileSystemApi,
-): Promise<ConvertedDocument> {
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(legacy.content)
-  } catch {
-    throw migrationError('旧版 TipTap 内容无法解析')
-  }
-  assertTipTapDocument(parsed, { allowUnknownTypes: true })
-  const document = structuredClone(parsed)
-  const canvases: ConvertedDocument['canvases'] = []
-  const mindMaps: ConvertedDocument['mindMaps'] = []
-  const assets: ConvertedAsset[] = []
-  const warnings: MigrationIssue[] = []
-  let remoteImages = 0
-  let preservedLegacyNodes = 0
-
-  const convertNode = async (node: TipTapNode, route: string): Promise<TipTapNode> => {
-    const children = await Promise.all((node.content ?? []).map(
-      (child, index) => convertNode(child, `${route}.${index}`),
-    ))
-    const current: TipTapNode = { ...node, ...(node.content ? { content: children } : {}) }
-    if (
-      current.type === 'image' && typeof current.attrs?.alt === 'string' &&
-      current.attrs.alt.startsWith('canvas-') && typeof current.attrs.title === 'string'
-    ) {
-      try {
-        const id = deterministicId(vaultId, legacy.id, 'canvas', route)
-        canvases.push({ id, value: decodeEmbeddedCanvas(current.attrs.title) })
-        return { type: 'canvasReference', attrs: referenceAttrs(current.attrs, 'canvasId', id) }
-      } catch (error) {
-        preservedLegacyNodes += 1
-        warnings.push({
-          severity: 'warning',
-          code: 'UNRECOGNIZED_EMBEDDED_CANVAS',
-          scope: 'canvas',
-          documentId: legacy.id,
-          message: error instanceof Error ? error.message : '内嵌画布无法识别，已保留原节点',
-        })
-        return current
-      }
-    }
-    if (String(current.type) === 'mindmap' && current.attrs?.data !== undefined) {
-      try {
-        const id = deterministicId(vaultId, legacy.id, 'mindmap', route)
-        mindMaps.push({ id, value: parseMindMap(current.attrs.data) })
-        return { type: 'mindmapReference', attrs: referenceAttrs(current.attrs, 'mindmapId', id) }
-      } catch (error) {
-        preservedLegacyNodes += 1
-        warnings.push({
-          severity: 'warning',
-          code: 'UNRECOGNIZED_MINDMAP',
-          scope: 'mindmap',
-          documentId: legacy.id,
-          message: error instanceof Error ? error.message : '思维导图无法识别，已保留原节点',
-        })
-        return current
-      }
-    }
-    if (current.type === 'image' && typeof current.attrs?.src === 'string') {
-      const source = current.attrs.src
-      if (/^https?:\/\//i.test(source)) {
-        remoteImages += 1
-        return current
-      }
-      const data = decodeDataUrl(source)
-      const local = data ? null : localImagePath(source)
-      if (!data && !local) return current
-      try {
-        const id = deterministicId(vaultId, legacy.id, 'asset', route)
-        const converted = data ?? {
-          extension: extensionForLocalImage(local!),
-          bytes: new Uint8Array(await fileSystem.readFile(local!) as Buffer),
-        }
-        assets.push({ id, ...converted })
-        return { type: 'assetImage', attrs: referenceAttrs(current.attrs, 'assetId', id) }
-      } catch (error) {
-        throw migrationError(error instanceof Error ? error.message : '本地图片转换失败')
-      }
-    }
-    return current
-  }
-
-  const converted = await convertNode(document, 'root') as TipTapDocument
-  let counter = 0
-  const normalized = normalizeDocumentNodeIds(converted, () => (
-    deterministicId(vaultId, legacy.id, 'node', String(counter++))
-  ))
   return {
-    document: normalized,
-    canvases,
-    mindMaps,
-    assets,
-    remoteImages,
-    preservedLegacyNodes,
-    warnings,
+    legacy: { schemaVersion: 2, entries: legacy },
+    current: validateAndNormalizeTree({ schemaVersion: 3, entries: current }),
   }
 }
 
-function treeFromLegacy(
-  structure: LegacyStructure | null,
-  documents: LegacyDocument[],
-): VaultTreeV2 {
-  const byId = new Map(documents.map((document) => [document.id, document]))
-  const entries: TreeEntryV2[] = []
-  if (structure) {
-    for (const entry of structure.entries) {
-      if (entry.kind === 'group') {
-        entries.push({ ...entry, kind: 'group' })
-      } else {
-        const document = byId.get(entry.id)
-        if (!document) continue
-        entries.push({
-          kind: 'content',
-          id: document.id,
-          contentType: document.type === 'drawing' ? 'canvas' : 'document',
-          title: document.title,
-          parentId: entry.parentId,
-          order: entry.order,
-          createdAt: document.createdAt,
-          metadataUpdatedAt: document.updatedAt,
-        })
-        byId.delete(document.id)
+function canonicalizeAttachments(document: TipTapDocument): TipTapDocument {
+  const result = cloneJson(document)
+  const visit = (node: TipTapNode): void => {
+    if (node.type === 'fileAttachment') {
+      const attrs = node.attrs ?? {}
+      const displayName = typeof attrs.displayName === 'string'
+        ? attrs.displayName
+        : typeof attrs.fileName === 'string' ? attrs.fileName : undefined
+      node.attrs = {
+        ...(attrs.nodeId === undefined ? {} : { nodeId: attrs.nodeId }),
+        assetId: attrs.assetId,
+        ...(displayName ? { displayName } : {}),
       }
     }
+    node.content?.forEach(visit)
   }
-  const remaining = [...byId.values()].sort(
-    (a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt),
-  )
-  const rootOrder = entries.filter((entry) => entry.parentId === null).length
-  remaining.forEach((document, index) => entries.push({
-    kind: 'content',
-    id: document.id,
-    contentType: document.type === 'drawing' ? 'canvas' : 'document',
-    title: document.title,
-    parentId: null,
-    order: rootOrder + index,
-    createdAt: document.createdAt,
-    metadataUpdatedAt: document.updatedAt,
-  }))
-  return validateAndNormalizeTree({ schemaVersion: 2, entries })
+  visit(result)
+  assertTipTapDocument(result)
+  return result
+}
+
+function repairLegacyTaskListWrapper(document: TipTapDocument): {
+  document: TipTapDocument
+  repaired: boolean
+} {
+  const result = cloneJson(document)
+  let repaired = false
+  const visit = (node: TipTapNode): void => {
+    if (!node.content) return
+    const next: TipTapNode[] = []
+    for (const child of node.content) {
+      if (
+        child.type === 'paragraph' && child.content?.length === 1 &&
+        child.content[0].type === 'taskList'
+      ) {
+        next.push(child.content[0])
+        repaired = true
+      } else {
+        next.push(child)
+      }
+    }
+    node.content = next
+    node.content.forEach(visit)
+  }
+  visit(result)
+  return { document: result, repaired }
+}
+
+function legacyAttachmentMetadata(
+  document: TipTapDocument,
+): Array<{ assetId: string; fileName: string; mimeType?: string; size?: number }> {
+  const result: Array<{ assetId: string; fileName: string; mimeType?: string; size?: number }> = []
+  const visit = (node: TipTapNode): void => {
+    if (node.type === 'fileAttachment') {
+      const attrs = node.attrs ?? {}
+      assertUuid(attrs.nodeId, '旧附件节点 ID')
+      assertUuid(attrs.assetId, '旧附件 ID')
+      const fileName = typeof attrs.fileName === 'string'
+        ? attrs.fileName
+        : typeof attrs.displayName === 'string' ? attrs.displayName : undefined
+      if (!fileName) throw migrationError(`附件 ${attrs.assetId} 缺少文件名`)
+      assertPathSegment(fileName, '附件文件名')
+      result.push({
+        assetId: attrs.assetId,
+        fileName,
+        ...(typeof attrs.mimeType === 'string' ? { mimeType: attrs.mimeType } : {}),
+        ...(typeof attrs.size === 'number' ? { size: attrs.size } : {}),
+      })
+    }
+    node.content?.forEach(visit)
+  }
+  visit(document)
+  return result
 }
 
 export class VaultMigrator {
@@ -458,234 +272,239 @@ export class VaultMigrator {
     private readonly fileSystem: FileSystemApi = nodeFs,
   ) {}
 
-  private async readLegacyVault(vaultId: string): Promise<LegacyVaultData> {
-    assertUuid(vaultId, '知识库 ID')
-    const vaultPath = this.store.paths.vault(vaultId)
-    const metaPath = this.store.paths.legacyMeta(vaultId)
-    let totalBytes = 0
-    const readJson = async (target: string): Promise<unknown> => {
-      const raw = await this.fileSystem.readFile(target, 'utf8')
-      totalBytes += Buffer.byteLength(String(raw))
-      return JSON.parse(String(raw)) as unknown
-    }
-    let meta: LegacyMeta
-    try {
-      meta = asLegacyMeta(await readJson(metaPath), vaultId)
-    } catch (error) {
-      throw migrationError(error instanceof Error ? error.message : '旧版知识库元数据读取失败')
-    }
-
-    let structure: LegacyStructure | null = null
-    const structurePath = resolveInside(vaultPath, 'structure.json')
-    if (await this.store.exists(structurePath)) {
-      try {
-        structure = asLegacyStructure(await readJson(structurePath))
-      } catch (error) {
-        throw migrationError(error instanceof Error ? error.message : '旧版结构读取失败')
-      }
-    }
-
-    const documentsPath = resolveInside(vaultPath, 'documents')
-    const names = await this.fileSystem.readdir(documentsPath) as string[]
-    const documents: LegacyDocument[] = []
-    for (const name of names.filter((item) => item.endsWith('.json'))) {
-      const id = name.slice(0, -'.json'.length)
-      try {
-        assertUuid(id, '旧版文档文件名')
-        documents.push(asLegacyDocument(await readJson(resolveInside(documentsPath, name)), id))
-      } catch (error) {
-        throw migrationError(error instanceof Error ? error.message : '旧版文档读取失败')
-      }
-    }
-    return { meta, structure, documents, totalBytes }
+  private async names(directory: string): Promise<string[]> {
+    try { return await this.fileSystem.readdir(directory) as string[] }
+    catch (error) { if (optionalDirectoryError(error)) return []; throw error }
   }
 
-  async dryRun(vaultId: string): Promise<MigrationInventory> {
-    const inventory: MigrationInventory = {
-      vaultId,
-      sourceVersion: 'unknown',
-      totalBytes: 0,
-      topLevelDocuments: 0,
-      topLevelCanvases: 0,
-      groups: 0,
-      embeddedCanvases: 0,
-      embeddedMindMaps: 0,
-      ownedAssets: 0,
-      ownedAssetBytes: 0,
-      remoteImages: 0,
-      preservedLegacyNodes: 0,
-      issues: [],
-      canMigrate: false,
-    }
-    if (await this.store.exists(this.store.paths.vaultMeta(vaultId))) {
-      inventory.sourceVersion = 2
-      inventory.issues.push({
-        severity: 'warning', code: 'ALREADY_V2', scope: 'vault', message: '知识库已经是版本 2',
-      })
-      return inventory
-    }
-    let legacy: LegacyVaultData
-    try {
-      legacy = await this.readLegacyVault(vaultId)
-      inventory.sourceVersion = 1
-      inventory.totalBytes = legacy.totalBytes
-      inventory.groups = legacy.structure?.entries.filter((entry) => entry.kind === 'group').length ?? 0
-    } catch (error) {
-      inventory.issues.push({
-        severity: 'error', code: 'INVALID_LEGACY_VAULT', scope: 'vault',
-        message: error instanceof Error ? error.message : '旧版知识库读取失败',
-      })
-      return inventory
-    }
+  private async readJson(target: string, label: string): Promise<unknown> {
+    try { return JSON.parse(String(await this.fileSystem.readFile(target, 'utf8'))) as unknown }
+    catch (error) { throw migrationError(`${label}读取失败: ${error instanceof Error ? error.message : '未知错误'}`) }
+  }
 
-    for (const legacyDocument of legacy.documents) {
-      if (legacyDocument.type === 'drawing') {
-        inventory.topLevelCanvases += 1
-        try {
-          normalizeLegacyCanvas(JSON.parse(legacyDocument.content))
-        } catch (error) {
-          inventory.issues.push({
-            severity: 'error', code: 'INVALID_TOP_LEVEL_CANVAS', scope: 'canvas',
-            documentId: legacyDocument.id,
-            message: error instanceof Error ? error.message : '顶层画布无法转换',
-          })
-        }
+  private async readSnapshot(vaultId: string): Promise<V2Snapshot> {
+    assertUuid(vaultId, '知识库 ID')
+    const inventory: MigrationInventory = {
+      vaultId, sourceVersion: 2, documents: 0, canvases: 0, mindMaps: 0,
+      assets: 0, assetBytes: 0, references: 0, issues: [], canMigrate: false,
+    }
+    const metaRaw = await this.readJson(this.store.paths.vaultMeta(vaultId), '版本 2 元数据')
+    assertJsonObject(metaRaw, '版本 2 元数据')
+    if (metaRaw.schemaVersion !== 2) throw migrationError('源知识库不是版本 2')
+    assertUuid(metaRaw.id, '版本 2 知识库 ID')
+    if (metaRaw.id !== vaultId) throw migrationError('版本 2 知识库 ID 不一致')
+    const vault: VaultV2 = {
+      schemaVersion: 2, id: metaRaw.id, name: normalizeName(metaRaw.name),
+      createdAt: timestamp(metaRaw.createdAt, '版本 2 知识库创建时间'),
+    }
+    const { legacy: tree, current: v3Tree } = normalizeV2Tree(
+      await this.readJson(this.store.paths.tree(vaultId), '版本 2 知识库树'),
+    )
+    const documents = new Map<string, TipTapDocument>()
+    const canvases = new Map<string, ExcalidrawScene>()
+    const mindMaps = new Map<string, MindMapData>()
+    const assets = new Map<string, V2Asset>()
+    const idTypes = new Map<string, string>()
+    const addId = (id: string, type: string): void => {
+      const previous = idTypes.get(id)
+      if (previous) throw migrationError(`资源 ID ${id} 同时用于 ${previous} 和 ${type}`)
+      idTypes.set(id, type)
+    }
+    const attachmentMetadata = new Map<string, { fileName: string; mimeType?: string; size?: number }>()
+
+    for (const entry of tree.entries) {
+      if (entry.kind !== 'content') continue
+      addId(entry.id, entry.contentType)
+      if (entry.contentType === 'canvas') {
+        const scene = await this.readJson(
+          resolveInside(this.store.paths.vault(vaultId), 'canvases', `${entry.id}.json`),
+          `画布 ${entry.id}`,
+        )
+        assertExcalidrawScene(scene)
+        canvases.set(entry.id, scene)
         continue
       }
-      inventory.topLevelDocuments += 1
-      try {
-        const converted = await convertLegacyDocument(
-          vaultId, legacyDocument, this.fileSystem,
-        )
-        inventory.embeddedCanvases += converted.canvases.length
-        inventory.embeddedMindMaps += converted.mindMaps.length
-        inventory.ownedAssets += converted.assets.length
-        inventory.ownedAssetBytes += converted.assets.reduce((sum, asset) => sum + asset.bytes.byteLength, 0)
-        inventory.remoteImages += converted.remoteImages
-        inventory.preservedLegacyNodes += converted.preservedLegacyNodes
-        inventory.issues.push(...converted.warnings)
-      } catch (error) {
-        inventory.issues.push({
-          severity: 'error', code: 'INVALID_DOCUMENT', scope: 'document',
-          documentId: legacyDocument.id,
-          message: error instanceof Error ? error.message : '文档无法转换',
+      const documentRoot = resolveInside(this.store.paths.vault(vaultId), 'documents', entry.id)
+      const original = await this.readJson(resolveInside(documentRoot, 'document.json'), `文档 ${entry.id}`)
+      assertJsonObject(original, `文档 ${entry.id}`)
+      const repaired = repairLegacyTaskListWrapper(original as unknown as TipTapDocument)
+      if (repaired.repaired) inventory.issues.push({
+        severity: 'warning', code: 'V2_TASK_LIST_WRAPPER_NORMALIZED', scope: 'document',
+        resourceId: entry.id,
+        message: '已移除旧版本产生的空段落任务列表包装，任务内容和节点 ID 保持不变',
+      })
+      const document = canonicalizeAttachments(repaired.document)
+      documents.set(entry.id, document)
+      for (const attachment of legacyAttachmentMetadata(original as unknown as TipTapDocument)) {
+        const candidate = {
+          fileName: attachment.fileName,
+          mimeType: attachment.mimeType,
+          size: attachment.size,
+        }
+        const previous = attachmentMetadata.get(attachment.assetId)
+        if (previous && JSON.stringify(previous) !== JSON.stringify(candidate)) {
+          throw migrationError(`附件 ${attachment.assetId} 的旧元数据不一致`)
+        }
+        attachmentMetadata.set(attachment.assetId, candidate)
+      }
+      for (const name of await this.names(resolveInside(documentRoot, 'canvases'))) {
+        const match = /^([0-9a-f-]{36})\.json$/i.exec(name)
+        if (!match) throw migrationError(`画布文件名无效: ${name}`)
+        assertUuid(match[1], '画布 ID'); addId(match[1], 'canvas')
+        const value = await this.readJson(resolveInside(documentRoot, 'canvases', name), `画布 ${match[1]}`)
+        assertExcalidrawScene(value); canvases.set(match[1], value)
+      }
+      for (const name of await this.names(resolveInside(documentRoot, 'mindmaps'))) {
+        const match = /^([0-9a-f-]{36})\.json$/i.exec(name)
+        if (!match) throw migrationError(`思维导图文件名无效: ${name}`)
+        assertUuid(match[1], '思维导图 ID'); addId(match[1], 'mindmap')
+        const value = await this.readJson(resolveInside(documentRoot, 'mindmaps', name), `思维导图 ${match[1]}`)
+        assertMindMapData(value); mindMaps.set(match[1], value)
+      }
+      for (const name of await this.names(resolveInside(documentRoot, 'assets'))) {
+        const match = /^([0-9a-f-]{36})\.([a-z0-9]{1,16})$/i.exec(name)
+        if (!match) throw migrationError(`附件文件名无效: ${name}`)
+        const [, id, extensionRaw] = match
+        assertUuid(id, '附件 ID'); addId(id, 'asset')
+        const extension = extensionRaw.toLowerCase()
+        const bytes = new Uint8Array(await this.fileSystem.readFile(
+          resolveInside(documentRoot, 'assets', name),
+        ) as Buffer)
+        const metadata = attachmentMetadata.get(id)
+        if (metadata?.size !== undefined && metadata.size !== bytes.byteLength) {
+          throw migrationError(`附件 ${id} 的旧 size 与实际字节数不一致`)
+        }
+        const fileName = metadata?.fileName ?? `${id}.${extension}`
+        assertPathSegment(fileName, '附件文件名')
+        assets.set(id, {
+          id, extension, fileName,
+          mimeType: metadata?.mimeType ?? EXTENSION_MIMES[extension] ?? 'application/octet-stream',
+          bytes, createdAt: entry.createdAt, updatedAt: entry.metadataUpdatedAt,
         })
       }
     }
-    inventory.canMigrate = !inventory.issues.some((issue) => issue.severity === 'error')
-    return inventory
+
+    const documentIds = new Set(documents.keys())
+    for (const [documentId, document] of documents) {
+      for (const reference of collectDocumentReferences(document)) {
+        inventory.references += 1
+        const exists = reference.type === 'canvas' ? canvases.has(reference.id)
+          : reference.type === 'mindmap' ? mindMaps.has(reference.id) : assets.has(reference.id)
+        if (!exists) throw migrationError(`文档 ${documentId} 引用了不存在的 ${reference.type} ${reference.id}`)
+      }
+      for (const reference of collectInternalDocumentReferences(document)) {
+        if (!documentIds.has(reference.documentId)) {
+          throw migrationError(`文档 ${documentId} 引用了不存在的文档 ${reference.documentId}`)
+        }
+      }
+    }
+    inventory.documents = documents.size
+    inventory.canvases = canvases.size
+    inventory.mindMaps = mindMaps.size
+    inventory.assets = assets.size
+    inventory.assetBytes = [...assets.values()].reduce((sum, asset) => sum + asset.bytes.byteLength, 0)
+    inventory.canMigrate = true
+    return { vault, tree, v3Tree, documents, canvases, mindMaps, assets, inventory }
+  }
+
+  async dryRun(vaultId: string): Promise<MigrationInventory> {
+    try {
+      const raw = await this.readJson(this.store.paths.vaultMeta(vaultId), '知识库元数据')
+      if (isPlainObject(raw) && raw.schemaVersion === 3) {
+        return {
+          vaultId, sourceVersion: 3, documents: 0, canvases: 0, mindMaps: 0,
+          assets: 0, assetBytes: 0, references: 0,
+          issues: [{ severity: 'warning', code: 'ALREADY_V3', scope: 'vault', message: '知识库已经是版本 3' }],
+          canMigrate: false,
+        }
+      }
+      return (await this.readSnapshot(vaultId)).inventory
+    } catch (error) {
+      return {
+        vaultId, sourceVersion: 'unknown', documents: 0, canvases: 0, mindMaps: 0,
+        assets: 0, assetBytes: 0, references: 0,
+        issues: [{
+          severity: 'error', code: 'V2_PREFLIGHT_FAILED', scope: 'vault',
+          message: error instanceof Error ? error.message : '版本 2 预检失败',
+        }],
+        canMigrate: false,
+      }
+    }
   }
 
   async stage(vaultId: string): Promise<StagedMigration> {
-    const inventory = await this.dryRun(vaultId)
-    if (!inventory.canMigrate) throw migrationError('dry-run 未通过，不能构建迁移暂存区')
-    const legacy = await this.readLegacyVault(vaultId)
+    const snapshot = await this.readSnapshot(vaultId)
     const stagePath = this.store.paths.migrationStage(vaultId)
     await this.fileSystem.rm(stagePath, { recursive: true, force: true })
     const stagingStore = new FileKnowledgeStore(this.store.paths.stagingRoot, this.fileSystem)
-    const vault: VaultV2 = {
-      schemaVersion: 2,
-      id: legacy.meta.vault.id,
-      name: legacy.meta.vault.name,
-      createdAt: legacy.meta.vault.createdAt,
+    const vault: VaultV3 = {
+      schemaVersion: 3, formatVersions: { ...VAULT_FORMAT_VERSIONS },
+      id: snapshot.vault.id, name: snapshot.vault.name, createdAt: snapshot.vault.createdAt,
     }
-    const tree = treeFromLegacy(legacy.structure, legacy.documents)
     await stagingStore.writeVault(vault)
-    await stagingStore.writeTree(vaultId, tree)
-
-    for (const legacyDocument of legacy.documents) {
-      if (legacyDocument.type === 'drawing') {
-        const scene = normalizeLegacyCanvas(JSON.parse(legacyDocument.content))
-        await stagingStore.writeCanvas(vaultId, legacyDocument.id, scene)
-        await stagingStore.setMtime(
-          stagingStore.paths.canvasFile(vaultId, legacyDocument.id), legacyDocument.updatedAt,
-        )
-        continue
+    await stagingStore.writeTree(vaultId, snapshot.v3Tree)
+    await stagingStore.initializeAssetManifest(vaultId)
+    for (const [id, document] of snapshot.documents) await stagingStore.writeDocument(vaultId, id, document)
+    for (const [id, canvas] of snapshot.canvases) await stagingStore.writeCanvas(vaultId, id, canvas)
+    for (const [id, mindMap] of snapshot.mindMaps) await stagingStore.writeMindMap(vaultId, id, mindMap)
+    const manifest: AssetManifest = { schemaVersion: 1, assets: {} }
+    for (const [id, asset] of snapshot.assets) {
+      const entry: AssetManifestEntry = {
+        fileName: asset.fileName, extension: asset.extension, mimeType: asset.mimeType,
+        size: asset.bytes.byteLength,
+        sha256: createHash('sha256').update(asset.bytes).digest('hex'),
+        createdAt: asset.createdAt, updatedAt: asset.updatedAt,
       }
-      const converted = await convertLegacyDocument(vaultId, legacyDocument, this.fileSystem)
-      await stagingStore.writeDocument(vaultId, legacyDocument.id, converted.document)
-      for (const canvas of converted.canvases) {
-        await stagingStore.writeCanvas(vaultId, canvas.id, canvas.value, legacyDocument.id)
-      }
-      for (const mindMap of converted.mindMaps) {
-        await stagingStore.writeMindMap(vaultId, legacyDocument.id, mindMap.id, mindMap.value)
-      }
-      for (const asset of converted.assets) {
-        await stagingStore.writeAsset(
-          vaultId, legacyDocument.id, asset.id, asset.extension, asset.bytes,
-        )
-      }
-      await stagingStore.setMtime(
-        stagingStore.paths.documentFile(vaultId, legacyDocument.id), legacyDocument.updatedAt,
+      await stagingStore.atomicWriteFile(
+        stagingStore.paths.assetFile(vaultId, id, asset.extension), asset.bytes,
       )
+      manifest.assets[id] = entry
     }
-    await this.validateStage(vaultId, inventory)
-    await stagingStore.atomicWriteJson(
-      this.store.paths.migrationMarker(vaultId),
-      {
-        schemaVersion: 2,
-        vaultId,
-        completedAt: new Date().toISOString(),
-        counts: {
-          documents: inventory.topLevelDocuments,
-          canvases: inventory.topLevelCanvases,
-          embeddedCanvases: inventory.embeddedCanvases,
-          embeddedMindMaps: inventory.embeddedMindMaps,
-          assets: inventory.ownedAssets,
-        },
+    await stagingStore.writeAssetManifest(vaultId, manifest)
+    await this.validateStage(vaultId, snapshot.inventory)
+    await stagingStore.atomicWriteJson(this.store.paths.migrationMarker(vaultId), {
+      schemaVersion: 3, sourceSchemaVersion: 2, vaultId,
+      completedAt: new Date().toISOString(),
+      counts: {
+        documents: snapshot.inventory.documents, canvases: snapshot.inventory.canvases,
+        mindMaps: snapshot.inventory.mindMaps, assets: snapshot.inventory.assets,
       },
-    )
-    return { vaultId, stagePath, inventory }
+    })
+    return { vaultId, stagePath, inventory: snapshot.inventory }
   }
 
   async validateStage(vaultId: string, expected?: MigrationInventory): Promise<void> {
     const stagingStore = new FileKnowledgeStore(this.store.paths.stagingRoot, this.fileSystem)
-    const vault = await stagingStore.readVault(vaultId)
-    if (vault.id !== vaultId) throw migrationError('暂存知识库 ID 不一致')
+    await stagingStore.readVault(vaultId)
     const tree = await stagingStore.readTree(vaultId)
-    let documents = 0
-    let canvases = 0
-    let embeddedCanvases = 0
-    let embeddedMindMaps = 0
-    let assets = 0
+    const locator = await stagingStore.scanResourceLocator(vaultId)
+    for (const id of locator.documents) await stagingStore.readDocument(vaultId, id)
+    for (const id of locator.canvases) await stagingStore.readCanvas(vaultId, id)
+    for (const id of locator.mindMaps) await stagingStore.readMindMap(vaultId, id)
+    for (const [id, metadata] of locator.assets) {
+      const asset = await stagingStore.readAsset(vaultId, id)
+      if (createHash('sha256').update(asset.bytes).digest('hex') !== metadata.sha256) {
+        throw migrationError(`暂存附件 ${id} 哈希不一致`)
+      }
+    }
     for (const entry of tree.entries) {
       if (entry.kind !== 'content') continue
-      if (entry.contentType === 'canvas') {
-        await stagingStore.readCanvas(vaultId, entry.id)
-        canvases += 1
-        continue
-      }
-      const document = await stagingStore.readDocument(vaultId, entry.id)
-      documents += 1
-      for (const reference of collectDocumentReferences(document)) {
-        assertUuid(reference.id, '文档资源引用 ID')
-        if (reference.type === 'canvas') {
-          await stagingStore.readCanvas(vaultId, reference.id, entry.id)
-          embeddedCanvases += 1
-        } else if (reference.type === 'mindmap') {
-          await stagingStore.readMindMap(vaultId, entry.id, reference.id)
-          embeddedMindMaps += 1
-        } else {
-          await stagingStore.findAsset(vaultId, entry.id, reference.id)
-          assets += 1
-        }
-      }
+      const backing = entry.contentType === 'document' ? locator.documents
+        : entry.contentType === 'canvas' ? locator.canvases : locator.mindMaps
+      if (!backing.has(entry.id)) throw migrationError(`树条目 ${entry.id} 缺少原生资源`)
+    }
+    const integrity = await inspectVaultIntegrity(stagingStore, vaultId, { fullAssetHash: true })
+    if (!integrity.healthy) {
+      throw migrationError('暂存知识库完整性检查失败', integrity.issues as unknown as JsonValue)
     }
     if (expected && (
-      documents !== expected.topLevelDocuments ||
-      canvases !== expected.topLevelCanvases ||
-      embeddedCanvases !== expected.embeddedCanvases ||
-      embeddedMindMaps !== expected.embeddedMindMaps ||
-      assets !== expected.ownedAssets
-    )) {
-      throw migrationError('暂存知识库清单计数不一致')
-    }
+      locator.documents.size !== expected.documents || locator.canvases.size !== expected.canvases ||
+      locator.mindMaps.size !== expected.mindMaps || locator.assets.size !== expected.assets
+    )) throw migrationError('暂存知识库清单计数不一致')
   }
 
   async activate(vaultId: string): Promise<ActivatedMigration> {
-    if (!(await this.store.completedMigrationStage(vaultId))) {
-      throw migrationError('迁移暂存区未完成验证')
-    }
+    if (!(await this.store.completedMigrationStage(vaultId))) throw migrationError('迁移暂存区未完成验证')
     await this.validateStage(vaultId)
     const activePath = this.store.paths.vault(vaultId)
     const stagePath = this.store.paths.migrationStage(vaultId)

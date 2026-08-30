@@ -112,14 +112,32 @@ export interface MindMapData extends JsonObject {
   nodeData: MindMapNodeData
 }
 
-export interface VaultV2 {
-  schemaVersion: 2
+export const VAULT_SCHEMA_VERSION = 3 as const
+export const TREE_SCHEMA_VERSION = 3 as const
+export const ASSET_MANIFEST_SCHEMA_VERSION = 1 as const
+export const VAULT_FORMAT_VERSIONS = {
+  document: 1,
+  canvas: 1,
+  mindmap: 1,
+  assetManifest: 1,
+} as const
+
+export interface VaultFormatVersions {
+  document: 1
+  canvas: 1
+  mindmap: 1
+  assetManifest: 1
+}
+
+export interface VaultV3 {
+  schemaVersion: 3
+  formatVersions: VaultFormatVersions
   id: string
   name: string
   createdAt: string
 }
 
-export interface GroupEntryV2 {
+export interface GroupEntryV3 {
   kind: 'group'
   id: string
   name: string
@@ -127,9 +145,9 @@ export interface GroupEntryV2 {
   order: number
 }
 
-export type ContentType = 'document' | 'canvas'
+export type ContentType = 'document' | 'canvas' | 'mindmap'
 
-export interface ContentEntryV2 {
+export interface ContentEntryV3 {
   kind: 'content'
   id: string
   contentType: ContentType
@@ -137,14 +155,14 @@ export interface ContentEntryV2 {
   parentId: string | null
   order: number
   createdAt: string
-  metadataUpdatedAt: string
+  updatedAt: string
 }
 
-export type TreeEntryV2 = GroupEntryV2 | ContentEntryV2
+export type TreeEntryV3 = GroupEntryV3 | ContentEntryV3
 
-export interface VaultTreeV2 {
-  schemaVersion: 2
-  entries: TreeEntryV2[]
+export interface VaultTreeV3 {
+  schemaVersion: 3
+  entries: TreeEntryV3[]
 }
 
 export interface ContentSummary {
@@ -167,7 +185,12 @@ export interface LoadedCanvas extends ContentSummary {
   content: ExcalidrawScene
 }
 
-export type LoadedContent = LoadedDocument | LoadedCanvas
+export interface LoadedMindMap extends ContentSummary {
+  contentType: 'mindmap'
+  content: MindMapData
+}
+
+export type LoadedContent = LoadedDocument | LoadedCanvas | LoadedMindMap
 
 export type EmbeddedResourceType = 'canvas' | 'mindmap' | 'asset'
 
@@ -186,15 +209,48 @@ export interface InternalDocumentReference {
 export interface FileAttachmentReference {
   assetId: string
   nodeId: string
-  fileName: string
-  mimeType: string
-  size: number
+  displayName?: string
 }
 
-export interface AssetData {
-  id: string
+export interface AssetManifestEntry {
+  fileName: string
+  extension: string
   mimeType: string
+  size: number
+  sha256: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface AssetManifest {
+  schemaVersion: 1
+  assets: Record<string, AssetManifestEntry>
+}
+
+export interface AssetMetadata extends AssetManifestEntry {
+  id: string
+}
+
+export interface AssetData extends AssetMetadata {
   bytes: Uint8Array
+}
+
+export type RendererResourceInsertion =
+  | { resourceType: 'canvas'; resourceId: string; content: ExcalidrawScene }
+  | { resourceType: 'mindmap'; resourceId: string; content: MindMapData }
+  | {
+    resourceType: 'asset'
+    resourceId: string
+    mimeType: string
+    fileName?: string
+    bytes: Uint8Array
+  }
+
+export interface RendererResourceInsertionResult {
+  resourceType: EmbeddedResourceType
+  resourceId: string
+  document: LoadedDocument
+  asset?: AssetMetadata
 }
 
 export interface SearchHit {
@@ -350,12 +406,53 @@ export interface MindMapNodeMove {
   index?: number
 }
 
-export type CanvasResourceLocation =
-  | { scope: 'top-level' }
-  | { scope: 'embedded'; documentId: string }
-
 export interface VaultResourceLocator {
-  canvases: Map<string, CanvasResourceLocation>
-  mindMaps: Map<string, { documentId: string }>
-  assets: Map<string, { documentId: string }>
+  documents: Set<string>
+  canvases: Set<string>
+  mindMaps: Set<string>
+  assets: Map<string, AssetManifestEntry>
+}
+
+export type IntegritySeverity = 'error' | 'warning'
+export type IntegrityIssueCode =
+  | 'MALFORMED_METADATA'
+  | 'UNSUPPORTED_VERSION'
+  | 'INVALID_TREE'
+  | 'INVALID_RESOURCE_NAME'
+  | 'DUPLICATE_RESOURCE_ID'
+  | 'MISSING_BACKING_RESOURCE'
+  | 'INVALID_NATIVE_DATA'
+  | 'MISSING_REFERENCE'
+  | 'UNREFERENCED_RESOURCE'
+  | 'INVALID_ASSET_METADATA'
+  | 'ASSET_SIZE_MISMATCH'
+  | 'ASSET_HASH_MISMATCH'
+  | 'UNMANIFESTED_ASSET'
+  | 'INTERRUPTED_OPERATION'
+  | 'UNKNOWN_STORAGE_ENTRY'
+
+export interface IntegrityIssue {
+  code: IntegrityIssueCode
+  severity: IntegritySeverity
+  message: string
+  relativePath?: string
+  resourceType?: 'document' | 'canvas' | 'mindmap' | 'asset'
+  resourceId?: string
+}
+
+export interface VaultIntegrityCounts {
+  documents: number
+  canvases: number
+  mindmaps: number
+  assets: number
+  references: number
+  unreferencedResources: number
+}
+
+export interface VaultIntegrityReport {
+  vaultId: string
+  healthy: boolean
+  fullAssetHash: boolean
+  counts: VaultIntegrityCounts
+  issues: IntegrityIssue[]
 }

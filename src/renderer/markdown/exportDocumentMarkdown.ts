@@ -1,5 +1,5 @@
 import type { Editor } from '@tiptap/core'
-import type { ExcalidrawScene } from '@shared/knowledge-types'
+import type { ExcalidrawScene, LoadedCanvas } from '@shared/knowledge-types'
 import type {
   MarkdownExportCommitResult,
   MarkdownExportResourceDescriptor,
@@ -28,11 +28,13 @@ async function renderCanvasPng(
   snapshot: MarkdownExportSnapshot,
 ): Promise<MarkdownGeneratedResource> {
   const result = await window.electronAPI.knowledge.getCanvas(
-    snapshot.metadata.vaultId, descriptor.canvasId, snapshot.metadata.documentId,
+    snapshot.metadata.vaultId, descriptor.canvasId,
   )
   if (!result.ok) throw new Error(result.error.message)
-  const value = result.data as ExcalidrawScene | { content: ExcalidrawScene }
-  const scene = 'content' in value ? value.content : value
+  const value = result.data as LoadedCanvas | ExcalidrawScene
+  const scene: ExcalidrawScene = (value as LoadedCanvas).contentType === 'canvas'
+    ? (value as LoadedCanvas).content
+    : value as ExcalidrawScene
   const { exportToBlob } = await import('@excalidraw/excalidraw')
   const blob = await exportToBlob({
     elements: scene.elements as any,
@@ -49,7 +51,7 @@ async function renderMindMapPng(
   snapshot: MarkdownExportSnapshot,
 ): Promise<MarkdownGeneratedResource> {
   const result = await window.electronAPI.knowledge.getMindMap(
-    snapshot.metadata.vaultId, snapshot.metadata.documentId, descriptor.mindmapId,
+    snapshot.metadata.vaultId, descriptor.mindmapId,
   )
   if (!result.ok) throw new Error(result.error.message)
   const blob = await renderMindMapStatic(result.data, 'png')

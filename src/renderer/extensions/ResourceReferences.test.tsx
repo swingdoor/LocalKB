@@ -220,8 +220,8 @@ describe('native resource reference nodes', () => {
       const editor = useEditor({
         extensions: [
           StarterKit,
-          CanvasReference.configure({ vaultId: 'vault-id', documentId: 'document-id' }),
-          MindMapReference.configure({ vaultId: 'vault-id', documentId: 'document-id' }),
+          CanvasReference.configure({ vaultId: 'vault-id' }),
+          MindMapReference.configure({ vaultId: 'vault-id' }),
         ],
         content: {
           type: 'doc',
@@ -270,7 +270,7 @@ describe('native resource reference nodes', () => {
         node={{ attrs: { canvasId: 'canvas-id', width: null, height: null, textAlign: 'left' } }}
         updateAttributes={vi.fn()}
         selected
-        extension={{ options: { vaultId: 'vault-id', documentId: 'document-id', onEdit: vi.fn() } }}
+        extension={{ options: { vaultId: 'vault-id', onEdit: vi.fn() } }}
       />)
       await Promise.resolve()
       await Promise.resolve()
@@ -297,7 +297,7 @@ describe('native resource reference nodes', () => {
         node={{ attrs: { canvasId: 'canvas-id', width: 500, height: 300, textAlign: 'left' } }}
         updateAttributes={vi.fn()}
         selected
-        extension={{ options: { vaultId: 'vault-id', documentId: 'document-id', onEdit: vi.fn() } }}
+        extension={{ options: { vaultId: 'vault-id', onEdit: vi.fn() } }}
       />)
       await Promise.resolve()
       await Promise.resolve()
@@ -329,7 +329,7 @@ describe('native resource reference nodes', () => {
         updateAttributes={updateAttributes}
         selected
         extension={{ options: {
-          vaultId: 'vault-id', documentId: 'document-id', onEdit: vi.fn(), interaction,
+          vaultId: 'vault-id', onEdit: vi.fn(), interaction,
         } }}
       />)
       await Promise.resolve()
@@ -367,7 +367,7 @@ describe('native resource reference nodes', () => {
         node={{ attrs: { mindmapId: 'mindmap-id', width: null, height: null, textAlign: 'left' } }}
         updateAttributes={vi.fn()}
         selected
-        extension={{ options: { vaultId: 'vault-id', documentId: 'document-id', onEdit } }}
+        extension={{ options: { vaultId: 'vault-id', onEdit } }}
       />)
       await Promise.resolve()
       await Promise.resolve()

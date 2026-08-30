@@ -1,7 +1,7 @@
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { ContentSummary, VaultTreeV2, VaultV2 } from '@shared/knowledge-types'
+import { VAULT_FORMAT_VERSIONS, type ContentSummary, type VaultTreeV3, type VaultV3 } from '@shared/knowledge-types'
 import { useAppStore } from '../stores/appStore'
 
 vi.mock('react-arborist', async () => {
@@ -63,8 +63,9 @@ function openMenu(trigger: HTMLElement) {
 }
 
 const timestamp = '2026-01-01T00:00:00.000Z'
-const VAULT: VaultV2 = {
-  schemaVersion: 2,
+const VAULT: VaultV3 = {
+  schemaVersion: 3,
+  formatVersions: VAULT_FORMAT_VERSIONS,
   id: '11111111-1111-4111-8111-111111111111',
   name: '测试库',
   createdAt: timestamp,
@@ -99,7 +100,7 @@ describe('DocumentTree', () => {
       currentVault: VAULT,
       currentContent: null,
       contents: [],
-      structure: { schemaVersion: 2, entries: [] },
+      structure: { schemaVersion: 3, entries: [] },
       structureLoading: false,
       structureError: null,
       expandedGroupIds: [],
@@ -136,12 +137,12 @@ describe('DocumentTree', () => {
     useAppStore.setState({
       contents: [SUMMARY],
       structure: {
-        schemaVersion: 2,
+        schemaVersion: 3,
         entries: [
           { kind: 'group', id: GROUP_ID, name: '项目', parentId: null, order: 0 },
           {
             kind: 'content', id: DOC_ID, contentType: 'document', title: '说明',
-            parentId: GROUP_ID, order: 0, createdAt: timestamp, metadataUpdatedAt: timestamp,
+            parentId: GROUP_ID, order: 0, createdAt: timestamp, updatedAt: timestamp,
           },
         ],
       },
@@ -152,8 +153,8 @@ describe('DocumentTree', () => {
   })
 
   it('shows group creation and maintenance actions in one menu', () => {
-    const structure: VaultTreeV2 = {
-      schemaVersion: 2,
+    const structure: VaultTreeV3 = {
+      schemaVersion: 3,
       entries: [
         { kind: 'group', id: GROUP_ID, name: '项目', parentId: null, order: 0 },
       ],
@@ -169,13 +170,13 @@ describe('DocumentTree', () => {
   })
 
   it('keeps non-empty group deletion visible, focusable, greyed, and explained', () => {
-    const structure: VaultTreeV2 = {
-      schemaVersion: 2,
+    const structure: VaultTreeV3 = {
+      schemaVersion: 3,
       entries: [
         { kind: 'group', id: GROUP_ID, name: '项目', parentId: null, order: 0 },
         {
           kind: 'content', id: DOC_ID, contentType: 'document', title: '说明',
-          parentId: GROUP_ID, order: 0, createdAt: timestamp, metadataUpdatedAt: timestamp,
+          parentId: GROUP_ID, order: 0, createdAt: timestamp, updatedAt: timestamp,
         },
       ],
     }

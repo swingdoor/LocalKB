@@ -237,7 +237,7 @@ describe('TipTap native operations', () => {
         },
         { type: 'fileAttachment', attrs: {
           nodeId: '44444444-4444-4444-8444-444444444444',
-          assetId, fileName: 'notes.txt', mimeType: 'text/plain', size: 12,
+          assetId, displayName: 'notes.txt',
         } },
         {
           type: 'details', attrs: { nodeId: '55555555-5555-4555-8555-555555555555' },
@@ -255,7 +255,7 @@ describe('TipTap native operations', () => {
     }])
     expect(collectFileAttachmentReferences(value)).toEqual([{
       assetId, nodeId: '44444444-4444-4444-8444-444444444444',
-      fileName: 'notes.txt', mimeType: 'text/plain', size: 12,
+      displayName: 'notes.txt',
     }])
     expect(collectDocumentReferences(value)).toEqual([{
       type: 'asset', id: assetId, nodeId: '44444444-4444-4444-8444-444444444444',
@@ -274,10 +274,37 @@ describe('TipTap native operations', () => {
     })).toThrow(/detailsSummary/)
     expect(() => assertTipTapDocument({
       type: 'doc', content: [{ type: 'fileAttachment', attrs: {
+        nodeId: '44444444-4444-4444-8444-444444444444',
         assetId: '22222222-2222-4222-8222-222222222222',
         fileName: '../escape.txt', mimeType: 'text/plain', size: 1,
       } }],
     })).toThrow(/fileName/)
+
+    expect(() => assertTipTapDocument({
+      type: 'doc', content: [{ type: 'image', attrs: {
+        nodeId: NODE_A, src: 'file:///Users/example/private.png',
+      } }],
+    })).toThrow(/https|data:image/)
+    expect(() => assertTipTapDocument({
+      type: 'doc', content: [{ type: 'image', attrs: {
+        nodeId: NODE_A, src: '../private.png',
+      } }],
+    })).toThrow(/https|data:image/)
+    expect(() => assertTipTapDocument({
+      type: 'doc', content: [{ type: 'image', attrs: {
+        nodeId: NODE_A, src: 'data:image/tiff;base64,AA==',
+      } }],
+    })).toThrow(/https|data:image/)
+    expect(() => assertTipTapDocument({
+      type: 'doc', content: [{ type: 'image', attrs: {
+        nodeId: NODE_A, src: 'data:image/png;base64,not base64',
+      } }],
+    })).toThrow(/https|data:image/)
+    expect(() => assertTipTapDocument({
+      type: 'doc', content: [{ type: 'image', attrs: {
+        nodeId: NODE_A, src: 'data:image/png;base64,AA==',
+      } }],
+    })).not.toThrow()
   })
 
   it('assigns deterministic stable IDs and rejects duplicates', () => {

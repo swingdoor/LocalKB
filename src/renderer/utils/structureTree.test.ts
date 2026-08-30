@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { ContentSummary, VaultTreeV2 } from '@shared/knowledge-types'
+import type { ContentSummary, VaultTreeV3 } from '@shared/knowledge-types'
 import {
   applyOptimisticMove,
   buildTreeData,
@@ -15,18 +15,18 @@ const DOC_A = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
 const CANVAS_B = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd'
 const timestamp = '2026-01-01T00:00:00.000Z'
 
-const structure: VaultTreeV2 = {
-  schemaVersion: 2,
+const structure: VaultTreeV3 = {
+  schemaVersion: 3,
   entries: [
     { kind: 'group', id: GROUP_A, name: '项目', parentId: null, order: 0 },
     { kind: 'group', id: GROUP_B, name: '资料', parentId: GROUP_A, order: 0 },
     {
       kind: 'content', id: DOC_A, contentType: 'document', title: '说明',
-      parentId: GROUP_B, order: 0, createdAt: timestamp, metadataUpdatedAt: timestamp,
+      parentId: GROUP_B, order: 0, createdAt: timestamp, updatedAt: timestamp,
     },
     {
       kind: 'content', id: CANVAS_B, contentType: 'canvas', title: '草图',
-      parentId: null, order: 1, createdAt: timestamp, metadataUpdatedAt: timestamp,
+      parentId: null, order: 1, createdAt: timestamp, updatedAt: timestamp,
     },
   ],
 }
@@ -59,10 +59,10 @@ describe('structure tree adapter', () => {
     expect(getContentBreadcrumb(structure, DOC_A)).toBe('项目 / 资料')
     expect(getContentBreadcrumb(structure, CANVAS_B)).toBe('')
     expect(getAncestorGroupIds({
-      schemaVersion: 2,
+      schemaVersion: 3,
       entries: [{
         kind: 'content', id: DOC_A, contentType: 'document', title: '说明',
-        parentId: GROUP_B, order: 0, createdAt: timestamp, metadataUpdatedAt: timestamp,
+        parentId: GROUP_B, order: 0, createdAt: timestamp, updatedAt: timestamp,
       }],
     }, DOC_A)).toEqual([])
   })
@@ -91,6 +91,6 @@ describe('structure tree adapter', () => {
       .filter((entry) => entry.parentId === GROUP_B)
       .sort((a, b) => a.order - b.order)
     expect(children.map((entry) => entry.id)).toEqual([CANVAS_B, DOC_A])
-    expect(next.schemaVersion).toBe(2)
+    expect(next.schemaVersion).toBe(3)
   })
 })

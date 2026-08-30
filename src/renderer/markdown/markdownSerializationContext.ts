@@ -2,6 +2,7 @@ import type {
   MarkdownExportManifest,
   MarkdownExportManifestEntry,
 } from '@shared/markdown-export-types'
+import type { JSONContent } from '@tiptap/core'
 import {
   encodeMarkdownRelativePath,
   escapeMarkdownLabel,

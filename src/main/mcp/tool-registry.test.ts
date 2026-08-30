@@ -246,7 +246,7 @@ describe('MCP domain tools', () => {
     await run('mindmap_remove', { vaultId: vault.id, mindMapId: map.id })
 
     const asset = await run('asset_import', {
-      vaultId: vault.id, documentId: document.id, mimeType: 'image/png', dataBase64: 'AQID',
+      vaultId: vault.id, mimeType: 'image/png', dataBase64: 'AQID',
     }) as { id: string }
     expect(await run('asset_get', { vaultId: vault.id, assetId: asset.id, includeData: true }))
       .toMatchObject({ assetId: asset.id, byteLength: 3, dataBase64: 'AQID' })
@@ -262,7 +262,7 @@ describe('MCP domain tools', () => {
       vaultId: vault.id, entry: { kind: 'document', title: 'Target' },
     }) as { id: string }
     const asset = await run('asset_import', {
-      vaultId: vault.id, documentId: source.id, mimeType: 'text/plain',
+      vaultId: vault.id, mimeType: 'text/plain',
       fileName: 'notes.txt', dataBase64: 'AQID',
     }) as { id: string; byteLength: number; mimeType: string; fileName: string }
     expect(asset).toMatchObject({ byteLength: 3, mimeType: 'text/plain', fileName: 'notes.txt' })
@@ -273,7 +273,7 @@ describe('MCP domain tools', () => {
           type: 'documentReference', attrs: { documentId: target.id, label: 'Target' },
         }] },
         { type: 'fileAttachment', attrs: {
-          assetId: asset.id, fileName: asset.fileName, mimeType: asset.mimeType, size: asset.byteLength,
+          assetId: asset.id, displayName: asset.fileName,
         } },
       ],
     })
@@ -289,29 +289,29 @@ describe('MCP domain tools', () => {
     await expect(run('asset_remove', { vaultId: vault.id, assetId: asset.id }))
       .rejects.toMatchObject({ code: 'CONFLICT' })
     await expect(run('asset_import', {
-      vaultId: vault.id, documentId: source.id, mimeType: 'text/plain',
+      vaultId: vault.id, mimeType: 'text/plain',
       fileName: '../escape.txt', dataBase64: 'AQID',
     })).rejects.toMatchObject({ code: 'PATH_OUTSIDE_VAULT' })
   })
 
-  it('rejects malformed, ownerless, referenced, and cross-vault asset operations', async () => {
+  it('rejects malformed, owner-scoped, referenced, and cross-vault asset operations', async () => {
     const first = await run('vault_create', { name: 'First' }) as { id: string }
     const second = await run('vault_create', { name: 'Second' }) as { id: string }
     const document = await run('tree_insert', {
       vaultId: first.id, entry: { kind: 'document', title: 'Note' },
     }) as { id: string }
     await expect(run('asset_import', {
-      vaultId: first.id, documentId: document.id, mimeType: 'image/png', dataBase64: 'not-base64!',
+      vaultId: first.id, mimeType: 'image/png', dataBase64: 'not-base64!',
     })).rejects.toMatchObject({ code: 'INVALID_INPUT' })
     const oversized = Buffer.alloc(16 * 1024 * 1024 + 1).toString('base64')
     await expect(run('asset_import', {
-      vaultId: first.id, documentId: document.id, mimeType: 'image/png', dataBase64: oversized,
+      vaultId: first.id, mimeType: 'image/png', dataBase64: oversized,
     })).rejects.toMatchObject({ code: 'INVALID_INPUT' })
-    await expect(run('asset_import', {
+    expect(tools.get('asset_import')!.inputSchema.safeParse({
       vaultId: first.id, documentId: NODE_ID, mimeType: 'image/png', dataBase64: 'AQID',
-    })).rejects.toMatchObject({ code: 'NOT_FOUND' })
+    }).success).toBe(false)
     const asset = await run('asset_import', {
-      vaultId: first.id, documentId: document.id, mimeType: 'image/png', dataBase64: 'AQID',
+      vaultId: first.id, mimeType: 'image/png', dataBase64: 'AQID',
     }) as { id: string }
     await expect(run('asset_get', { vaultId: second.id, assetId: asset.id }))
       .rejects.toMatchObject({ code: 'NOT_FOUND' })

@@ -10,6 +10,7 @@ import { handleKnowledgeResourceRequest } from './knowledge/knowledge-resource-p
 import { migrateLegacyVaultsAtStartup } from './knowledge/startup-migration'
 import { McpHttpService } from './mcp/http-service'
 import { McpManager } from './mcp/manager'
+import { SettingsStoreError, settingsStore } from './settings-store'
 
 let mainWindow: BrowserWindow | null = null
 let knowledgeService: KnowledgeService | null = null
@@ -155,6 +156,7 @@ function createWindow() {
 }
 
 app.whenReady().then(async () => {
+  await settingsStore.initialize()
   const storage = new FileKnowledgeStore(path.join(app.getPath('userData'), 'data'))
   await storage.ensureLayout()
   await migrateLegacyVaultsAtStartup(storage, ({ vaultId, backupPath }) => {
@@ -164,18 +166,18 @@ app.whenReady().then(async () => {
     console.error('Knowledge operation failed', entry)
   })
   registerKnowledgeIpc(knowledgeService, ipcMain, () => mainWindow?.webContents, {
-    open: async ({ vaultId, documentId, assetId }) => {
-      const assetPath = await knowledgeService!.getAssetPath(vaultId, documentId, assetId)
+    open: async ({ vaultId, assetId }) => {
+      const assetPath = await knowledgeService!.getAssetPath(vaultId, assetId)
       const error = await shell.openPath(assetPath)
       if (error) throw new KnowledgeError('PERSISTENCE_ERROR', `无法打开附件：${error}`)
     },
-    saveAs: async ({ vaultId, documentId, assetId, fileName }) => {
+    saveAs: async ({ vaultId, assetId, fileName }) => {
       const owner = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined
       const result = owner
         ? await dialog.showSaveDialog(owner, { defaultPath: fileName })
         : await dialog.showSaveDialog({ defaultPath: fileName })
       if (result.canceled || !result.filePath) return false
-      const asset = await knowledgeService!.readAsset(vaultId, documentId, assetId)
+      const asset = await knowledgeService!.readAsset(vaultId, assetId)
       await fs.writeFile(result.filePath, asset.bytes)
       return true
     },
@@ -212,6 +214,16 @@ app.whenReady().then(async () => {
       createWindow()
     }
   })
+}).catch((error) => {
+  const message = error instanceof SettingsStoreError
+    ? error.message
+    : error instanceof Error ? error.message : '应用初始化失败'
+  console.error('Application initialization failed', {
+    code: error instanceof SettingsStoreError ? error.code : 'STARTUP_ERROR',
+    name: error instanceof Error ? error.name : 'UnknownError',
+  })
+  dialog.showErrorBox('极简笔记无法启动', message)
+  app.quit()
 })
 
 app.on('window-all-closed', () => {

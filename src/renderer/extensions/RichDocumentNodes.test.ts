@@ -28,8 +28,7 @@ describe('rich document Tiptap extensions', () => {
             } },
           ] },
           { type: 'fileAttachment', attrs: {
-            assetId: '22222222-2222-4222-8222-222222222222', fileName: 'notes.txt',
-            mimeType: 'text/plain', size: 3,
+            assetId: '22222222-2222-4222-8222-222222222222', displayName: 'notes.txt',
           } },
           { type: 'details', content: [
             { type: 'detailsSummary', content: [{ type: 'text', text: 'Summary' }] },
@@ -49,7 +48,7 @@ describe('rich document Tiptap extensions', () => {
     expect(editor.schema.nodes.fileAttachment.spec.atom).toBe(true)
     expect(editor.schema.nodes.details.spec.content).toBe('detailsSummary detailsContent')
     expect(editor.getHTML()).toContain('data-document-id="11111111-1111-4111-8111-111111111111"')
-    expect(editor.getHTML()).toContain('data-file-name="notes.txt"')
+    expect(editor.getHTML()).toContain('data-display-name="notes.txt"')
     editor.destroy()
   })
 })

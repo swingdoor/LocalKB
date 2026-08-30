@@ -10,7 +10,6 @@ interface ImageMenuProps {
   editor: Editor
   interaction: EditorInteractionCoordinator
   vaultId: string
-  documentId: string
 }
 
 function AltEditor({
@@ -103,7 +102,7 @@ export function ImageMenu({ editor, interaction }: ImageMenuProps) {
   )
 }
 
-export function AssetImageMenu({ editor, interaction, vaultId, documentId }: ImageMenuProps) {
+export function AssetImageMenu({ editor, interaction, vaultId }: ImageMenuProps) {
   const [editingAlt, setEditingAlt] = useState(false)
   const snapshot = useSelectedNodeSnapshot(editor, 'assetImage')
   const target = snapshot?.target ?? null
@@ -126,7 +125,7 @@ export function AssetImageMenu({ editor, interaction, vaultId, documentId }: Ima
       const match = image.data.match(/^data:([^;]+);base64,(.+)$/)
       if (!match) return
       const bytes = Uint8Array.from(atob(match[2]), (character) => character.charCodeAt(0))
-      const result = await window.electronAPI.knowledge.importAsset(vaultId, documentId, match[1], bytes, image.name)
+      const result = await window.electronAPI.knowledge.importAsset(vaultId, match[1], bytes, image.name)
       if (result.ok) nextAttrs = { assetId: result.data.id, alt: image.name ?? attrs?.alt }
     } finally {
       interaction.setModalOpen('replace-asset-image', false)
@@ -152,7 +151,7 @@ export function AssetImageMenu({ editor, interaction, vaultId, documentId }: Ima
             <MenuButton
               label="另存为"
               onClick={() => void window.electronAPI.knowledge.saveAssetAs(
-                vaultId, documentId, String(attrs.assetId), String(attrs.alt ?? 'image.png'),
+                vaultId, String(attrs.assetId), String(attrs.alt ?? 'image.png'),
               )}
             ><Download className="h-4 w-4" /></MenuButton>
           )}

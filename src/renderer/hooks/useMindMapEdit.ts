@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react'
 import type { Editor } from '@tiptap/react'
 import type { MindMapData } from '@shared/knowledge-types'
+import { insertManagedResourceReference } from '../editor/insertManagedResource'
 
 interface EditingMindMap {
   id: string | null
@@ -18,19 +19,19 @@ export function useMindMapEdit(editor: Editor | null, vaultId: string, documentI
 
   const handleEditMindMap = useCallback(async (mindmapId: string) => {
     setEditingMindMap({ id: mindmapId, data: null, loading: true, error: null })
-    const result = await window.electronAPI.knowledge.getMindMap(vaultId, documentId, mindmapId)
+    const result = await window.electronAPI.knowledge.getMindMap(vaultId, mindmapId)
     if (!result.ok) {
       setEditingMindMap({ id: mindmapId, data: null, loading: false, error: result.error.message })
       return
     }
     setEditingMindMap({ id: mindmapId, data: result.data, loading: false, error: null })
-  }, [documentId, vaultId])
+  }, [vaultId])
 
   const handleSaveMindMap = useCallback(async (content: MindMapData) => {
     if (!editor || !editingMindMap) return
     if (editingMindMap.id) {
       const result = await window.electronAPI.knowledge.replaceMindMap(
-        vaultId, documentId, editingMindMap.id, content,
+        vaultId, editingMindMap.id, content,
       )
       if (!result.ok) {
         setEditingMindMap((current) => current ? { ...current, error: result.error.message } : null)
@@ -38,20 +39,22 @@ export function useMindMapEdit(editor: Editor | null, vaultId: string, documentI
       }
       setEditingMindMap((current) => current?.error ? { ...current, error: null } : current)
     } else {
-      const result = await window.electronAPI.knowledge.createMindMap(vaultId, documentId, content)
+      const resourceId = crypto.randomUUID()
+      const result = await insertManagedResourceReference(
+        editor.view,
+        vaultId,
+        documentId,
+        { resourceType: 'mindmap', resourceId, content },
+        'mindmapReference',
+        { mindmapId: resourceId, width: null, textAlign: 'left' },
+      )
       if (!result.ok) {
         setEditingMindMap((current) => current ? { ...current, error: result.error.message } : null)
         throw new Error(result.error.message)
       }
-      // The document selection is preserved while the modal is open; inserting
-      // must not steal focus from the active mind-map action.
-      editor.chain().insertContent({
-        type: 'mindmapReference',
-        attrs: { mindmapId: result.data.id, width: null, textAlign: 'left' },
-      }).run()
       // Keep the current editor instance alive. Its native data is the draft
       // source of truth; only adopt the newly allocated resource ID here.
-      setEditingMindMap((current) => current ? { ...current, id: result.data.id, error: null } : null)
+      setEditingMindMap((current) => current ? { ...current, id: resourceId, error: null } : null)
     }
   }, [documentId, editingMindMap, editor, vaultId])
 

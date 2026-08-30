@@ -38,7 +38,7 @@ function ResourceEditor({ withMenu = false }: { withMenu?: boolean }) {
   const editor = useEditor({
     extensions: [
       StarterKit,
-      CanvasReference.configure({ vaultId: 'vault-id', documentId: 'document-id' }),
+      CanvasReference.configure({ vaultId: 'vault-id' }),
     ],
     content: {
       type: 'doc',
@@ -59,12 +59,11 @@ function ResourceEditor({ withMenu = false }: { withMenu?: boolean }) {
           editor={editor}
           interaction={interaction}
           vaultId="vault-id"
-          documentId="document-id"
           onEdit={() => undefined}
         />
       )}
       <EditorContent editor={editor} />
-      {editor && <EditorBlockDragHandle editor={editor} interaction={interaction} />}
+      {editor && <EditorBlockDragHandle editor={editor} />}
     </>
   )
 }

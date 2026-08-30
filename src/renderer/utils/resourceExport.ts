@@ -54,11 +54,10 @@ function fitSvgInResourceFrame(element: HTMLElement, svg: SVGElement): void {
 async function resolveCanvas(
   element: HTMLElement,
   vaultId: string,
-  documentId: string,
 ): Promise<void> {
   const canvasId = element.dataset.canvasId
   if (!canvasId) { element.replaceWith(placeholder('画布引用无效')); return }
-  const result = await window.electronAPI.knowledge.getCanvas(vaultId, canvasId, documentId)
+  const result = await window.electronAPI.knowledge.getCanvas(vaultId, canvasId)
   if (!result.ok) { element.replaceWith(placeholder('画布资源不可用')); return }
   try {
     const { exportToSvg } = await import('@excalidraw/excalidraw')
@@ -78,16 +77,15 @@ async function resolveCanvas(
 async function resolveMindMap(
   element: HTMLElement,
   vaultId: string,
-  documentId: string,
 ): Promise<void> {
   const mindmapId = element.dataset.mindmapId
   if (!mindmapId) { element.replaceWith(placeholder('思维导图引用无效')); return }
-  const result = await window.electronAPI.knowledge.getMindMap(vaultId, documentId, mindmapId)
+  const result = await window.electronAPI.knowledge.getMindMap(vaultId, mindmapId)
   if (!result.ok) { element.replaceWith(placeholder('思维导图资源不可用')); return }
   try {
     const blob = await renderMindMapStatic(result.data, 'svg')
     const svg = new DOMParser().parseFromString(await blob.text(), 'image/svg+xml').documentElement
-    fitSvgInResourceFrame(element, document.importNode(svg, true))
+    fitSvgInResourceFrame(element, document.importNode(svg, true) as unknown as SVGElement)
   } catch {
     element.replaceWith(placeholder('思维导图预览生成失败'))
   }
@@ -96,12 +94,11 @@ async function resolveMindMap(
 async function resolveAsset(
   element: HTMLImageElement,
   vaultId: string,
-  documentId: string,
 ): Promise<void> {
   const assetId = element.dataset.assetId
   if (!assetId) { element.replaceWith(placeholder('图片引用无效')); return }
   try {
-    const url = `localkb-resource://asset/${encodeURIComponent(vaultId)}/${encodeURIComponent(documentId)}/${encodeURIComponent(assetId)}`
+    const url = `localkb-resource://asset/${encodeURIComponent(vaultId)}/${encodeURIComponent(assetId)}`
     const response = await fetch(url)
     if (!response.ok) throw new Error('图片资源不可用')
     element.src = await blobToDataUrl(await response.blob())
@@ -128,17 +125,16 @@ function resolveFileAttachment(element: HTMLElement): void {
 export async function resolveResourceReferencesForExport(
   html: string,
   vaultId: string,
-  documentId: string,
 ): Promise<string> {
   const container = document.createElement('div')
   container.innerHTML = html
   await Promise.all([
     ...[...container.querySelectorAll<HTMLElement>('[data-canvas-reference]')]
-      .map((element) => resolveCanvas(element, vaultId, documentId)),
+      .map((element) => resolveCanvas(element, vaultId)),
     ...[...container.querySelectorAll<HTMLElement>('[data-mindmap-reference]')]
-      .map((element) => resolveMindMap(element, vaultId, documentId)),
+      .map((element) => resolveMindMap(element, vaultId)),
     ...[...container.querySelectorAll<HTMLImageElement>('img[data-asset-image]')]
-      .map((element) => resolveAsset(element, vaultId, documentId)),
+      .map((element) => resolveAsset(element, vaultId)),
     ...[...container.querySelectorAll<HTMLElement>('[data-document-reference]')]
       .map((element) => resolveDocumentReference(element, vaultId)),
   ])

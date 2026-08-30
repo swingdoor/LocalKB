@@ -35,9 +35,7 @@ export interface MarkdownExportAssetImageDescriptor extends MarkdownExportResour
 export interface MarkdownExportAttachmentDescriptor extends MarkdownExportResourceDescriptorBase {
   kind: 'attachment'
   assetId: string
-  fileName: string
-  mimeType: string
-  size: number
+  displayName?: string
 }
 
 export interface MarkdownExportDocumentReferenceDescriptor extends MarkdownExportResourceDescriptorBase {

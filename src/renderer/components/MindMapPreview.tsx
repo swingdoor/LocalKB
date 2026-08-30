@@ -14,7 +14,6 @@ function clampZoom(value: number): number {
 
 interface MindMapPreviewProps {
   vaultId: string
-  documentId: string
   mindmapId: string
   selected: boolean
   interaction?: EditorInteractionCoordinator
@@ -23,7 +22,7 @@ interface MindMapPreviewProps {
 }
 
 export default function MindMapPreview({
-  vaultId, documentId, mindmapId, selected, interaction, editorDom, fitRef,
+  vaultId, mindmapId, selected, interaction, editorDom, fitRef,
 }: MindMapPreviewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const surfaceRef = useRef<MindMapSurface | null>(null)
@@ -98,7 +97,7 @@ export default function MindMapPreview({
     surfaceRef.current = null
 
     void (async () => {
-      const result = await window.electronAPI.knowledge.getMindMap(vaultId, documentId, mindmapId)
+      const result = await window.electronAPI.knowledge.getMindMap(vaultId, mindmapId)
       if (cancelled) return
       if (!result.ok) { setStatus(result.error.code === 'NOT_FOUND' ? 'missing' : 'error'); return }
       const container = containerRef.current
@@ -122,7 +121,7 @@ export default function MindMapPreview({
       surfaceRef.current?.dispose()
       surfaceRef.current = null
     }
-  }, [documentId, handleWheel, mindmapId, revision, scheduleFit, vaultId])
+  }, [handleWheel, mindmapId, revision, scheduleFit, vaultId])
 
   useEffect(() => {
     const container = containerRef.current

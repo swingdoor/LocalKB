@@ -3,7 +3,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAppStore } from './stores/appStore'
 import { registerPendingSaveFlusher } from './utils/pendingSaveCoordinator'
-import type { KnowledgeChangeEvent } from '@shared/knowledge-types'
+import { VAULT_FORMAT_VERSIONS, type KnowledgeChangeEvent } from '@shared/knowledge-types'
 
 vi.mock('./components/TitleBar', () => ({ default: () => null }))
 vi.mock('./components/Sidebar', () => ({ default: () => <aside>导航</aside> }))
@@ -57,7 +57,7 @@ describe('content workspace state', () => {
       },
     } as any
     useAppStore.setState({
-      currentVault: { schemaVersion: 2, id: 'vault', name: '知识库', createdAt: '' },
+      currentVault: { schemaVersion: 3, formatVersions: VAULT_FORMAT_VERSIONS, id: 'vault', name: '知识库', createdAt: '' },
       selectedContent: selection,
       currentContent: null,
       contentLoading: false,
@@ -113,7 +113,7 @@ describe('content workspace state', () => {
         contentLoading: false,
         selectedContent: null,
         currentContent: null,
-        currentVault: { schemaVersion: 2, id: 'vault', name: '知识库', createdAt: '' },
+        currentVault: { schemaVersion: 3, formatVersions: VAULT_FORMAT_VERSIONS, id: 'vault', name: '知识库', createdAt: '' },
       }))
     expect(container.textContent).toContain('选择或创建一个文档开始编辑')
 

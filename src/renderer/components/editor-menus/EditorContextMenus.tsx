@@ -9,7 +9,6 @@ interface EditorContextMenusProps {
   editor: Editor
   interaction: EditorInteractionCoordinator
   vaultId: string
-  documentId: string
   onEditCanvas: (canvasId: string) => void
   onEditMindMap: (mindmapId: string) => void
   onOpenDocument: (documentId: string) => void
@@ -20,7 +19,7 @@ interface EditorContextMenusProps {
 }
 
 export default function EditorContextMenus(props: EditorContextMenusProps) {
-  const { editor, interaction, vaultId, documentId } = props
+  const { editor, interaction, vaultId } = props
   return (
     <>
       <TextSelectionMenu
@@ -30,8 +29,8 @@ export default function EditorContextMenus(props: EditorContextMenusProps) {
         onExpand={props.onExpand}
         onCustom={props.onCustom}
       />
-      <ImageMenu editor={editor} interaction={interaction} vaultId={vaultId} documentId={documentId} />
-      <AssetImageMenu editor={editor} interaction={interaction} vaultId={vaultId} documentId={documentId} />
+      <ImageMenu editor={editor} interaction={interaction} vaultId={vaultId} />
+      <AssetImageMenu editor={editor} interaction={interaction} vaultId={vaultId} />
       <AttachmentMenu editor={editor} interaction={interaction} />
       <DocumentReferenceMenu
         editor={editor}
@@ -43,14 +42,12 @@ export default function EditorContextMenus(props: EditorContextMenusProps) {
         editor={editor}
         interaction={interaction}
         vaultId={vaultId}
-        documentId={documentId}
         onEdit={props.onEditCanvas}
       />
       <MindMapMenu
         editor={editor}
         interaction={interaction}
         vaultId={vaultId}
-        documentId={documentId}
         onEdit={props.onEditMindMap}
       />
     </>

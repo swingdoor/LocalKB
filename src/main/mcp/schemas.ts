@@ -42,7 +42,8 @@ const tipTapMarkSchema = z.object({
 const TIPTAP_NODE_GUIDE = [
   '原生 TipTap 节点。doc/blockquote/tableCell/tableHeader 包含块节点；paragraph/heading 只包含 text、hardBreak 或 documentReference。',
   '内部引用：{"type":"documentReference","attrs":{"nodeId":"UUID","documentId":"同库文档 UUID","label":"回退标题"}}。',
-  '附件：先 asset_import，再插入 {"type":"fileAttachment","attrs":{"nodeId":"UUID","assetId":"返回 UUID","fileName":"原文件名","mimeType":"MIME","size":字节数}}。',
+  '附件：先 asset_import，再插入 {"type":"fileAttachment","attrs":{"nodeId":"UUID","assetId":"返回 UUID","displayName":"可选显示名"}}；文件名、MIME、大小和哈希由资产清单维护。',
+  '工作区图片使用 assetImage + assetId；原生 image.src 只允许 https:// 或 data:image，禁止本地路径和 file://。',
   'Details 必须依次包含 detailsSummary(text*) 与 detailsContent(block+)；三类节点都使用 attrs.nodeId。',
   '下划线和高亮写在 text.marks：{"type":"underline"}、{"type":"highlight","attrs":{"color":"#FEF08A"}}。',
   'canvasReference、mindmapReference、assetImage、fileAttachment、documentReference 都不能包含 content。',

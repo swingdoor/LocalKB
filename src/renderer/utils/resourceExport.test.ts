@@ -23,7 +23,7 @@ describe('resource export', () => {
     const html = await resolveResourceReferencesForExport(`
       <div data-canvas-reference data-canvas-id="canvas"></div>
       <div data-mindmap-reference data-mindmap-id="mindmap"></div>
-    `, 'vault', 'document')
+    `, 'vault')
 
     expect(html).toContain('画布资源不可用')
     expect(html).toContain('思维导图资源不可用')
@@ -39,7 +39,7 @@ describe('resource export', () => {
       <span data-document-reference data-document-id="target" data-label="旧标题">旧标题</span>
       <div data-file-attachment data-file-name="notes.txt" data-size="3"></div>
       <details><summary>摘要</summary><div>正文</div></details>
-    `, 'vault', 'document')
+    `, 'vault')
 
     expect(html).toContain('文档：目标文档')
     expect(html).toContain('附件：notes.txt（3 字节）')
@@ -54,7 +54,6 @@ describe('resource export', () => {
     const html = await resolveResourceReferencesForExport(
       '<div data-mindmap-reference data-mindmap-id="map" data-width="480" data-height="260" data-text-align="center"></div>',
       'vault',
-      'document',
     )
     expect(html).toContain('<svg')
     expect(html).toContain('data-pdf-resource-frame')
