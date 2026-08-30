@@ -1,7 +1,7 @@
 {
   "name": "jijian-notes",
   "version": "0.9.1",
-  "description": "极简笔记 - 本地知识库笔记软件",
+  "description": "极简笔记（Jijian Notes）- 本地知识库笔记软件",
   "main": "dist/main/main/index.js",
   "scripts": {
     "dev": "concurrently --kill-others-on-fail \"npm run dev:vite\" \"npm run dev:electron\"",
@@ -109,7 +109,7 @@
     "appId": "com.jijian.notes",
     "productName": "极简笔记",
     "directories": {
-      "output": "release"
+      "output": "release/${version}"
     },
     "files": [
       "dist/**/*"

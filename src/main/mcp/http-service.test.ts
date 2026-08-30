@@ -93,7 +93,7 @@ describe('MCP HTTP service', () => {
     })
     expect(response.status).toBe(200)
     const body = await protocolJson(response) as { result?: { serverInfo?: { name?: string } } }
-    expect(body.result?.serverInfo?.name).toBe('localkb')
+    expect(body.result?.serverInfo?.name).toBe('jijian-notes')
 
     const list = await fetch(`http://127.0.0.1:${port}/mcp`, {
       method: 'POST',

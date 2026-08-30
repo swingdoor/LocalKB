@@ -124,7 +124,7 @@ export class McpHttpService {
       state: 'starting', port: settings.port, endpoint: `http://${HOST}:${settings.port}/mcp`,
     }
     const handler = createMcpHandler(() => {
-      const server = new McpServer({ name: 'localkb', version: this.appVersion })
+      const server = new McpServer({ name: 'jijian-notes', version: this.appVersion })
       registerMcpTools(server, this.knowledge)
       return server
     }, {
