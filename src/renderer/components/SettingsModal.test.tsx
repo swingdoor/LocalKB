@@ -2,6 +2,7 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { GeneralSettings } from '@shared/types'
+import { useAppStore } from '../stores/appStore'
 import SettingsModal from './SettingsModal'
 
 describe('SettingsModal MCP panel', () => {
@@ -39,9 +40,14 @@ describe('SettingsModal MCP panel', () => {
     saveAI.mockClear()
     saveHotkeys.mockClear()
     onClose.mockClear()
+    useAppStore.setState({
+      generalSettings: { editorFont: 'system', applicationTheme: 'classic' },
+    })
+    document.documentElement.dataset.theme = 'classic'
+    document.documentElement.classList.remove('dark')
     ;(window as any).electronAPI = {
       settings: {
-        getGeneral: vi.fn(async () => ({ editorFont: 'system' })),
+        getGeneral: vi.fn(async () => ({ editorFont: 'system', applicationTheme: 'classic' })),
         saveGeneral,
         getAI: vi.fn(async () => ({
           provider: 'deepseek', apiKey: 'secret', baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-v4-flash',
@@ -95,7 +101,63 @@ describe('SettingsModal MCP panel', () => {
     await act(async () => Array.from(document.body.querySelectorAll<HTMLButtonElement>('button'))
       .find((button) => button.textContent === '保存')!
       .click())
-    expect(saveGeneral).toHaveBeenCalledWith({ editorFont: 'system' })
+    expect(saveGeneral).toHaveBeenCalledWith({ editorFont: 'system', applicationTheme: 'classic' })
+  })
+
+  it('keeps the three-theme choice as a draft until Save', async () => {
+    await act(async () => root.render(<SettingsModal isOpen onClose={onClose} />))
+    const choices = Array.from(document.body.querySelectorAll<HTMLButtonElement>('[role="radio"]'))
+    expect(choices.map((choice) => choice.getAttribute('aria-label')))
+      .toEqual(['经典主题', '纸张主题', '夜间主题'])
+    expect(choices[0].getAttribute('aria-checked')).toBe('true')
+
+    act(() => choices[2].click())
+    expect(choices[2].getAttribute('aria-checked')).toBe('true')
+    expect(saveGeneral).not.toHaveBeenCalled()
+
+    await act(async () => Array.from(document.body.querySelectorAll<HTMLButtonElement>('button'))
+      .find((button) => button.textContent === '保存')!
+      .click())
+    expect(saveGeneral).toHaveBeenCalledWith({ editorFont: 'system', applicationTheme: 'night' })
+  })
+
+  it('discards an unsaved theme draft when the dialog closes and reopens', async () => {
+    await act(async () => root.render(<SettingsModal isOpen onClose={onClose} />))
+    act(() => document.body.querySelector<HTMLButtonElement>('[aria-label="纸张主题"]')!.click())
+    act(() => document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))
+    expect(saveGeneral).not.toHaveBeenCalled()
+    expect(onClose).toHaveBeenCalled()
+
+    await act(async () => root.render(<SettingsModal isOpen={false} onClose={onClose} />))
+    await act(async () => root.render(<SettingsModal isOpen onClose={onClose} />))
+    expect(document.body.querySelector('[aria-label="经典主题"]')?.getAttribute('aria-checked')).toBe('true')
+  })
+
+  it('loads the persisted theme and exposes keyboard-focusable named choices', async () => {
+    ;(window as any).electronAPI.settings.getGeneral = vi.fn(async () => ({
+      editorFont: 'system', applicationTheme: 'paper',
+    }))
+    await act(async () => root.render(<SettingsModal isOpen onClose={onClose} />))
+    const paper = document.body.querySelector<HTMLButtonElement>('[aria-label="纸张主题"]')!
+    expect(paper.getAttribute('aria-checked')).toBe('true')
+    act(() => paper.focus())
+    expect(document.activeElement).toBe(paper)
+    expect(paper.type).toBe('button')
+  })
+
+  it('reports a save error without changing the active application theme', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    saveGeneral.mockRejectedValueOnce(new Error('保存失败'))
+    await act(async () => root.render(<SettingsModal isOpen onClose={onClose} />))
+    act(() => document.body.querySelector<HTMLButtonElement>('[aria-label="夜间主题"]')!.click())
+    await act(async () => Array.from(document.body.querySelectorAll<HTMLButtonElement>('button'))
+      .find((button) => button.textContent === '保存')!
+      .click())
+
+    expect(document.body.textContent).toContain('设置保存失败，请重试。')
+    expect(useAppStore.getState().generalSettings.applicationTheme).toBe('classic')
+    expect(document.documentElement.dataset.theme).toBe('classic')
+    expect(onClose).not.toHaveBeenCalled()
   })
 
   it('shows the stable URL and applies toggle, refresh, and copy immediately', async () => {

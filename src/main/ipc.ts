@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto'
 import * as fs from 'fs'
 import * as path from 'path'
 import { settingsStore } from './settings-store'
+import { saveGeneralSettingsAndSyncWindow } from './general-settings-window-sync'
 import { describeAIError, generateAIText } from './ai-service'
 import { MarkdownExportService } from './markdown-export-service'
 import { buildPdfHtml, waitForPdfLayout } from './pdf-export'
@@ -303,7 +304,11 @@ export function setupIpcHandlers(mainWindow: BrowserWindow, knowledgeService: Kn
   })
 
   ipcMain.handle(IPC_CHANNELS.SETTINGS.SAVE_GENERAL, async (_, settings: Partial<GeneralSettings>) => {
-    return settingsStore.saveGeneralSettings(settings)
+    return saveGeneralSettingsAndSyncWindow(
+      mainWindow,
+      settings,
+      (patch) => settingsStore.saveGeneralSettings(patch),
+    )
   })
 
   ipcMain.handle(IPC_CHANNELS.SETTINGS.GET_AI, async () => {

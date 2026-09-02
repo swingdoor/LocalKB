@@ -11,6 +11,7 @@ import { migrateLegacyVaultsAtStartup } from './knowledge/startup-migration'
 import { McpHttpService } from './mcp/http-service'
 import { McpManager } from './mcp/manager'
 import { SettingsStoreError, settingsStore } from './settings-store'
+import { getWindowAppearance } from './window-appearance'
 
 let mainWindow: BrowserWindow | null = null
 let knowledgeService: KnowledgeService | null = null
@@ -80,6 +81,8 @@ ipcMain.handle(IPC_CHANNELS.WINDOW.IS_MAXIMIZED, () => {
 
 function createWindow() {
   closeApproved = false
+  const applicationTheme = settingsStore.getGeneralSettings().applicationTheme
+  const appearance = getWindowAppearance(applicationTheme)
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -90,13 +93,9 @@ function createWindow() {
     ...(isMac ? {
       trafficLightPosition: { x: 14, y: 10 }
     } : {
-      titleBarOverlay: {
-        color: '#FFFFFF',
-        symbolColor: '#333333',
-        height: 36
-      }
+      titleBarOverlay: appearance.titleBarOverlay
     }),
-    backgroundColor: '#FFFFFF',
+    backgroundColor: appearance.backgroundColor,
     webPreferences: {
       preload: path.join(__dirname, '../../preload/index.js'),
       contextIsolation: true,
@@ -122,10 +121,12 @@ function createWindow() {
     mainWindow.webContents.on('preload-error', (_event, preloadPath, error) => {
       console.error('[preload error]', { preloadPath, error })
     })
-    mainWindow.loadURL('http://localhost:5180')
+    mainWindow.loadURL(`http://localhost:5180/?theme=${applicationTheme}`)
     mainWindow.webContents.openDevTools()
   } else {
-    mainWindow.loadFile(path.join(__dirname, '../../renderer/index.html'))
+    mainWindow.loadFile(path.join(__dirname, '../../renderer/index.html'), {
+      query: { theme: applicationTheme },
+    })
   }
 
   // 监听窗口状态变化

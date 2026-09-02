@@ -58,7 +58,10 @@ describe('ExcalidrawCanvas', () => {
     mockCanvas.props = null
     onUpdate.mockClear()
     renameContent.mockClear()
-    useAppStore.setState({ renameContent })
+    useAppStore.setState({
+      renameContent,
+      generalSettings: { editorFont: 'system', applicationTheme: 'classic' },
+    })
   })
 
   afterEach(() => {
@@ -98,6 +101,26 @@ describe('ExcalidrawCanvas', () => {
       />)
     })
     expect(mockCanvas.props.initialData).toBe(initialData)
+  })
+
+  it('updates the Excalidraw screen appearance without persisting it into scene data', async () => {
+    await renderCanvas()
+    expect(mockCanvas.props.theme).toBe('light')
+
+    await act(async () => {
+      useAppStore.setState({ generalSettings: { editorFont: 'system', applicationTheme: 'night' } })
+      await Promise.resolve()
+    })
+    expect(mockCanvas.props.theme).toBe('dark')
+
+    await act(async () => {
+      mockCanvas.props.onChange([], { theme: 'dark', viewBackgroundColor: '#fff' }, {})
+      vi.advanceTimersByTime(700)
+      await Promise.resolve()
+    })
+    expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      appState: { viewBackgroundColor: '#fff' },
+    }))
   })
 
   it('shows the renderer error and retries without reloading the application', async () => {

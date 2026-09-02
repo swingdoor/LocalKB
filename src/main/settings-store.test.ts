@@ -65,7 +65,7 @@ describe('settings persistence', () => {
 
     await store.initialize()
     expect(store.getAISettings().apiKey).toBe('plain-api-key')
-    expect(store.getGeneralSettings()).toEqual({ editorFont: 'xiaolai' })
+    expect(store.getGeneralSettings()).toEqual({ editorFont: 'xiaolai', applicationTheme: 'classic' })
     const persisted = JSON.parse(await fs.readFile(settingsFile, 'utf8'))
     expect(persisted.schemaVersion).toBe(1)
     expect(persisted.futureOption).toEqual({ retained: true })
@@ -97,13 +97,30 @@ describe('settings persistence', () => {
     await expect(restarted.initialize()).rejects.toMatchObject({ code: 'UNDECRYPTABLE' })
   })
 
-  it('persists and validates the global editor font', async () => {
+  it('persists and validates global appearance settings', async () => {
     await store.initialize()
-    expect(store.getGeneralSettings()).toEqual({ editorFont: 'system' })
-    expect(await store.saveGeneralSettings({ editorFont: 'xiaolai' }))
-      .toEqual({ editorFont: 'xiaolai' })
-    expect(await store.saveGeneralSettings({ editorFont: 'invalid' as never }))
-      .toEqual({ editorFont: 'system' })
+    expect(store.getGeneralSettings()).toEqual({ editorFont: 'system', applicationTheme: 'classic' })
+
+    for (const applicationTheme of ['classic', 'paper', 'night'] as const) {
+      expect(await store.saveGeneralSettings({ editorFont: 'xiaolai', applicationTheme }))
+        .toEqual({ editorFont: 'xiaolai', applicationTheme })
+      const restarted = new SettingsStore(() => userDataRoot, encryption)
+      await restarted.initialize()
+      expect(restarted.getGeneralSettings()).toEqual({ editorFont: 'xiaolai', applicationTheme })
+    }
+
+    expect(await store.saveGeneralSettings({
+      editorFont: 'invalid' as never,
+      applicationTheme: 'white' as never,
+    })).toEqual({ editorFont: 'system', applicationTheme: 'classic' })
+  })
+
+  it.each(['white', 'warm', 'green', 'future-theme'])('normalizes historical or unknown theme %s', async (applicationTheme) => {
+    const settingsFile = path.join(userDataRoot, 'data', 'settings.json')
+    await fs.mkdir(path.dirname(settingsFile), { recursive: true })
+    await fs.writeFile(settingsFile, JSON.stringify({ general: { applicationTheme } }))
+    await store.initialize()
+    expect(store.getGeneralSettings().applicationTheme).toBe('classic')
   })
 
   it('preserves the last committed settings when atomic rename fails', async () => {
@@ -119,8 +136,9 @@ describe('settings persistence', () => {
     })
     const failingStore = new SettingsStore(() => userDataRoot, encryption, failingFs)
     await failingStore.initialize()
-    await expect(failingStore.saveGeneralSettings({ editorFont: 'xiaolai' }))
+    await expect(failingStore.saveGeneralSettings({ editorFont: 'xiaolai', applicationTheme: 'night' }))
       .rejects.toMatchObject({ code: 'PERSISTENCE_ERROR' })
+    expect(failingStore.getGeneralSettings()).toEqual({ editorFont: 'system', applicationTheme: 'classic' })
     expect(await fs.readFile(settingsFile, 'utf8')).toBe(before)
     expect((await fs.readdir(path.dirname(settingsFile))).filter((name) => name.endsWith('.tmp')))
       .toEqual([])

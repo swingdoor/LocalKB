@@ -8,9 +8,11 @@ import { TransformComponent, TransformWrapper } from 'react-zoom-pan-pinch'
 import type { ReactZoomPanPinchContentRef } from 'react-zoom-pan-pinch'
 import { TIPTAP_REFERENCE_NODE_TYPES } from '@shared/knowledge-types'
 import { renderManifestResourceMarkdown } from '../markdown/markdownSerializationContext'
-import type { ExcalidrawScene } from '@shared/knowledge-types'
+import type { ExcalidrawScene, LoadedCanvas } from '@shared/knowledge-types'
 import type { EditorInteractionCoordinator } from '../editor/interactionContext'
 import MindMapPreview from '../components/MindMapPreview'
+import { useAppStore } from '../stores/appStore'
+import { getResourceScreenTheme } from '../resource-screen-theme'
 
 type Alignment = 'left' | 'center' | 'right'
 const MIN_ZOOM = 0.25
@@ -264,6 +266,10 @@ export function CanvasReferenceView({ node, updateAttributes, selected, extensio
   const viewportRef = useRef<HTMLDivElement>(null)
   const transformRef = useRef<ReactZoomPanPinchContentRef | null>(null)
   const manuallyAdjustedRef = useRef(false)
+  const loadedResourceKeyRef = useRef('')
+  const previewUrlRef = useRef<string | null>(null)
+  const applicationTheme = useAppStore((state) => state.generalSettings.applicationTheme)
+  const resourceTheme = getResourceScreenTheme(applicationTheme)
 
   const changeZoom = useCallback((direction: 'in' | 'out') => {
     const transform = transformRef.current
@@ -303,10 +309,15 @@ export function CanvasReferenceView({ node, updateAttributes, selected, extensio
   useEffect(() => {
     let cancelled = false
     let objectUrl: string | null = null
-    setStatus('loading')
-    setPreview(null)
-    setZoom(1)
-    manuallyAdjustedRef.current = false
+    const resourceKey = `${options.vaultId}:${canvasId}:${revision}`
+    const themeOnlyRefresh = loadedResourceKeyRef.current === resourceKey
+    loadedResourceKeyRef.current = resourceKey
+    if (!themeOnlyRefresh) {
+      setStatus('loading')
+      setPreview(null)
+      setZoom(1)
+      manuallyAdjustedRef.current = false
+    }
     void (async () => {
       const result = await window.electronAPI.knowledge.getCanvas(
         options.vaultId, canvasId,
@@ -317,10 +328,15 @@ export function CanvasReferenceView({ node, updateAttributes, selected, extensio
       }
       try {
         const { exportToSvg } = await import('@excalidraw/excalidraw')
-        const scene = result.data as ExcalidrawScene
+        const loaded = result.data as LoadedCanvas | ExcalidrawScene
+        const scene = 'content' in loaded ? loaded.content : loaded
         const svg = await exportToSvg({
           elements: scene.elements as any,
-          appState: { ...scene.appState, exportBackground: false } as any,
+          appState: {
+            ...scene.appState,
+            exportBackground: false,
+            exportWithDarkMode: resourceTheme.excalidrawAppearance === 'dark',
+          } as any,
           files: scene.files as any,
           exportPadding: 20,
         })
@@ -330,8 +346,11 @@ export function CanvasReferenceView({ node, updateAttributes, selected, extensio
         const blob = new Blob([new XMLSerializer().serializeToString(svg)], { type: 'image/svg+xml' })
         objectUrl = URL.createObjectURL(blob)
         if (!cancelled) {
+          const previousUrl = previewUrlRef.current
+          previewUrlRef.current = objectUrl
           setPreview({ url: objectUrl, width: previewWidth, height: previewHeight })
           setStatus('ready')
+          if (previousUrl) URL.revokeObjectURL(previousUrl)
         }
       } catch {
         if (!cancelled) setStatus('error')
@@ -339,9 +358,14 @@ export function CanvasReferenceView({ node, updateAttributes, selected, extensio
     })()
     return () => {
       cancelled = true
-      if (objectUrl) URL.revokeObjectURL(objectUrl)
+      if (objectUrl && previewUrlRef.current !== objectUrl) URL.revokeObjectURL(objectUrl)
     }
-  }, [canvasId, options.vaultId, revision])
+  }, [canvasId, options.vaultId, resourceTheme.excalidrawAppearance, revision])
+
+  useEffect(() => () => {
+    if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current)
+    previewUrlRef.current = null
+  }, [])
 
   useEffect(() => window.electronAPI.knowledge.onChanged((event) => {
     if (event.vaultId === options.vaultId && event.resourceType === 'canvas' &&
@@ -381,12 +405,12 @@ export function CanvasReferenceView({ node, updateAttributes, selected, extensio
       <div
         ref={viewportRef}
         data-resource-viewport=""
+        data-resource-screen-theme={resourceTheme.id}
         className="relative h-full w-full cursor-grab overflow-hidden active:cursor-grabbing"
-        style={{ backgroundColor: 'var(--bg-editor)' }}
+        style={{ backgroundColor: resourceTheme.canvasSurface }}
       >
         {status === 'ready' && preview && (
           <TransformWrapper
-            key={preview.url}
             minScale={0.05}
             maxScale={MAX_ZOOM}
             limitToBounds={false}

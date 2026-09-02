@@ -50,8 +50,11 @@ export interface AttachmentFile {
 
 export type EditorFontId = 'system' | 'kaiti' | 'xiaolai'
 
+export type ApplicationTheme = 'classic' | 'paper' | 'night'
+
 export interface GeneralSettings {
   editorFont: EditorFontId
+  applicationTheme: ApplicationTheme
 }
 
 /**

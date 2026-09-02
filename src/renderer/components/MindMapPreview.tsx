@@ -3,6 +3,8 @@ import { Maximize2, Minus, Plus } from 'lucide-react'
 import type { EditorInteractionCoordinator } from '../editor/interactionContext'
 import { createReadOnlyMindMap, type MindMapSurface } from '../mindmap/mindElixirAdapter'
 import MindMapNoteMarkers from './MindMapNoteMarkers'
+import { useAppStore } from '../stores/appStore'
+import { getResourceScreenTheme } from '../resource-screen-theme'
 
 const MIN_ZOOM = 0.25
 const MAX_ZOOM = 4
@@ -32,6 +34,14 @@ export default function MindMapPreview({
   const [status, setStatus] = useState<'loading' | 'ready' | 'missing' | 'error'>('loading')
   const [revision, setRevision] = useState(0)
   const [zoom, setZoom] = useState(1)
+  const applicationTheme = useAppStore((state) => state.generalSettings.applicationTheme)
+  const applicationThemeRef = useRef(applicationTheme)
+  const resourceTheme = getResourceScreenTheme(applicationTheme)
+  applicationThemeRef.current = applicationTheme
+
+  useEffect(() => {
+    surfaceRef.current?.applyApplicationTheme(applicationTheme)
+  }, [applicationTheme])
 
   const stopPanning = useCallback(() => {
     if (!panningRef.current) return
@@ -103,7 +113,10 @@ export default function MindMapPreview({
       const container = containerRef.current
       if (!container) return
       try {
-        const surface = createReadOnlyMindMap(container, result.data, { handleWheel })
+        const surface = createReadOnlyMindMap(container, result.data, {
+          applicationTheme: applicationThemeRef.current,
+          handleWheel,
+        })
         if (cancelled) { surface.dispose(); return }
         surfaceRef.current = surface
         setStatus('ready')
@@ -148,13 +161,21 @@ export default function MindMapPreview({
   }, [editorDom, mindmapId])
 
   return <>
-    <div ref={containerRef} data-resource-viewport="" data-resource-interactive="true" className="h-full w-full cursor-grab overflow-hidden rounded-[7px] bg-white active:cursor-grabbing" onPointerDownCapture={(event) => {
+    <div
+      ref={containerRef}
+      data-resource-viewport=""
+      data-resource-interactive="true"
+      data-resource-screen-theme={resourceTheme.id}
+      className="h-full w-full cursor-grab overflow-hidden rounded-[7px] active:cursor-grabbing"
+      style={{ backgroundColor: resourceTheme.mindMapSurface }}
+      onPointerDownCapture={(event) => {
       if (event.button !== 0) return
       if ((event.target as Element).closest?.('[data-mindmap-note-control]')) return
       panningRef.current = true
       manuallyAdjustedRef.current = true
       interaction?.beginGesture('resourcePanning', 'mindmapReference')
-    }} />
+      }}
+    />
     {status === 'ready' && <MindMapNoteMarkers instance={surfaceRef.current?.instance ?? null} portalContainer={containerRef.current?.parentElement ?? null} revision={revision} />}
     {status === 'ready' && <div role="toolbar" aria-label="资源预览控制" data-resource-control="" className={`resource-preview-controls absolute right-2 top-2 z-10 flex items-center gap-0.5 rounded-lg p-1 shadow-sm backdrop-blur transition-opacity ${selected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'}`} onMouseDown={(event) => event.stopPropagation()} onDoubleClick={(event) => event.stopPropagation()}>
       <button type="button" aria-label="缩小预览" className="resource-preview-control-button" onClick={() => changeZoom(zoom - ZOOM_STEP)}><Minus size={14} /></button><span className="resource-preview-zoom w-11 text-center text-[11px] tabular-nums" aria-label={`当前缩放 ${Math.round(zoom * 100)}%`}>{Math.round(zoom * 100)}%</span><button type="button" aria-label="放大预览" className="resource-preview-control-button" onClick={() => changeZoom(zoom + ZOOM_STEP)}><Plus size={14} /></button><button type="button" aria-label="适应窗口" className="resource-preview-control-button" onClick={fit}><Maximize2 size={14} /></button>

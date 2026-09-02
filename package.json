@@ -8,6 +8,7 @@
     "dev:vite": "vite",
     "dev:electron": "wait-on http://localhost:5180 && npm run build:main && npm run build:preload && electron .",
     "check:tiptap-versions": "node scripts/check-tiptap-versions.cjs",
+    "check:theme-colors": "node scripts/check-theme-colors.cjs",
     "build": "npm run check:tiptap-versions && npm run build:main && npm run build:preload && vite build",
     "build:main": "tsc -p tsconfig.main.json",
     "build:preload": "node scripts/build-preload.js",

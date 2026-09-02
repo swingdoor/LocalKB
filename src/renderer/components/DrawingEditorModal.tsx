@@ -1,5 +1,7 @@
 import { lazy, Suspense, useCallback, useRef, useState, type ComponentProps } from 'react'
 import type { ExcalidrawScene } from '@shared/knowledge-types'
+import { useAppStore } from '../stores/appStore'
+import { getResourceScreenTheme, preserveExcalidrawContentTheme } from '../resource-screen-theme'
 
 const Excalidraw = lazy(async () => {
   const module = await import('@excalidraw/excalidraw')
@@ -25,6 +27,8 @@ function DrawingEditorModal({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const initial = canvasData ?? emptyScene
+  const applicationTheme = useAppStore((state) => state.generalSettings.applicationTheme)
+  const resourceTheme = getResourceScreenTheme(applicationTheme)
   const dataRef = useRef({
     elements: initial.elements as readonly any[],
     appState: initial.appState as any,
@@ -38,7 +42,12 @@ function DrawingEditorModal({
       const { serializeAsJSON } = await import('@excalidraw/excalidraw')
       const { elements, appState, files } = dataRef.current
       const content = JSON.parse(
-        serializeAsJSON(elements as any, appState, files, 'local'),
+        serializeAsJSON(
+          elements as any,
+          preserveExcalidrawContentTheme(appState, initial.appState as Record<string, unknown>),
+          files,
+          'local',
+        ),
       ) as ExcalidrawScene
       await onSave(content)
     } catch (saveError) {
@@ -50,32 +59,37 @@ function DrawingEditorModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="flex h-[85vh] w-[90vw] flex-col rounded-lg bg-white shadow-2xl">
+      <div className="flex h-[85vh] w-[90vw] flex-col rounded-lg bg-background text-foreground shadow-2xl">
         <div className="flex flex-shrink-0 items-center justify-between border-b border-border px-4 py-3">
           <h3 className="text-lg font-medium">编辑画布</h3>
           <div className="flex items-center gap-2">
-            {(error || resourceError) && <span className="text-sm text-red-500">{error || resourceError}</span>}
+            {(error || resourceError) && <span className="text-sm text-destructive">{error || resourceError}</span>}
             <button
               type="button"
               disabled={saving || loading || !!resourceError}
               onClick={() => void handleSave()}
-              className="rounded-lg bg-primary px-4 py-1.5 text-sm text-white disabled:opacity-50"
+              className="rounded-lg bg-primary px-4 py-1.5 text-sm text-primary-foreground disabled:opacity-50"
             >
               {saving ? '保存中…' : '保存'}
             </button>
-            <button type="button" onClick={onClose} className="rounded-lg bg-gray-100 px-4 py-1.5 text-sm text-gray-600">
+            <button type="button" onClick={onClose} className="rounded-lg bg-muted px-4 py-1.5 text-sm text-muted-foreground">
               取消
             </button>
           </div>
         </div>
         {loading ? (
-          <div className="grid flex-1 place-items-center text-gray-500">正在加载画布…</div>
+          <div className="grid flex-1 place-items-center text-muted-foreground">正在加载画布…</div>
         ) : resourceError ? (
-          <div className="grid flex-1 place-items-center text-red-500">无法加载源画布，请关闭后重试</div>
+          <div className="grid flex-1 place-items-center text-destructive">无法加载源画布，请关闭后重试</div>
         ) : (
-          <Suspense fallback={<div className="grid flex-1 place-items-center text-gray-500">正在启动画布编辑器…</div>}>
-            <div className="relative flex-1">
+          <Suspense fallback={<div className="grid flex-1 place-items-center text-muted-foreground">正在启动画布编辑器…</div>}>
+            <div
+              className="relative flex-1"
+              data-resource-screen-theme={resourceTheme.id}
+              style={{ backgroundColor: resourceTheme.canvasSurface }}
+            >
               <Excalidraw
+                theme={resourceTheme.excalidrawAppearance}
                 initialData={{
                   elements: initial.elements as any,
                   appState: {

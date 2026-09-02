@@ -9,6 +9,7 @@ import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Skeleton } from './ui/skeleton'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
+import { getResourceScreenTheme, preserveExcalidrawContentTheme } from '../resource-screen-theme'
 
 // 初始化 Excalidraw 字体路径（必须在 Excalidraw import 之前完成）
 const fontPathReady = (async () => {
@@ -89,17 +90,25 @@ function ExcalidrawCanvas({ canvas, onUpdate }: ExcalidrawCanvasProps) {
     appState: canvas.content.appState,
     files: canvas.content.files,
   })
+  const persistedAppStateRef = useRef(canvas.content.appState as Record<string, unknown>)
 
   // 画布模式状态
   const [viewModeEnabled, setViewModeEnabled] = useState(false)
   const [zenModeEnabled, setZenModeEnabled] = useState(false)
 
   const renameContent = useAppStore((state) => state.renameContent)
+  const applicationTheme = useAppStore((state) => state.generalSettings.applicationTheme)
+  const resourceTheme = getResourceScreenTheme(applicationTheme)
   const pendingSave = usePendingSave<{ title?: string; scene?: boolean }>(async (patch) => {
     if (patch.scene) {
       const { serializeAsJSON } = await import('@excalidraw/excalidraw')
       const { elements, appState, files } = dataRef.current
-      const serialized = serializeAsJSON(elements, appState, files, 'local')
+      const serialized = serializeAsJSON(
+        elements,
+        preserveExcalidrawContentTheme(appState, persistedAppStateRef.current),
+        files,
+        'local',
+      )
       const saved = await onUpdate(JSON.parse(serialized) as ExcalidrawScene)
       if (!saved) throw new Error('画布保存失败')
     }
@@ -273,9 +282,14 @@ function ExcalidrawCanvas({ canvas, onUpdate }: ExcalidrawCanvasProps) {
       <CanvasErrorBoundary>
         {isReady ? (
           <Suspense fallback={LoadingFallback}>
-            <div className="flex-1 relative">
+            <div
+              className="relative flex-1"
+              data-resource-screen-theme={resourceTheme.id}
+              style={{ backgroundColor: resourceTheme.canvasSurface }}
+            >
               <Excalidraw
                 initialData={initialData}
+                theme={resourceTheme.excalidrawAppearance}
                 onChange={handleChange}
                 excalidrawAPI={handleExcalidrawAPI}
                 langCode="zh-CN"

@@ -44,7 +44,10 @@ describe('appStore v3 knowledge state', () => {
       contentLoading: false, contentError: null,
       structureLoading: false, structureError: null,
       expandedGroupIds: [], revealContentId: null,
+      generalSettings: { editorFont: 'system', applicationTheme: 'classic' },
     })
+    document.documentElement.dataset.theme = 'classic'
+    document.documentElement.classList.remove('dark')
   })
 
   it('applies one move optimistically and rolls back a result failure', async () => {
@@ -65,6 +68,35 @@ describe('appStore v3 knowledge state', () => {
     expect(await pending).toBe(false)
     expect(useAppStore.getState().structure).toEqual(structure)
     expect(useAppStore.getState().structureError).toBe('移动失败')
+  })
+
+  it('keeps General Settings as the only theme state and applies it after loading', async () => {
+    window.electronAPI = { settings: {
+      getGeneral: vi.fn(async () => ({ editorFont: 'kaiti', applicationTheme: 'paper' })),
+    } } as any
+
+    await useAppStore.getState().loadGeneralSettings()
+    expect(useAppStore.getState().generalSettings).toEqual({
+      editorFont: 'kaiti', applicationTheme: 'paper',
+    })
+    expect(document.documentElement.dataset.theme).toBe('paper')
+    expect(document.documentElement.classList.contains('dark')).toBe(false)
+
+    useAppStore.getState().updateGeneralSettings({ editorFont: 'kaiti', applicationTheme: 'night' })
+    expect(useAppStore.getState().generalSettings.applicationTheme).toBe('night')
+    expect(document.documentElement.dataset.theme).toBe('night')
+    expect(document.documentElement.classList.contains('dark')).toBe(true)
+    expect(Object.keys(localStorage).some((key) => key.includes('theme'))).toBe(false)
+  })
+
+  it('does not change the active theme when General Settings loading fails', async () => {
+    window.electronAPI = { settings: {
+      getGeneral: vi.fn(async () => { throw new Error('读取失败') }),
+    } } as any
+
+    await expect(useAppStore.getState().loadGeneralSettings()).rejects.toThrow('读取失败')
+    expect(useAppStore.getState().generalSettings.applicationTheme).toBe('classic')
+    expect(document.documentElement.dataset.theme).toBe('classic')
   })
 
   it('does not apply a completed load from the previously selected vault', async () => {

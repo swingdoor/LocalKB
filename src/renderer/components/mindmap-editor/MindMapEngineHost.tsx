@@ -5,6 +5,7 @@ import {
   createEditableMindMap, selectionFromMindElixir, type MindMapSurface,
 } from '../../mindmap/mindElixirAdapter'
 import type { MindMapSelection } from '../../mindmap/mindMapInteraction'
+import { useAppStore } from '../../stores/appStore'
 
 export interface MindMapEngineEvents {
   onReady: (surface: MindMapSurface) => void
@@ -19,8 +20,16 @@ export interface MindMapEngineEvents {
 
 export function MindMapEngineHost({ data, events }: { data: MindMapData; events: MindMapEngineEvents }) {
   const hostRef = useRef<HTMLDivElement>(null)
+  const surfaceRef = useRef<MindMapSurface | null>(null)
   const eventsRef = useRef(events)
+  const applicationTheme = useAppStore((state) => state.generalSettings.applicationTheme)
+  const applicationThemeRef = useRef(applicationTheme)
   eventsRef.current = events
+  applicationThemeRef.current = applicationTheme
+
+  useEffect(() => {
+    surfaceRef.current?.applyApplicationTheme(applicationTheme)
+  }, [applicationTheme])
 
   useEffect(() => {
     let cancelled = false
@@ -43,6 +52,7 @@ export function MindMapEngineHost({ data, events }: { data: MindMapData; events:
           if (instance) eventsRef.current.onSelection(selectionFromMindElixir(instance))
         }
         surface = createEditableMindMap(host, data, {
+          applicationTheme: applicationThemeRef.current,
           listeners: [
             { type: 'operation', handler: (operation: Operation) => { eventsRef.current.onOperation(operation); eventsRef.current.onVisualChange() } },
             { type: 'selectNewNode', handler: (_node: NodeObj) => syncSelection() },
@@ -60,6 +70,7 @@ export function MindMapEngineHost({ data, events }: { data: MindMapData; events:
             { type: 'expandNode', handler: () => { eventsRef.current.onPersistentCompatibilityChange(); eventsRef.current.onVisualChange() } },
           ],
         })
+        surfaceRef.current = surface
         instance = surface.instance
         frame = requestAnimationFrame(() => {
           frame = requestAnimationFrame(() => {
@@ -81,6 +92,7 @@ export function MindMapEngineHost({ data, events }: { data: MindMapData; events:
       cancelled = true
       cancelAnimationFrame(frame)
       surface?.dispose()
+      surfaceRef.current = null
     }
     // A mounted host represents one open editor session. Data and callback
     // updates must not recreate the native engine during save or UI changes.

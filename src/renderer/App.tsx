@@ -11,6 +11,7 @@ import { loadXiaolaiFont } from './utils/loadFonts'
 import { eventMatchesHotkey, formatHotkeyDisplay } from './utils/hotkeys'
 import type { SearchHit } from '@shared/knowledge-types'
 import { getEditorFont } from '@shared/editor-fonts'
+import { getApplicationTheme } from '@shared/application-themes'
 import {
   discardPendingSaves,
   flushPendingSaves,
@@ -47,7 +48,6 @@ function App() {
     generalSettings,
     hotkeys,
     loadVaults,
-    loadGeneralSettings,
     loadHotkeys,
     selectContent,
     revealContent,
@@ -77,7 +77,6 @@ function App() {
   // 初始化
   useEffect(() => {
     loadVaults()
-    loadGeneralSettings()
     loadHotkeys()
     loadXiaolaiFont()
   }, [])
@@ -292,7 +291,10 @@ function App() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      <Toaster position="bottom-right" />
+      <Toaster
+        position="bottom-right"
+        theme={getApplicationTheme(generalSettings.applicationTheme).appearance}
+      />
     </div>
     </TooltipProvider>
   )

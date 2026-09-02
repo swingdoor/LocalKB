@@ -6,12 +6,15 @@ import { EditorContent, useEditor } from '@tiptap/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { collectDocumentReferences } from '@shared/knowledge-operations'
 import type { TipTapDocument } from '@shared/knowledge-types'
+import { exportToSvg } from '@excalidraw/excalidraw'
 import {
   AssetImage, calculatePreviewFit, CanvasReference, CanvasReferenceView, clampPreviewZoom,
   MindMapReference, MindMapReferenceView, stopInteractiveResourceEvent,
 } from './ResourceReferences'
 import { StableNodeId } from './StableNodeId'
 import { createEditorInteractionCoordinator } from '../editor/interactionContext'
+import { useAppStore } from '../stores/appStore'
+import { JIJIAN_MIND_MAP_SCREEN_THEMES } from '../mindmap/mindElixirTheme'
 
 const mindMock = vi.hoisted(() => ({ instances: [] as any[] }))
 
@@ -42,7 +45,7 @@ vi.mock('mind-elixir', () => ({
       mindMock.instances.push(this)
     }
     init() {}
-    changeTheme() {}
+    changeTheme = vi.fn()
     scaleFit() { this.scaleVal = 0.75 }
     scale(value: number) { this.scaleVal = value }
     destroy() {}
@@ -59,6 +62,7 @@ describe('native resource reference nodes', () => {
     document.body.appendChild(container)
     root = createRoot(container)
     mindMock.instances.length = 0
+    useAppStore.setState({ generalSettings: { editorFont: 'system', applicationTheme: 'classic' } })
     vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
       callback(0)
       return 1
@@ -260,7 +264,12 @@ describe('native resource reference nodes', () => {
   it('provides accessible canvas preview zoom and fit controls', async () => {
     window.electronAPI = { knowledge: {
       getCanvas: vi.fn(async () => ({ ok: true, data: {
-        type: 'excalidraw', version: 2, source: 'test', elements: [], appState: {}, files: {},
+        id: 'canvas-id', contentType: 'canvas', title: '画布', parentId: null, order: 0,
+        createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
+        content: {
+          type: 'excalidraw', version: 2, source: 'test',
+          elements: [{ id: 'shape', type: 'rectangle' }], appState: {}, files: {},
+        },
       } })),
       onChanged: vi.fn(() => () => undefined),
     } } as any
@@ -282,6 +291,20 @@ describe('native resource reference nodes', () => {
     const image = container.querySelector<HTMLImageElement>('img[alt="画布预览"]')!
     expect(image.className).toContain('h-full')
     expect(container.querySelector('[aria-label="适应窗口"]')).not.toBeNull()
+    expect(vi.mocked(exportToSvg)).toHaveBeenCalledWith(expect.objectContaining({
+      elements: [{ id: 'shape', type: 'rectangle' }],
+    }))
+
+    await act(async () => {
+      useAppStore.setState({ generalSettings: { editorFont: 'system', applicationTheme: 'night' } })
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    await flushResourceLoad()
+    expect(vi.mocked(exportToSvg)).toHaveBeenLastCalledWith(expect.objectContaining({
+      appState: expect.objectContaining({ exportBackground: false, exportWithDarkMode: true }),
+    }))
+    expect(container.querySelector('[data-resource-screen-theme="night"]')).not.toBeNull()
   })
 
   it('renders edge-scoped resize handles without a full-window interaction layer', async () => {
@@ -378,6 +401,15 @@ describe('native resource reference nodes', () => {
     expect(container.querySelector<HTMLElement>('[data-resource-viewport]')?.dataset.resourceInteractive).toBe('true')
     expect(container.querySelector('[aria-label="调整预览高度"]')).not.toBeNull()
     expect(container.querySelector('[aria-label="调整预览大小"]')).not.toBeNull()
+    const instance = mindMock.instances[0]
+    expect(instance.options.theme).toBe(JIJIAN_MIND_MAP_SCREEN_THEMES.classic)
+    await act(async () => {
+      useAppStore.setState({ generalSettings: { editorFont: 'system', applicationTheme: 'night' } })
+      await Promise.resolve()
+    })
+    expect(mindMock.instances).toHaveLength(1)
+    expect(instance.changeTheme).toHaveBeenLastCalledWith(JIJIAN_MIND_MAP_SCREEN_THEMES.night, false)
+    expect(container.querySelector('[data-resource-screen-theme="night"]')).not.toBeNull()
     const regularWheel = new WheelEvent('wheel', { cancelable: true, deltaY: 10 })
     act(() => mindMock.instances[0].options.handleWheel(regularWheel))
     expect(regularWheel.defaultPrevented).toBe(false)

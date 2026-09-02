@@ -4,32 +4,11 @@
 
 /* Excalidraw 0.18.0 中文手写字体由库本身处理（使用 Xiaolai 小赖字体作为 CJK fallback） */
 
-/* 单一默认浅色主题；资源预览保留一个编辑器表面变量作为冻结边界桥接。 */
+/* Typography and geometry are theme-independent. Color contracts live with each theme below. */
 :root {
   --editor-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
   --editor-letter-spacing: 0.02em;
-  --bg-editor: hsl(var(--background));
-  --primary-color: hsl(var(--primary));
-  --success-color: #16A34A;
-  --error-color: hsl(var(--destructive));
-  --overlay-bg: rgba(0, 0, 0, 0.5);
-  --code-bg: transparent;
-  --code-header-bg: transparent;
-  --code-border: #E2E8F0;
-  --code-text: #334155;
-  --code-comment: #94A3B8;
-  --code-keyword: #D73A49;
-  --code-string: #032F62;
-  --code-variable: #005CC5;
-  --code-function: #6F42C1;
-  --code-type: #D73A49;
-  --code-builtin: #E36209;
-  --code-number: #005CC5;
-  --code-attr: #005CC5;
-  --code-tag: #22863A;
-  --code-addition: #22863A;
-  --code-deletion: #B31D28;
-  --code-params: #24292E;
+  --radius: 0.5rem;
 }
 
 /* 全局样式 */
@@ -418,7 +397,7 @@ body {
 .ProseMirror p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);
   float: left;
-  color: #94A3B8;
+  color: var(--editor-muted);
   pointer-events: none;
   height: 0;
 }
@@ -454,7 +433,7 @@ body {
   line-height: 1.4;
   margin-top: 0.875rem;
   margin-bottom: 0.25rem;
-  color: #334155;
+  color: var(--editor-heading-4);
 }
 
 .ProseMirror h5 {
@@ -463,7 +442,7 @@ body {
   line-height: 1.4;
   margin-top: 0.75rem;
   margin-bottom: 0.25rem;
-  color: #475569;
+  color: var(--editor-heading-5);
 }
 
 .ProseMirror h6 {
@@ -472,13 +451,13 @@ body {
   line-height: 1.4;
   margin-top: 0.75rem;
   margin-bottom: 0.25rem;
-  color: #64748B;
+  color: var(--editor-heading-6);
 }
 
 /* 正文样式 */
 .ProseMirror p {
   line-height: 1.6;
-  color: #1E293B;
+  color: var(--editor-text);
 }
 
 /* 列表样式 */
@@ -534,7 +513,7 @@ body {
 }
 
 .ProseMirror .selectedCell::after {
-  background: rgba(59, 130, 246, 0.12);
+  background: var(--interaction-soft);
   content: '';
   inset: 0;
   pointer-events: none;
@@ -580,7 +559,7 @@ body {
   width: 1rem;
   height: 1rem;
   cursor: pointer;
-  accent-color: #2563EB;
+  accent-color: var(--interaction-color);
 }
 
 .ProseMirror ul[data-type="taskList"] li > div {
@@ -589,9 +568,9 @@ body {
 
 /* 引用样式 */
 .ProseMirror blockquote {
-  border-left: 3px solid #E2E8F0;
+  border-left: 3px solid hsl(var(--border));
   padding-left: 1rem;
-  color: #64748B;
+  color: var(--editor-muted);
   font-style: italic;
 }
 
@@ -612,7 +591,8 @@ body {
 
 /* 行内代码 */
 .ProseMirror code {
-  background: #F1F5F9;
+  color: var(--code-text);
+  background: var(--code-inline-bg);
   border-radius: 0.25rem;
   padding: 0.125rem 0.25rem;
   font-family: "SF Mono", "Fira Code", Consolas, monospace;
@@ -694,7 +674,7 @@ body {
 }
 
 .code-block-language-btn:hover {
-  background: rgba(0, 0, 0, 0.04);
+  background: hsl(var(--muted));
   color: var(--code-text);
 }
 
@@ -709,7 +689,7 @@ body {
   top: 100%;
   right: 0;
   margin-top: 0.25rem;
-  background: #FFFFFF;
+  background: hsl(var(--popover));
   border: 1px solid var(--code-border);
   border-radius: 0.375rem;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
@@ -733,12 +713,12 @@ body {
 }
 
 .code-block-lang-item:hover {
-  background: rgba(0, 0, 0, 0.04);
+  background: hsl(var(--muted));
 }
 
 .code-block-lang-item.is-active {
-  background: rgba(37, 99, 235, 0.08);
-  color: #2563EB;
+  background: var(--interaction-soft);
+  color: var(--interaction-color);
 }
 
 /* highlight.js 语法高亮 (Atom One Dark 主题) */
@@ -817,19 +797,19 @@ body {
 /* 分割线 */
 .ProseMirror hr {
   border: none;
-  border-top: 2px solid #E2E8F0;
+  border-top: 2px solid hsl(var(--border));
   margin: 1.5rem 0;
 }
 
 /* 链接样式 */
 .ProseMirror a {
-  color: #2563EB;
+  color: var(--interaction-color);
   text-decoration: underline;
   cursor: pointer;
 }
 
 .ProseMirror a:hover {
-  color: #1D4ED8;
+  color: var(--interaction-hover);
 }
 
 /* 图片样式 */
@@ -840,7 +820,7 @@ body {
 }
 
 .ProseMirror img.ProseMirror-selectednode {
-  outline: 2px solid #2563EB;
+  outline: 2px solid var(--interaction-color);
 }
 
 /* 文本对齐 */
@@ -869,7 +849,7 @@ body {
 }
 
 .resizable-image-wrapper.selected {
-  outline: 2px solid #2563EB;
+  outline: 2px solid var(--interaction-color);
   outline-offset: 2px;
   border-radius: 6px;
 }
@@ -1047,10 +1027,10 @@ body {
   align-items: center;
   justify-content: center;
   background: transparent;
-  border: 1px solid #E2E8F0;
+  border: 1px solid hsl(var(--border));
   border-radius: 0.25rem;
   cursor: pointer;
-  color: #64748B;
+  color: hsl(var(--muted-foreground));
   transition: all 0.15s;
   font-size: 0.75rem;
   white-space: nowrap;
@@ -1059,8 +1039,8 @@ body {
 }
 
 .bubble-menu .bubble-dropdown-trigger:hover {
-  background: #F1F5F9;
-  color: #1E293B;
+  background: hsl(var(--muted));
+  color: hsl(var(--foreground));
 }
 
 /* 下拉菜单选项 */
@@ -1072,23 +1052,23 @@ body {
   background: transparent;
   border: none;
   cursor: pointer;
-  color: #1E293B;
+  color: hsl(var(--foreground));
   transition: background 0.15s;
 }
 
 .bubble-menu .bubble-dropdown-item:hover {
-  background: #F1F5F9;
+  background: hsl(var(--muted));
 }
 
 .bubble-menu .bubble-dropdown-item.is-active {
-  background: #EFF6FF;
-  color: #2563EB;
+  background: var(--interaction-soft);
+  color: var(--interaction-color);
 }
 
 .bubble-menu > .divider {
   width: 1px;
   height: 1.5rem;
-  background: #E2E8F0;
+  background: hsl(var(--border));
   margin: 0 0.125rem;
   flex-shrink: 0;
 }
@@ -1211,8 +1191,9 @@ body {
   position: absolute;
   z-index: 50;
   width: 240px;
-  background: white;
-  border: 1px solid #E2E8F0;
+  color: hsl(var(--popover-foreground));
+  background: hsl(var(--popover));
+  border: 1px solid hsl(var(--border));
   border-radius: 0.5rem;
   box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
   overflow: hidden;
@@ -1229,7 +1210,7 @@ body {
 
 .command-menu-item:hover,
 .command-menu-item.selected {
-  background: #EFF6FF;
+  background: var(--interaction-soft);
 }
 
 .command-menu-item .icon {
@@ -1238,9 +1219,9 @@ body {
   justify-content: center;
   width: 2rem;
   height: 2rem;
-  background: #F1F5F9;
+  background: var(--editor-subtle);
   border-radius: 0.375rem;
-  color: #64748B;
+  color: hsl(var(--muted-foreground));
 }
 
 .command-menu-item .content {
@@ -1250,12 +1231,12 @@ body {
 .command-menu-item .title {
   font-size: 0.875rem;
   font-weight: 500;
-  color: #1E293B;
+  color: hsl(var(--foreground));
 }
 
 .command-menu-item .description {
   font-size: 0.75rem;
-  color: #94A3B8;
+  color: hsl(var(--muted-foreground));
 }
 
 /* 紧凑版命令菜单项 */
@@ -1270,7 +1251,7 @@ body {
 
 .command-menu-item-compact:hover,
 .command-menu-item-compact.selected {
-  background: #EFF6FF;
+  background: var(--interaction-soft);
 }
 
 .command-menu-item-compact .icon {
@@ -1279,9 +1260,9 @@ body {
   justify-content: center;
   width: 1.5rem;
   height: 1.5rem;
-  background: #F1F5F9;
+  background: var(--editor-subtle);
   border-radius: 0.25rem;
-  color: #64748B;
+  color: hsl(var(--muted-foreground));
   flex-shrink: 0;
 }
 
@@ -1289,7 +1270,7 @@ body {
   flex: 1;
   font-size: 0.8125rem;
   font-weight: 500;
-  color: #1E293B;
+  color: hsl(var(--foreground));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1298,8 +1279,8 @@ body {
 .command-menu-item-compact .command-shortcut {
   flex-shrink: 0;
   font-size: 0.6875rem;
-  color: #94A3B8;
-  background: #F1F5F9;
+  color: hsl(var(--muted-foreground));
+  background: var(--editor-subtle);
   padding: 0.125rem 0.375rem;
   border-radius: 0.25rem;
   font-family: inherit;
@@ -1320,7 +1301,7 @@ body {
 }
 
 .mindmap-node-wrapper.selected {
-  outline: 2px solid #2563EB;
+  outline: 2px solid var(--interaction-color);
   outline-offset: 2px;
   border-radius: 6px;
 }
@@ -1354,11 +1335,11 @@ body {
 }
 
 .canvas-node:hover img {
-  border-color: #E2E8F0;
+  border-color: hsl(var(--border));
 }
 
 .canvas-node.ProseMirror-selectednode img {
-  border-color: #2563EB;
+  border-color: var(--interaction-color);
 }
 
 /* 命令菜单标题行 */
@@ -1374,29 +1355,29 @@ body {
   height: 28px;
   flex: none;
   border-radius: 6px;
-  border: 1px solid #E2E8F0;
+  border: 1px solid hsl(var(--border));
   padding: 0;
-  background: #fff;
+  background: hsl(var(--background));
   cursor: pointer;
   transition: background 0.15s;
   font-weight: 600;
   font-size: 12px;
-  color: #1E293B;
+  color: hsl(var(--foreground));
 }
 
 .heading-btn:hover {
-  background: #F1F5F9;
+  background: hsl(var(--muted));
 }
 
 .heading-btn:active {
-  background: #2563EB;
-  color: #fff;
+  background: var(--interaction-color);
+  color: var(--interaction-foreground);
 }
 
 .heading-btn.selected {
-  background: #EFF6FF;
-  color: #3B82F6;
-  border-color: #3B82F6;
+  background: var(--interaction-soft);
+  color: var(--interaction-color);
+  border-color: var(--interaction-color);
 }
 
 /* 章节序号样式 */
@@ -1460,7 +1441,9 @@ body {
   margin: 0.6em 0;
 }
 @layer base {
-  :root {
+  :root,
+  :root[data-theme="classic"] {
+    color-scheme: light;
     --background: 0 0% 100%;
     --foreground: 0 0% 3.9%;
     --card: 0 0% 100%;
@@ -1485,7 +1468,6 @@ body {
     --chart-3: 197 37% 24%;
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
-    --radius: 0.5rem;
     --sidebar: 0 0% 98%;
     --sidebar-foreground: 0 0% 3.9%;
     --sidebar-primary: 0 0% 9%;
@@ -1494,6 +1476,183 @@ body {
     --sidebar-accent-foreground: 0 0% 9%;
     --sidebar-border: 0 0% 89.8%;
     --sidebar-ring: 0 0% 3.9%;
+    --bg-editor: hsl(var(--background));
+    --resource-canvas-surface: #FFFFFF;
+    --resource-mindmap-surface: #FFFFFF;
+    --editor-text: #1E293B;
+    --editor-muted: #64748B;
+    --editor-heading-4: #334155;
+    --editor-heading-5: #475569;
+    --editor-heading-6: #64748B;
+    --editor-subtle: #F1F5F9;
+    --interaction-color: #2563EB;
+    --interaction-foreground: #FFFFFF;
+    --interaction-hover: #1D4ED8;
+    --interaction-soft: rgb(37 99 235 / 8%);
+    --primary-color: hsl(var(--primary));
+    --success-color: #16A34A;
+    --error-color: hsl(var(--destructive));
+    --overlay-bg: rgb(0 0 0 / 50%);
+    --code-bg: transparent;
+    --code-inline-bg: #F1F5F9;
+    --code-header-bg: transparent;
+    --code-border: #E2E8F0;
+    --code-text: #334155;
+    --code-comment: #94A3B8;
+    --code-keyword: #D73A49;
+    --code-string: #032F62;
+    --code-variable: #005CC5;
+    --code-function: #6F42C1;
+    --code-type: #D73A49;
+    --code-builtin: #E36209;
+    --code-number: #005CC5;
+    --code-attr: #005CC5;
+    --code-tag: #22863A;
+    --code-addition: #22863A;
+    --code-deletion: #B31D28;
+    --code-params: #24292E;
+  }
+
+  :root[data-theme="paper"] {
+    color-scheme: light;
+    --background: 40 38% 97%;
+    --foreground: 28 12% 11%;
+    --card: 40 38% 98.5%;
+    --card-foreground: 28 12% 11%;
+    --popover: 40 38% 98.5%;
+    --popover-foreground: 28 12% 11%;
+    --primary: 28 11% 17%;
+    --primary-foreground: 40 38% 98%;
+    --secondary: 36 24% 92%;
+    --secondary-foreground: 28 11% 17%;
+    --muted: 36 24% 92%;
+    --muted-foreground: 28 8% 42%;
+    --accent: 34 25% 89%;
+    --accent-foreground: 28 11% 17%;
+    --destructive: 2 68% 48%;
+    --destructive-foreground: 40 38% 98%;
+    --border: 32 18% 83%;
+    --input: 32 18% 83%;
+    --ring: 28 11% 24%;
+    --chart-1: 17 61% 52%;
+    --chart-2: 158 42% 36%;
+    --chart-3: 198 32% 30%;
+    --chart-4: 42 62% 55%;
+    --chart-5: 28 65% 58%;
+    --sidebar: 37 29% 94%;
+    --sidebar-foreground: 28 12% 11%;
+    --sidebar-primary: 28 11% 17%;
+    --sidebar-primary-foreground: 40 38% 98%;
+    --sidebar-accent: 34 25% 89%;
+    --sidebar-accent-foreground: 28 11% 17%;
+    --sidebar-border: 32 18% 83%;
+    --sidebar-ring: 28 11% 24%;
+    --bg-editor: hsl(var(--background));
+    --resource-canvas-surface: #FAF7F2;
+    --resource-mindmap-surface: #FAF7F2;
+    --editor-text: #3F372F;
+    --editor-muted: #766A5E;
+    --editor-heading-4: #3F372F;
+    --editor-heading-5: #574C42;
+    --editor-heading-6: #766A5E;
+    --editor-subtle: #EDE6DB;
+    --interaction-color: #315E86;
+    --interaction-foreground: #FFFFFF;
+    --interaction-hover: #284E70;
+    --interaction-soft: rgb(49 94 134 / 11%);
+    --primary-color: hsl(var(--primary));
+    --success-color: #3F7D55;
+    --error-color: hsl(var(--destructive));
+    --overlay-bg: rgb(48 40 32 / 48%);
+    --code-bg: rgb(237 230 219 / 45%);
+    --code-inline-bg: rgb(237 230 219 / 82%);
+    --code-header-bg: rgb(237 230 219 / 70%);
+    --code-border: #D8CDBF;
+    --code-text: #40372F;
+    --code-comment: #8A7D70;
+    --code-keyword: #A33A48;
+    --code-string: #49663D;
+    --code-variable: #315E86;
+    --code-function: #72559A;
+    --code-type: #9B453A;
+    --code-builtin: #A45A27;
+    --code-number: #315E86;
+    --code-attr: #315E86;
+    --code-tag: #3F704D;
+    --code-addition: #3F704D;
+    --code-deletion: #A33A48;
+    --code-params: #40372F;
+  }
+
+  :root[data-theme="night"] {
+    color-scheme: dark;
+    --background: 240 10% 9%;
+    --foreground: 0 0% 98%;
+    --card: 240 8% 11%;
+    --card-foreground: 0 0% 98%;
+    --popover: 240 8% 11%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 0 0% 98%;
+    --primary-foreground: 240 6% 10%;
+    --secondary: 240 4% 16%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 240 4% 16%;
+    --muted-foreground: 240 5% 65%;
+    --accent: 240 4% 18%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 63% 45%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 4% 23%;
+    --input: 240 4% 23%;
+    --ring: 240 5% 72%;
+    --chart-1: 220 70% 55%;
+    --chart-2: 160 60% 45%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
+    --sidebar: 240 9% 7%;
+    --sidebar-foreground: 0 0% 96%;
+    --sidebar-primary: 0 0% 98%;
+    --sidebar-primary-foreground: 240 6% 10%;
+    --sidebar-accent: 240 4% 18%;
+    --sidebar-accent-foreground: 0 0% 98%;
+    --sidebar-border: 240 4% 22%;
+    --sidebar-ring: 240 5% 72%;
+    --bg-editor: hsl(var(--background));
+    --resource-canvas-surface: #18181B;
+    --resource-mindmap-surface: #18181B;
+    --editor-text: #E4E4E7;
+    --editor-muted: #A1A1AA;
+    --editor-heading-4: #F4F4F5;
+    --editor-heading-5: #D4D4D8;
+    --editor-heading-6: #A1A1AA;
+    --editor-subtle: #27272A;
+    --interaction-color: #79C0FF;
+    --interaction-foreground: #111113;
+    --interaction-hover: #A5D6FF;
+    --interaction-soft: rgb(121 192 255 / 14%);
+    --primary-color: hsl(var(--primary));
+    --success-color: #5FCB7D;
+    --error-color: hsl(var(--destructive));
+    --overlay-bg: rgb(0 0 0 / 68%);
+    --code-bg: rgb(39 39 42 / 55%);
+    --code-inline-bg: rgb(39 39 42 / 90%);
+    --code-header-bg: rgb(39 39 42 / 78%);
+    --code-border: #3F3F46;
+    --code-text: #E4E4E7;
+    --code-comment: #8B949E;
+    --code-keyword: #FF7B72;
+    --code-string: #A5D6FF;
+    --code-variable: #79C0FF;
+    --code-function: #D2A8FF;
+    --code-type: #FFA198;
+    --code-builtin: #FFA657;
+    --code-number: #79C0FF;
+    --code-attr: #79C0FF;
+    --code-tag: #7EE787;
+    --code-addition: #7EE787;
+    --code-deletion: #FF7B72;
+    --code-params: #E4E4E7;
   }
 }
 @layer base {
@@ -1512,17 +1671,18 @@ body {
 }
 
 .map-container me-parent > me-tpc {
-  border: 1px solid #e4e4e7;
+  border: 1px solid hsl(var(--border));
   border-radius: 6px;
-  background: #fff;
+  background: hsl(var(--card));
+  color: hsl(var(--card-foreground));
   box-shadow: 0 1px 2px rgb(0 0 0 / 4%);
 }
 
 .map-container me-root me-tpc {
-  border-color: #18181b;
+  border-color: hsl(var(--primary));
   border-radius: 8px;
-  background: #18181b;
-  color: #fafafa;
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
   box-shadow: 0 1px 3px rgb(0 0 0 / 12%);
   font-size: 24px;
   font-weight: 700;
@@ -1578,42 +1738,42 @@ body {
 .map-container me-tpc > .tags span {
   margin: 0;
   padding: 1px 5px;
-  border: 1px solid #e4e4e7;
+  border: 1px solid hsl(var(--border));
   border-radius: 999px;
-  background: #fafafa;
-  color: #52525b;
+  background: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
   font-size: 10px;
   line-height: 16px;
 }
 
 .map-container .summary > g[data-mindmap-summary-selected] path {
-  stroke: #2563eb !important;
+  stroke: var(--interaction-color) !important;
   stroke-width: 4;
-  filter: drop-shadow(0 0 3px rgb(37 99 235 / 30%));
+  filter: drop-shadow(0 0 3px var(--interaction-soft));
 }
 
 .map-container .svg-label[data-type="summary"][data-mindmap-summary-selected] {
-  outline: 2px solid #2563eb;
+  outline: 2px solid var(--interaction-color);
   outline-offset: 2px;
-  background: #eff6ff;
-  color: #1d4ed8 !important;
+  background: var(--interaction-soft);
+  color: var(--interaction-color) !important;
 }
 
 .map-container .topiclinks > g[data-mindmap-arrow-selected] > .arrow-highlight path {
-  stroke: #2563eb !important;
+  stroke: var(--interaction-color) !important;
   stroke-width: 8;
   opacity: 0.7;
 }
 
 .map-container .topiclinks > g[data-mindmap-arrow-selected] > path {
-  filter: drop-shadow(0 0 2px rgb(37 99 235 / 35%));
+  filter: drop-shadow(0 0 2px var(--interaction-soft));
 }
 
 .map-container .svg-label[data-type="arrow"][data-mindmap-arrow-selected] {
-  outline: 2px solid #2563eb;
+  outline: 2px solid var(--interaction-color);
   outline-offset: 2px;
-  background: #eff6ff;
-  color: #1d4ed8 !important;
+  background: var(--interaction-soft);
+  color: var(--interaction-color) !important;
 }
 
 .map-container .circle {
@@ -1621,16 +1781,16 @@ body {
   height: 14px;
   margin-top: -7px;
   margin-left: -7px;
-  border-color: #fff;
-  background: #2563eb;
-  box-shadow: 0 0 0 1px #2563eb;
+  border-color: var(--resource-mindmap-surface);
+  background: var(--interaction-color);
+  box-shadow: 0 0 0 1px var(--interaction-color);
   cursor: move;
 }
 
 .map-container me-tpc[data-mindmap-workflow-target] {
-  outline: 2px solid #2563eb;
+  outline: 2px solid var(--interaction-color);
   outline-offset: 3px;
-  box-shadow: 0 0 0 5px rgb(37 99 235 / 12%);
+  box-shadow: 0 0 0 5px var(--interaction-soft);
 }
 
 .mindmap-note-layer {
@@ -1647,16 +1807,16 @@ body {
   width: 14px;
   height: 14px;
   place-items: center;
-  border: 1px solid #e4e4e7;
+  border: 1px solid hsl(var(--border));
   border-radius: 999px;
-  background: #fff;
-  color: #71717a;
+  background: hsl(var(--popover));
+  color: hsl(var(--muted-foreground));
   pointer-events: auto !important;
 }
 
 .mindmap-note-marker:hover {
-  color: #18181b;
-  border-color: #a1a1aa;
+  color: hsl(var(--foreground));
+  border-color: hsl(var(--ring));
 }
 
 .mindmap-note-marker svg {

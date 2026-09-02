@@ -63,7 +63,7 @@ describe('content workspace state', () => {
       contentLoading: false,
       contentError: 'TipTap 节点类型不受支持',
       sidebarOpen: true,
-      generalSettings: { editorFont: 'system' },
+      generalSettings: { editorFont: 'system', applicationTheme: 'classic' },
       hotkeys: [],
       isSearchOpen: false,
       isSettingsOpen: false,
@@ -97,7 +97,7 @@ describe('content workspace state', () => {
   })
 
   it('applies the configured editor font globally', () => {
-    useAppStore.setState({ generalSettings: { editorFont: 'xiaolai' } })
+    useAppStore.setState({ generalSettings: { editorFont: 'xiaolai', applicationTheme: 'classic' } })
     act(() => root.render(<App />))
 
     expect(document.documentElement.style.getPropertyValue('--editor-font-family'))

@@ -12,7 +12,8 @@ import type {
   Topic,
 } from 'mind-elixir'
 import type { MindMapData } from '@shared/knowledge-types'
-import { JIJIAN_MIND_MAP_THEME } from './mindElixirTheme'
+import type { ApplicationTheme } from '@shared/types'
+import { JIJIAN_MIND_MAP_EXPORT_THEME, getMindMapScreenTheme } from './mindElixirTheme'
 import { syncMindMapSummaryPresentation } from './mindMapSummaryPresentation'
 import type { MindMapSelection } from './mindMapInteraction'
 import { findRenderedMindMapArrow, findRenderedMindMapSummary } from './mindMapHitTest'
@@ -21,6 +22,7 @@ export type MindMapSurfaceMode = 'editable' | 'preview' | 'offscreen'
 
 export interface MindMapSurface {
   instance: MindElixirInstance
+  applyApplicationTheme: (theme: ApplicationTheme) => void
   dispose: () => void
 }
 
@@ -35,6 +37,7 @@ type ListenerEntry<K extends keyof EventMap = keyof EventMap> = {
 
 export interface CreateMindMapSurfaceOptions {
   mode: MindMapSurfaceMode
+  applicationTheme?: ApplicationTheme
   direction?: 0 | 1 | 2 | 3
   compact?: boolean
   keypress?: boolean | KeypressOptions
@@ -61,6 +64,9 @@ export function createMindMapSurface(
     ? data.direction as 0 | 1 | 2 | 3
     : undefined
   const persistedCompact = typeof data.compact === 'boolean' ? data.compact : undefined
+  const initialTheme = options.mode === 'offscreen'
+    ? JIJIAN_MIND_MAP_EXPORT_THEME
+    : getMindMapScreenTheme(options.applicationTheme ?? 'classic')
   const instance = new MindElixir({
     el: container,
     editable,
@@ -77,7 +83,7 @@ export function createMindMapSurface(
     overflowHidden: options.mode === 'preview',
     direction: options.direction ?? persistedDirection ?? MindElixir.SIDE,
     compact: options.compact ?? persistedCompact ?? false,
-    theme: JIJIAN_MIND_MAP_THEME,
+    theme: initialTheme,
     handleWheel: options.handleWheel,
     scaleMin: 0.2,
     scaleMax: 3,
@@ -88,7 +94,7 @@ export function createMindMapSurface(
   try {
     const error = instance.init(cloneNativeData(data))
     if (error) throw error
-    instance.changeTheme(JIJIAN_MIND_MAP_THEME, false)
+    instance.changeTheme(initialTheme, false)
     syncMindMapSummaryPresentation(instance, null)
     if (editable) instance.clearHistory?.()
     for (const listener of options.listeners ?? []) {
@@ -103,6 +109,11 @@ export function createMindMapSurface(
 
   return {
     instance,
+    applyApplicationTheme: (theme) => {
+      if (disposed || options.mode === 'offscreen') return
+      instance.changeTheme(getMindMapScreenTheme(theme), false)
+      syncMindMapSummaryPresentation(instance, null)
+    },
     dispose: () => {
       if (disposed) return
       disposed = true

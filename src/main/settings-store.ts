@@ -7,6 +7,7 @@ import type { McpSettings } from '../shared/mcp-types'
 import { DEFAULT_HOTKEYS } from '../shared/types'
 import { getAIProvider, isAIProviderId } from '../shared/ai-providers'
 import { DEFAULT_GENERAL_SETTINGS, isEditorFontId } from '../shared/editor-fonts'
+import { normalizeApplicationTheme } from '../shared/application-themes'
 import { atomicCommitFile, type AtomicFileSystem } from './storage/atomic-file'
 
 const SETTINGS_SCHEMA_VERSION = 1
@@ -62,6 +63,7 @@ function normalizeGeneralSettings(value: Partial<GeneralSettings>): GeneralSetti
     editorFont: isEditorFontId(value.editorFont)
       ? value.editorFont
       : DEFAULT_GENERAL_SETTINGS.editorFont,
+    applicationTheme: normalizeApplicationTheme(value.applicationTheme),
   }
 }
 

@@ -8,6 +8,7 @@ import type {
 } from '@shared/knowledge-types'
 import { applyOptimisticMove, getAncestorGroupIds } from '../utils/structureTree'
 import { flushPendingSaves } from '../utils/pendingSaveCoordinator'
+import { applyApplicationTheme } from '../theme'
 
 let vaultLoadGeneration = 0
 
@@ -433,10 +434,15 @@ export const useAppStore = create<AppState>((set, get) => ({
   setSearchOpen: (open) => set({ isSearchOpen: open }),
   setSettingsOpen: (open) => set({ isSettingsOpen: open }),
   toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
-  loadGeneralSettings: async () => set({
-    generalSettings: await window.electronAPI.settings.getGeneral(),
-  }),
-  updateGeneralSettings: (generalSettings) => set({ generalSettings }),
+  loadGeneralSettings: async () => {
+    const generalSettings = await window.electronAPI.settings.getGeneral()
+    applyApplicationTheme(generalSettings.applicationTheme)
+    set({ generalSettings })
+  },
+  updateGeneralSettings: (generalSettings) => {
+    applyApplicationTheme(generalSettings.applicationTheme)
+    set({ generalSettings })
+  },
   loadHotkeys: async () => set({ hotkeys: await window.electronAPI.settings.getHotkeys() }),
   updateHotkeys: (hotkeys) => set({ hotkeys }),
   toggleHeadingNumbers: () => set((state) => {

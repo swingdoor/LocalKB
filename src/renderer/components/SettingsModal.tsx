@@ -6,6 +6,7 @@ import type { McpStatus, PublicMcpSettings } from '@shared/mcp-types'
 import { DEFAULT_HOTKEYS } from '@shared/types'
 import { AI_PROVIDERS, getAIProvider } from '@shared/ai-providers'
 import { DEFAULT_GENERAL_SETTINGS, EDITOR_FONT_OPTIONS, getEditorFont } from '@shared/editor-fonts'
+import { APPLICATION_THEMES } from '@shared/application-themes'
 import { useAppStore } from '../stores/appStore'
 import { formatHotkeyDisplay, getModifiersFromEvent, hasSameHotkey } from '../utils/hotkeys'
 import { Alert, AlertDescription } from './ui/alert'
@@ -91,12 +92,10 @@ function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     setIsSaving(true)
     setPageError(null)
     try {
-      const [savedGeneral] = await Promise.all([
-        window.electronAPI.settings.saveGeneral(generalSettings),
-        window.electronAPI.settings.saveAI(aiSettings),
-        window.electronAPI.settings.saveHotkeys(hotkeys.filter((item) => !item.readonly)),
-      ])
+      const savedGeneral = await window.electronAPI.settings.saveGeneral(generalSettings)
       useAppStore.getState().updateGeneralSettings(savedGeneral)
+      await window.electronAPI.settings.saveAI(aiSettings)
+      await window.electronAPI.settings.saveHotkeys(hotkeys.filter((item) => !item.readonly))
       useAppStore.getState().updateHotkeys(hotkeys)
       toast.success('设置已保存')
       onClose()
@@ -205,6 +204,57 @@ function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
             <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
               <TabsContent value="general" className="m-0 space-y-5">
+                <div className="grid max-w-md gap-2">
+                  <Label id="application-theme-label">外观</Label>
+                  <div
+                    role="radiogroup"
+                    aria-labelledby="application-theme-label"
+                    className="grid grid-cols-3 gap-2"
+                  >
+                    {APPLICATION_THEMES.map((theme) => {
+                      const selected = generalSettings.applicationTheme === theme.id
+                      return (
+                        <Button
+                          key={theme.id}
+                          type="button"
+                          role="radio"
+                          aria-checked={selected}
+                          aria-label={`${theme.label}主题`}
+                          variant="outline"
+                          className={`h-auto min-w-0 flex-col items-stretch gap-2 p-2 text-left ${selected ? 'border-primary ring-1 ring-ring' : ''}`}
+                          onClick={() => setGeneralSettings({
+                            ...generalSettings,
+                            applicationTheme: theme.id,
+                          })}
+                        >
+                          <span
+                            aria-hidden="true"
+                            className="flex h-10 overflow-hidden rounded-sm border"
+                            style={{
+                              backgroundColor: theme.preview.background,
+                              borderColor: theme.preview.accent,
+                            }}
+                          >
+                            <span className="w-1/3" style={{ backgroundColor: theme.preview.sidebar }} />
+                            <span className="flex flex-1 flex-col justify-center gap-1 px-2">
+                              <span className="h-1 w-4/5 rounded-full" style={{ backgroundColor: theme.preview.foreground }} />
+                              <span className="h-1 w-3/5 rounded-full" style={{ backgroundColor: theme.preview.accent }} />
+                            </span>
+                          </span>
+                          <span className="min-w-0">
+                            <span className="block text-xs font-medium">{theme.label}</span>
+                            <span className="block truncate text-[10px] font-normal text-muted-foreground">
+                              {theme.description}
+                            </span>
+                          </span>
+                        </Button>
+                      )
+                    })}
+                  </div>
+                  <p className="text-xs leading-5 text-muted-foreground">
+                    保存后应用于整个工作区，不改变文档和资源内容。
+                  </p>
+                </div>
                 <div className="grid max-w-md gap-2">
                   <Label>编辑字体</Label>
                   <Select

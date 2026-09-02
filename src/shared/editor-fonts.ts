@@ -24,7 +24,10 @@ export const EDITOR_FONT_OPTIONS: readonly EditorFontOption[] = [
   },
 ] as const
 
-export const DEFAULT_GENERAL_SETTINGS: GeneralSettings = { editorFont: 'system' }
+export const DEFAULT_GENERAL_SETTINGS: GeneralSettings = {
+  editorFont: 'system',
+  applicationTheme: 'classic',
+}
 
 export function isEditorFontId(value: unknown): value is EditorFontId {
   return EDITOR_FONT_OPTIONS.some((option) => option.id === value)

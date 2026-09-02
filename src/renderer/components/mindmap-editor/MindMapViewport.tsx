@@ -230,7 +230,8 @@ export function MindMapViewport({
   return <div
     ref={viewportRef}
     data-mindmap-editor-surface=""
-    className={`relative min-h-0 flex-1 overflow-hidden bg-white outline-none ${mode === 'pan' ? 'cursor-grab' : 'cursor-default'}`}
+    className={`relative min-h-0 flex-1 overflow-hidden outline-none ${mode === 'pan' ? 'cursor-grab' : 'cursor-default'}`}
+    style={{ backgroundColor: 'var(--resource-mindmap-surface)' }}
     tabIndex={0}
     onPointerDownCapture={handlePointerDownCapture}
     onPointerMoveCapture={handlePointerMoveCapture}
