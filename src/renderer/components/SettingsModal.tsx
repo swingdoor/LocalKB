@@ -61,6 +61,7 @@ function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [mcpUrl, setMcpUrl] = useState('')
   const [mcpBusy, setMcpBusy] = useState(false)
   const [refreshConfirmOpen, setRefreshConfirmOpen] = useState(false)
+  const [reassignConfirmOpen, setReassignConfirmOpen] = useState(false)
 
   useEffect(() => {
     if (!isOpen) return
@@ -116,8 +117,9 @@ function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       toast.success(enabled ? 'MCP 服务已启动' : 'MCP 服务已停止')
     } catch (error) {
       console.error('Failed to update MCP service:', error)
-      setMcpStatus(await window.electronAPI.settings.getMcpStatus())
-      setPageError('MCP 服务状态更新失败。')
+      const status = await window.electronAPI.settings.getMcpStatus()
+      setMcpStatus(status)
+      if (status.errorCode !== 'PORT_IN_USE') setPageError('MCP 服务状态更新失败。')
     } finally {
       setMcpBusy(false)
     }
@@ -135,6 +137,24 @@ function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     } catch (error) {
       console.error('Failed to refresh MCP URL:', error)
       setPageError('MCP 连接地址刷新失败。')
+    } finally {
+      setMcpBusy(false)
+    }
+  }
+
+  const handleMcpReassign = async () => {
+    setReassignConfirmOpen(false)
+    setMcpBusy(true)
+    setPageError(null)
+    try {
+      setMcpSettings(await window.electronAPI.settings.reassignMcpEndpoint())
+      setMcpUrl(await window.electronAPI.settings.getMcpUrl())
+      setMcpStatus(await window.electronAPI.settings.getMcpStatus())
+      toast.success('MCP 端口和连接地址已更新')
+    } catch (error) {
+      console.error('Failed to reassign MCP endpoint:', error)
+      setMcpStatus(await window.electronAPI.settings.getMcpStatus())
+      setPageError('未能选择可用端口，请重试。')
     } finally {
       setMcpBusy(false)
     }
@@ -443,8 +463,36 @@ function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   </div>
                   <Switch aria-label="启用本地 MCP 服务" checked={mcpSettings.enabled} disabled={mcpBusy} onCheckedChange={(checked) => void handleMcpToggle(checked)} />
                 </div>
-                {mcpStatus.error && <Alert variant="destructive"><AlertDescription>{mcpStatus.error}</AlertDescription></Alert>}
+                {mcpStatus.error && (
+                  <Alert variant="destructive">
+                    <div className="flex items-center justify-between gap-3">
+                      <AlertDescription>{mcpStatus.error}</AlertDescription>
+                      {mcpStatus.errorCode === 'PORT_IN_USE' && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="shrink-0"
+                          disabled={mcpBusy}
+                          onClick={() => setReassignConfirmOpen(true)}
+                        >
+                          重新选择
+                        </Button>
+                      )}
+                    </div>
+                  </Alert>
+                )}
                 <Separator />
+                <div className="flex items-center justify-between gap-4">
+                  <Label htmlFor="mcp-port">监听端口</Label>
+                  <Input
+                    id="mcp-port"
+                    readOnly
+                    value={mcpSettings.port}
+                    aria-label="MCP 监听端口"
+                    className="h-8 w-24 font-mono tabular-nums"
+                  />
+                </div>
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <Label htmlFor="mcp-url">连接地址</Label>
@@ -459,7 +507,7 @@ function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       <TooltipContent>复制连接地址</TooltipContent>
                     </Tooltip>
                   </div>
-                  <p className="text-xs leading-5 text-muted-foreground">地址包含访问 token。除非主动刷新，否则启停或重启应用后地址保持不变。</p>
+                  <p className="text-xs leading-5 text-muted-foreground">地址包含访问 Token。除非刷新地址或重新选择端口，否则启停和重启应用后地址保持不变。</p>
                 </div>
               </TabsContent>
             </div>
@@ -483,6 +531,21 @@ function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           <AlertDialogFooter>
             <AlertDialogCancel>取消</AlertDialogCancel>
             <AlertDialogAction onClick={() => void handleMcpRefresh()}>确认刷新</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={reassignConfirmOpen} onOpenChange={setReassignConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>重新选择 MCP 端口？</AlertDialogTitle>
+            <AlertDialogDescription>
+              系统将选择一个可用端口并刷新访问 Token。当前连接地址会立即失效，所有已配置的 Agent 都需要使用新地址重新连接。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void handleMcpReassign()}>确认更换</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

@@ -7,12 +7,14 @@ export interface McpSettings {
 }
 
 export type McpRuntimeState = 'disabled' | 'starting' | 'running' | 'error'
+export type McpErrorCode = 'PORT_IN_USE'
 
 export interface McpStatus {
   state: McpRuntimeState
   port: number
   endpoint: string
   error?: string
+  errorCode?: McpErrorCode
 }
 
 export type McpToolResult<T extends JsonValue = JsonValue> =

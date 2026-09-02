@@ -78,6 +78,7 @@ export const IPC_CHANNELS = {
     GET_MCP_STATUS: 'settings:getMcpStatus',
     GET_MCP_URL: 'settings:getMcpUrl',
     RESET_MCP_TOKEN: 'settings:resetMcpToken',
+    REASSIGN_MCP_ENDPOINT: 'settings:reassignMcpEndpoint',
     COPY_MCP_URL: 'settings:copyMcpUrl',
   },
   AI: {

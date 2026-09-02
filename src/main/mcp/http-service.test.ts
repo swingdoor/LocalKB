@@ -165,6 +165,16 @@ describe('MCP HTTP service', () => {
     expect(await fetch(`http://127.0.0.1:${port}/mcp?token=${nextToken}`, { method: 'POST' })).not.toMatchObject({ status: 401 })
   })
 
+  it('binds an available system-assigned port when requested', async () => {
+    const previousPort = port
+    const status = await service.apply({ enabled: true, port: 0, token })
+
+    expect(status).toMatchObject({ state: 'running', endpoint: `http://127.0.0.1:${status.port}/mcp` })
+    expect(status.port).toBeGreaterThan(0)
+    expect(status.port).not.toBe(previousPort)
+    expect(await fetch(`http://127.0.0.1:${status.port}/healthz`)).toMatchObject({ status: 200 })
+  })
+
   it('rejects malformed/oversize requests and shuts down cleanly', async () => {
     const malformed = await fetch(`http://127.0.0.1:${port}/mcp?token=${token}`, {
       method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json' }, body: '{',
@@ -189,7 +199,9 @@ describe('MCP HTTP service', () => {
     try {
       await expect(service.apply({ enabled: true, port: blockedPort, token }))
         .rejects.toMatchObject({ code: 'EADDRINUSE' })
-      expect(service.getStatus()).toMatchObject({ state: 'running', port })
+      expect(service.getStatus()).toMatchObject({
+        state: 'running', port, errorCode: 'PORT_IN_USE', error: `端口 ${blockedPort} 已被占用`,
+      })
       expect(await fetch(`http://127.0.0.1:${port}/healthz`)).toMatchObject({ status: 200 })
     } finally {
       await new Promise<void>((resolve) => blocker.close(() => resolve()))

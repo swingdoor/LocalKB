@@ -364,6 +364,9 @@ const electronAPI = {
     resetMcpToken: () => (
       ipcRenderer.invoke(IPC_CHANNELS.SETTINGS.RESET_MCP_TOKEN) as Promise<PublicMcpSettings>
     ),
+    reassignMcpEndpoint: () => (
+      ipcRenderer.invoke(IPC_CHANNELS.SETTINGS.REASSIGN_MCP_ENDPOINT) as Promise<PublicMcpSettings>
+    ),
     copyMcpUrl: () => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS.COPY_MCP_URL) as Promise<boolean>,
   },
 

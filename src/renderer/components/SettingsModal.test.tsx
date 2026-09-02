@@ -1,6 +1,7 @@
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { McpStatus } from '@shared/mcp-types'
 import type { GeneralSettings } from '@shared/types'
 import { useAppStore } from '../stores/appStore'
 import SettingsModal from './SettingsModal'
@@ -10,13 +11,23 @@ describe('SettingsModal MCP panel', () => {
   let root: Root
   let enabled: boolean
   let connectionUrl: string
+  let mcpStatus: McpStatus
   const saveMcp = vi.fn(async (nextEnabled: boolean) => {
     enabled = nextEnabled
+    mcpStatus = nextEnabled
+      ? { state: 'running', port: 17890, endpoint: 'http://127.0.0.1:17890/mcp' }
+      : { state: 'disabled', port: 0, endpoint: '' }
     return { enabled, port: 17890, maskedToken: 'abcd••••wxyz' }
   })
   const resetMcpToken = vi.fn(async () => {
     connectionUrl = 'http://127.0.0.1:17890/mcp?token=new-token'
     return { enabled, port: 17890, maskedToken: 'new-••••oken' }
+  })
+  const reassignMcpEndpoint = vi.fn(async () => {
+    enabled = true
+    connectionUrl = 'http://127.0.0.1:24680/mcp?token=reassigned-token'
+    mcpStatus = { state: 'running', port: 24680, endpoint: 'http://127.0.0.1:24680/mcp' }
+    return { enabled, port: 24680, maskedToken: 'reas••••oken' }
   })
   const copyMcpUrl = vi.fn(async () => true)
   const saveGeneral = vi.fn(async (settings: GeneralSettings) => settings)
@@ -33,8 +44,10 @@ describe('SettingsModal MCP panel', () => {
     ;(globalThis as any).IS_REACT_ACT_ENVIRONMENT = true
     enabled = true
     connectionUrl = 'http://127.0.0.1:17890/mcp?token=old-token'
+    mcpStatus = { state: 'running', port: 17890, endpoint: 'http://127.0.0.1:17890/mcp' }
     saveMcp.mockClear()
     resetMcpToken.mockClear()
+    reassignMcpEndpoint.mockClear()
     copyMcpUrl.mockClear()
     saveGeneral.mockClear()
     saveAI.mockClear()
@@ -57,14 +70,11 @@ describe('SettingsModal MCP panel', () => {
         getHotkeys: vi.fn(async () => hotkeys),
         saveHotkeys,
         getMcp: vi.fn(async () => ({ enabled, port: 17890, maskedToken: 'abcd••••wxyz' })),
-        getMcpStatus: vi.fn(async () => ({
-          state: enabled ? 'running' : 'disabled',
-          port: enabled ? 17890 : 0,
-          endpoint: enabled ? 'http://127.0.0.1:17890/mcp' : '',
-        })),
+        getMcpStatus: vi.fn(async () => ({ ...mcpStatus })),
         getMcpUrl: vi.fn(async () => connectionUrl),
         saveMcp,
         resetMcpToken,
+        reassignMcpEndpoint,
         copyMcpUrl,
       },
     }
@@ -172,6 +182,7 @@ describe('SettingsModal MCP panel', () => {
 
     expect(document.body.textContent).toContain('本地 MCP 服务')
     expect(document.body.textContent).toContain('运行中')
+    expect(document.body.querySelector<HTMLInputElement>('input[aria-label="MCP 监听端口"]')?.value).toBe('17890')
     const url = document.body.querySelector<HTMLInputElement>('input[aria-label="MCP 连接地址"]')!
     expect(url.value).toBe(connectionUrl)
 
@@ -197,6 +208,39 @@ describe('SettingsModal MCP panel', () => {
     const copy = document.body.querySelector<HTMLButtonElement>('button[aria-label="复制 MCP 连接地址"]')!
     await act(async () => copy.click())
     expect(copyMcpUrl).toHaveBeenCalledOnce()
+  })
+
+  it('offers a confirmed endpoint reassignment when the configured port is occupied', async () => {
+    enabled = false
+    mcpStatus = {
+      state: 'error', port: 17890, endpoint: '',
+      error: '端口 17890 已被占用', errorCode: 'PORT_IN_USE',
+    }
+    await act(async () => root.render(<SettingsModal isOpen onClose={onClose} />))
+    selectTab('MCP 服务')
+
+    expect(document.body.textContent).toContain('端口 17890 已被占用')
+    expect(document.body.querySelector<HTMLInputElement>('input[aria-label="MCP 监听端口"]')?.value).toBe('17890')
+    const reassign = Array.from(document.body.querySelectorAll<HTMLButtonElement>('button'))
+      .find((button) => button.textContent === '重新选择')!
+
+    act(() => reassign.click())
+    expect(document.body.textContent).toContain('当前连接地址会立即失效')
+    act(() => Array.from(document.body.querySelectorAll<HTMLButtonElement>('button'))
+      .find((button) => button.textContent === '取消')!
+      .click())
+    expect(reassignMcpEndpoint).not.toHaveBeenCalled()
+
+    act(() => reassign.click())
+    await act(async () => Array.from(document.body.querySelectorAll<HTMLButtonElement>('button'))
+      .find((button) => button.textContent === '确认更换')!
+      .click())
+
+    expect(reassignMcpEndpoint).toHaveBeenCalledOnce()
+    expect(document.body.querySelector<HTMLInputElement>('input[aria-label="MCP 监听端口"]')?.value).toBe('24680')
+    expect(document.body.querySelector<HTMLInputElement>('input[aria-label="MCP 连接地址"]')?.value)
+      .toBe('http://127.0.0.1:24680/mcp?token=reassigned-token')
+    expect(document.body.textContent).toContain('运行中')
   })
 
   it('loads AI settings, toggles password visibility, and saves through the existing APIs', async () => {

@@ -117,6 +117,11 @@ export class McpHttpService {
     }
     if (this.server?.listening && this.status.port === settings.port) {
       this.token = settings.token
+      this.status = {
+        state: 'running',
+        port: settings.port,
+        endpoint: `http://${HOST}:${settings.port}/mcp`,
+      }
       return this.getStatus()
     }
     const previousStatus = this.getStatus()
@@ -131,8 +136,9 @@ export class McpHttpService {
       responseMode: 'auto',
       onerror: () => this.onError?.('MCP protocol request failed'),
     })
+    let boundPort = settings.port
     const candidate = createServer((request, response) => {
-      void this.handle(request, response, settings.port, handler)
+      void this.handle(request, response, boundPort, handler)
     })
     candidate.requestTimeout = 30_000
     candidate.headersTimeout = 10_000
@@ -140,6 +146,8 @@ export class McpHttpService {
       await new Promise<void>((resolve, reject) => {
         candidate.once('error', reject)
         candidate.listen(settings.port, HOST, () => {
+          const address = candidate.address()
+          if (typeof address === 'object' && address) boundPort = address.port
           candidate.off('error', reject)
           resolve()
         })
@@ -147,10 +155,17 @@ export class McpHttpService {
     } catch (error) {
       await handler.close().catch(() => undefined)
       if (candidate.listening) candidate.close()
-      const message = error instanceof Error ? error.message : 'MCP 服务启动失败'
+      const portInUse = typeof error === 'object' && error !== null
+        && 'code' in error && error.code === 'EADDRINUSE'
+      const message = portInUse
+        ? `端口 ${settings.port} 已被占用`
+        : error instanceof Error ? error.message : 'MCP 服务启动失败'
       this.status = this.server?.listening
-        ? { ...previousStatus, error: message }
-        : { state: 'error', port: settings.port, endpoint: '', error: message }
+        ? { ...previousStatus, error: message, errorCode: portInUse ? 'PORT_IN_USE' : undefined }
+        : {
+            state: 'error', port: settings.port, endpoint: '', error: message,
+            errorCode: portInUse ? 'PORT_IN_USE' : undefined,
+          }
       throw error
     }
     const previousServer = this.server
@@ -159,7 +174,7 @@ export class McpHttpService {
     this.handler = handler
     this.token = settings.token
     this.status = {
-      state: 'running', port: settings.port, endpoint: `http://${HOST}:${settings.port}/mcp`,
+      state: 'running', port: boundPort, endpoint: `http://${HOST}:${boundPort}/mcp`,
     }
     if (previousServer) await closeServer(previousServer)
     await previousHandler?.close().catch(() => undefined)
