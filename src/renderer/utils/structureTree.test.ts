@@ -6,6 +6,7 @@ import {
   countDescendantContent,
   getAncestorGroupIds,
   getContentBreadcrumb,
+  hasGroupChildren,
   isInvalidMove,
 } from './structureTree'
 
@@ -79,6 +80,9 @@ describe('structure tree adapter', () => {
   it('counts recursive content and identifies cycle drops', () => {
     expect(countDescendantContent(structure, GROUP_A)).toBe(1)
     expect(countDescendantContent(structure, GROUP_B)).toBe(1)
+    expect(hasGroupChildren(structure, GROUP_A)).toBe(true)
+    expect(hasGroupChildren(structure, GROUP_B)).toBe(true)
+    expect(hasGroupChildren(structure, 'missing-group')).toBe(false)
     expect(isInvalidMove(structure, GROUP_A, GROUP_B)).toBe(true)
     expect(isInvalidMove(structure, CANVAS_B, GROUP_B)).toBe(false)
   })

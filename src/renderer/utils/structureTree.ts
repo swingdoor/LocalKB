@@ -104,6 +104,13 @@ export function countDescendantContent(
   ).length
 }
 
+export function hasGroupChildren(
+  structure: VaultTreeV3 | null,
+  groupId: string,
+): boolean {
+  return structure?.entries.some((entry) => entry.parentId === groupId) ?? false
+}
+
 export function isInvalidMove(
   structure: VaultTreeV3 | null,
   itemId: string,

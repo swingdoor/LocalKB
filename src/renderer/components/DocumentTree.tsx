@@ -18,7 +18,7 @@ import {
 import { useAppStore } from '../stores/appStore'
 import {
   buildTreeData,
-  countDescendantContent,
+  hasGroupChildren,
   isInvalidMove,
   type StructureTreeNode,
 } from '../utils/structureTree'
@@ -80,17 +80,26 @@ interface TreeNodeRowProps extends NodeRendererProps<StructureTreeNode> {
   create: (kind: 'group' | 'document' | 'canvas', parentId: string | null) => void
   rename: (id: string) => void
   requestDelete: (node: StructureTreeNode) => void
-  descendantCount: (id: string) => number
+  hasChildren: (id: string) => boolean
 }
 
-function TreeNodeRow({ node, style, dragHandle, create, rename, requestDelete, descendantCount }: TreeNodeRowProps) {
+function TreeNodeRow({ node, style, dragHandle, create, rename, requestDelete, hasChildren }: TreeNodeRowProps) {
   const inputRef = useRef<HTMLInputElement>(null)
+  const skipMenuFocusRestoreRef = useRef(false)
+  const renameFinishedRef = useRef(false)
 
   useEffect(() => {
+    renameFinishedRef.current = false
     if (!node.isEditing) return
     inputRef.current?.focus()
     inputRef.current?.select()
   }, [node.isEditing])
+
+  const submitRename = (value: string) => {
+    if (renameFinishedRef.current) return
+    renameFinishedRef.current = true
+    node.submit(value)
+  }
 
   useEffect(() => {
     if (!node.willReceiveDrop || node.data.kind !== 'group' || node.isOpen) return
@@ -99,9 +108,9 @@ function TreeNodeRow({ node, style, dragHandle, create, rename, requestDelete, d
   }, [node.willReceiveDrop, node.data.kind, node.isOpen, node])
 
   const selected = node.isSelected
-  const deleteDisabled = node.data.kind === 'group' && descendantCount(node.data.id) > 0
+  const deleteDisabled = node.data.kind === 'group' && hasChildren(node.data.id)
   return (
-    <ContextMenu>
+    <ContextMenu modal={false}>
       <ContextMenuTrigger asChild>
       <div
         ref={dragHandle}
@@ -146,11 +155,14 @@ function TreeNodeRow({ node, style, dragHandle, create, rename, requestDelete, d
           aria-label="重命名"
           className="h-6 min-w-0 flex-1 px-1 text-sm"
           onClick={(event) => event.stopPropagation()}
-          onBlur={() => node.reset()}
+          onBlur={(event) => submitRename(event.currentTarget.value)}
           onKeyDown={(event) => {
             event.stopPropagation()
-            if (event.key === 'Escape') node.reset()
-            if (event.key === 'Enter') node.submit(event.currentTarget.value)
+            if (event.key === 'Escape') {
+              renameFinishedRef.current = true
+              node.reset()
+            }
+            if (event.key === 'Enter') submitRename(event.currentTarget.value)
           }}
         />
       ) : (
@@ -160,7 +172,7 @@ function TreeNodeRow({ node, style, dragHandle, create, rename, requestDelete, d
       )}
 
       {!node.isEditing && (
-        <DropdownMenu>
+        <DropdownMenu modal={false}>
           <DropdownMenuTrigger asChild>
             <Button
               type="button"
@@ -175,16 +187,30 @@ function TreeNodeRow({ node, style, dragHandle, create, rename, requestDelete, d
               <MoreHorizontal className="h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" side="right">
+          <DropdownMenuContent
+            align="start"
+            side="right"
+            onCloseAutoFocus={(event) => {
+              if (!skipMenuFocusRestoreRef.current) return
+              event.preventDefault()
+              skipMenuFocusRestoreRef.current = false
+            }}
+          >
             {node.data.kind === 'group' && (
               <>
-                <DropdownMenuItem onSelect={() => create('group', node.data.id)}>新建组</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => {
+                  skipMenuFocusRestoreRef.current = true
+                  create('group', node.data.id)
+                }}>新建组</DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => create('document', node.data.id)}>新建文档</DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => create('canvas', node.data.id)}>新建画布</DropdownMenuItem>
                 <DropdownMenuSeparator />
               </>
             )}
-            <DropdownMenuItem onSelect={() => rename(node.data.id)}>重命名</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => {
+              skipMenuFocusRestoreRef.current = true
+              rename(node.data.id)
+            }}>重命名</DropdownMenuItem>
             <DropdownMenuItem
               disabled={deleteDisabled}
               className="text-destructive focus:text-destructive"
@@ -198,16 +224,28 @@ function TreeNodeRow({ node, style, dragHandle, create, rename, requestDelete, d
       )}
       </div>
       </ContextMenuTrigger>
-      <ContextMenuContent>
+      <ContextMenuContent
+        onCloseAutoFocus={(event) => {
+          if (!skipMenuFocusRestoreRef.current) return
+          event.preventDefault()
+          skipMenuFocusRestoreRef.current = false
+        }}
+      >
         {node.data.kind === 'group' && (
           <>
-            <ContextMenuItem onSelect={() => create('group', node.data.id)}>新建组</ContextMenuItem>
+            <ContextMenuItem onSelect={() => {
+              skipMenuFocusRestoreRef.current = true
+              create('group', node.data.id)
+            }}>新建组</ContextMenuItem>
             <ContextMenuItem onSelect={() => create('document', node.data.id)}>新建文档</ContextMenuItem>
             <ContextMenuItem onSelect={() => create('canvas', node.data.id)}>新建画布</ContextMenuItem>
             <ContextMenuSeparator />
           </>
         )}
-        <ContextMenuItem onSelect={() => rename(node.data.id)}>重命名</ContextMenuItem>
+        <ContextMenuItem onSelect={() => {
+          skipMenuFocusRestoreRef.current = true
+          rename(node.data.id)
+        }}>重命名</ContextMenuItem>
         <ContextMenuItem
           disabled={deleteDisabled}
           className="text-destructive focus:text-destructive"
@@ -246,7 +284,8 @@ function DocumentTree() {
   const treeRef = useRef<TreeApi<StructureTreeNode>>()
   const { ref: treeContainerRef, element: treeContainer, height } = useElementHeight()
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null)
-  const [editAfterCreate, setEditAfterCreate] = useState<string | null>(null)
+  const [pendingEditId, setPendingEditId] = useState<string | null>(null)
+  const skipCreateMenuFocusRestoreRef = useRef(false)
 
   const data = useMemo(
     () => buildTreeData(structure, contents),
@@ -272,19 +311,38 @@ function DocumentTree() {
   }, [revealContentId, data, clearRevealContent])
 
   useEffect(() => {
-    if (!editAfterCreate) return
-    const node = treeRef.current?.get(editAfterCreate)
-    if (!node) return
-    node.edit()
-    setEditAfterCreate(null)
-  }, [editAfterCreate, data])
+    if (!pendingEditId) return
+    let attempts = 0
+    let timer = 0
+
+    const beginEditing = () => {
+      const node = treeRef.current?.get(pendingEditId)
+      if (node) {
+        node.select()
+        node.edit()
+        setPendingEditId((current) => current === pendingEditId ? null : current)
+        return
+      }
+
+      attempts += 1
+      if (attempts < 5) {
+        timer = window.setTimeout(beginEditing, 0)
+      } else {
+        setPendingEditId((current) => current === pendingEditId ? null : current)
+      }
+    }
+
+    // Let Radix finish closing its menu and restoring focus before the input takes focus.
+    timer = window.setTimeout(beginEditing, 0)
+    return () => window.clearTimeout(timer)
+  }, [pendingEditId, data])
 
   const create = async (kind: 'group' | 'document' | 'canvas', parentId: string | null) => {
     if (kind === 'group') {
       const id = await createGroup(parentId)
       if (id) {
         if (parentId) treeRef.current?.open(parentId)
-        setEditAfterCreate(id)
+        setPendingEditId(id)
       }
       return
     }
@@ -296,9 +354,9 @@ function DocumentTree() {
       <TreeNodeRow
         {...props}
         create={(kind, parentId) => void create(kind, parentId)}
-        rename={(id) => treeRef.current?.get(id)?.edit()}
+        rename={setPendingEditId}
         requestDelete={(node) => setDeleteTarget({ id: node.id, kind: node.kind, name: node.name })}
-        descendantCount={(id) => countDescendantContent(structure, id)}
+        hasChildren={(id) => hasGroupChildren(structure, id)}
       />
     ),
     [structure],
@@ -328,8 +386,18 @@ function DocumentTree() {
               </TooltipTrigger>
               <TooltipContent>新建</TooltipContent>
             </Tooltip>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onSelect={() => void create('group', null)}>新建组</DropdownMenuItem>
+            <DropdownMenuContent
+              align="end"
+              onCloseAutoFocus={(event) => {
+                if (!skipCreateMenuFocusRestoreRef.current) return
+                event.preventDefault()
+                skipCreateMenuFocusRestoreRef.current = false
+              }}
+            >
+              <DropdownMenuItem onSelect={() => {
+                skipCreateMenuFocusRestoreRef.current = true
+                void create('group', null)
+              }}>新建组</DropdownMenuItem>
               <DropdownMenuItem onSelect={() => void create('document', null)}>新建文档</DropdownMenuItem>
               <DropdownMenuItem onSelect={() => void create('canvas', null)}>新建画布</DropdownMenuItem>
             </DropdownMenuContent>
