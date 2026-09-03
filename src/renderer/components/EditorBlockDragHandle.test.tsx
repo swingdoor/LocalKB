@@ -73,7 +73,7 @@ describe('EditorBlockDragHandle', () => {
     ))).toHaveLength(1)
   })
 
-  it('does not attach a click-to-menu behavior to the grip', () => {
+  it('routes a completed left click to root block actions without changing selection', () => {
     const editorElement = document.createElement('div')
     const reactElement = document.createElement('div')
     document.body.append(editorElement, reactElement)
@@ -83,13 +83,22 @@ describe('EditorBlockDragHandle', () => {
       content: '<p>第一段</p><p>第二段</p>',
     })
     reactRoot = createRoot(reactElement)
-    act(() => reactRoot?.render(<EditorBlockDragHandle editor={editor!} />))
+    const onMenuRequest = vi.fn((event: React.MouseEvent<HTMLSpanElement>) => event.preventDefault())
+    act(() => reactRoot?.render(
+      <EditorBlockDragHandle editor={editor!} onMenuRequest={onMenuRequest} />,
+    ))
 
-    document.querySelector('.editor-drag-handle span')?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
-    expect(editor.state.selection.empty).toBe(true)
+    const selectionBefore = editor.state.selection
+    act(() => document.querySelector('.editor-drag-handle span')?.dispatchEvent(new MouseEvent('click', {
+      bubbles: true,
+      cancelable: true,
+    })))
+
+    expect(onMenuRequest).toHaveBeenCalledOnce()
+    expect(editor.state.selection.eq(selectionBefore)).toBe(true)
   })
 
-  it('routes only contextmenu to root block actions without changing selection', () => {
+  it('routes right click to the same root block actions without changing selection', () => {
     const editorElement = document.createElement('div')
     const reactElement = document.createElement('div')
     document.body.append(editorElement, reactElement)
@@ -99,16 +108,16 @@ describe('EditorBlockDragHandle', () => {
       content: '<p>第一段</p><p>第二段</p>',
     })
     reactRoot = createRoot(reactElement)
-    const onContextMenu = vi.fn((event: React.MouseEvent<HTMLSpanElement>) => event.preventDefault())
+    const onMenuRequest = vi.fn((event: React.MouseEvent<HTMLSpanElement>) => event.preventDefault())
     act(() => reactRoot?.render(
-      <EditorBlockDragHandle editor={editor!} onContextMenu={onContextMenu} />,
+      <EditorBlockDragHandle editor={editor!} onMenuRequest={onMenuRequest} />,
     ))
 
     const selectionBefore = editor.state.selection
     const grip = document.querySelector('.editor-drag-handle span')!
     act(() => grip.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true })))
 
-    expect(onContextMenu).toHaveBeenCalledOnce()
+    expect(onMenuRequest).toHaveBeenCalledOnce()
     expect(editor.state.selection.eq(selectionBefore)).toBe(true)
   })
 })

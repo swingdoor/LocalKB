@@ -28,6 +28,7 @@ import { Button } from './components/ui/button'
 import { Skeleton } from './components/ui/skeleton'
 import { Toaster } from './components/ui/sonner'
 import { TooltipProvider } from './components/ui/tooltip'
+import { ResizablePane } from './components/ui/resizable-pane'
 
 type ConfirmationKind = 'close-retry' | 'close-discard' | 'external-reload'
 interface PendingConfirmation {
@@ -182,8 +183,19 @@ function App() {
     <div className="flex h-screen flex-col bg-background text-foreground">
       <TitleBar />
       <div className="flex flex-1 overflow-hidden">
-        {sidebarOpen && <Sidebar />}
-        <main className="flex-1 overflow-hidden bg-background">
+        {sidebarOpen && (
+          <ResizablePane
+            defaultWidth={240}
+            minWidth={200}
+            maxWidth={420}
+            resizeFrom="east"
+            storageKey="workspace-sidebar-width"
+            separatorLabel="调整侧边栏宽度"
+          >
+            <Sidebar />
+          </ResizablePane>
+        )}
+        <main className="min-w-0 flex-1 overflow-hidden bg-background">
           {contentLoading && !currentContent ? (
             <div className="mx-auto flex h-full w-full max-w-3xl flex-col gap-5 px-12 py-14" role="status" aria-label={`正在加载${selectedContent?.title || '内容'}`}>
               <Skeleton className="h-9 w-2/5" />

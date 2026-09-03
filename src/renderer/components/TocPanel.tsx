@@ -176,12 +176,7 @@ function TocPanel({ toc, onNavigate, isVisible = true, onToggle, showNumbers = f
 
   return (
     <div
-      className="flex h-full flex-col border-l border-border bg-background transition-all duration-200"
-      style={{
-        width: isVisible ? '260px' : '0px',
-        minWidth: isVisible ? '260px' : '0px',
-        overflow: isVisible ? 'visible' : 'hidden',
-      }}
+      className={`h-full w-full flex-col border-l border-border bg-background ${isVisible ? 'flex' : 'hidden'}`}
       role="navigation"
       aria-label="文档目录"
     >

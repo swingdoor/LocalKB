@@ -72,11 +72,21 @@ describe('EditorRootBlockControls event ownership', () => {
     vi.unstubAllGlobals()
   })
 
-  it('uses left click for no menu and right click for only the hovered root block menu', () => {
+  it('opens the hovered root block menu from either left or right click', () => {
     const grip = document.querySelector<HTMLElement>('.editor-drag-handle span')!
     const selectionBefore = editor.state.selection
 
-    act(() => grip.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })))
+    act(() => grip.dispatchEvent(new MouseEvent('click', {
+      bubbles: true,
+      cancelable: true,
+      clientX: 24,
+      clientY: 30,
+    })))
+    expect(document.body.querySelector('.editor-block-actions-menu')).not.toBeNull()
+
+    const outside = document.createElement('button')
+    document.body.appendChild(outside)
+    act(() => outside.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, cancelable: true })))
     expect(document.body.querySelector('.editor-block-actions-menu')).toBeNull()
 
     act(() => grip.dispatchEvent(new MouseEvent('contextmenu', {

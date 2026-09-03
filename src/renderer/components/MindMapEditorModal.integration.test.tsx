@@ -32,6 +32,15 @@ describe('MindMapEditorModal with the real Mind Elixir instance', () => {
     vi.restoreAllMocks()
   })
 
+  function pointer(type: string, pointerId = 1) {
+    const event = new MouseEvent(type, { bubbles: true, cancelable: true, button: 0 })
+    Object.defineProperties(event, {
+      pointerId: { value: pointerId },
+      pointerType: { value: 'mouse' },
+    })
+    return event
+  }
+
   it('keeps the editor alive when adding a sibling to one selected child', async () => {
     const onSave = vi.fn(async () => undefined)
     await act(async () => {
@@ -45,11 +54,6 @@ describe('MindMapEditorModal with the real Mind Elixir instance', () => {
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 100)) })
     const child = [...document.body.querySelectorAll<any>('me-tpc')]
       .find((topic) => topic.nodeObj?.id === 'child')!
-    const pointer = (type: string) => {
-      const event = new MouseEvent(type, { bubbles: true, cancelable: true, button: 0 })
-      Object.defineProperties(event, { pointerId: { value: 1 }, pointerType: { value: 'mouse' } })
-      return event
-    }
     act(() => {
       child.dispatchEvent(pointer('pointerdown'))
       child.dispatchEvent(pointer('pointerup'))
@@ -69,6 +73,43 @@ describe('MindMapEditorModal with the real Mind Elixir instance', () => {
     expect(document.body.querySelectorAll('me-tpc')).toHaveLength(3)
     expect(document.body.querySelector('#input-box')).toBeTruthy()
     expect(onSave).toHaveBeenCalledOnce()
+  })
+
+  it('keeps the native text editor focused when clicking again to place the caret', async () => {
+    await act(async () => {
+      root.render(<MindMapEditorModal
+        mindmapData={{ nodeData: { id: 'root', topic: '中心主题', children: [{ id: 'child', topic: '已有节点' }] } }}
+        isOpen
+        onSave={vi.fn(async () => undefined)}
+        onClose={vi.fn()}
+      />)
+    })
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 100)) })
+    const child = [...document.body.querySelectorAll<any>('me-tpc')]
+      .find((topic) => topic.nodeObj?.id === 'child')!
+
+    act(() => {
+      child.dispatchEvent(pointer('pointerdown', 31))
+      child.dispatchEvent(pointer('pointerup', 31))
+    })
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 2)) })
+    act(() => {
+      child.dispatchEvent(pointer('pointerdown', 31))
+      child.dispatchEvent(pointer('pointerup', 31))
+    })
+
+    const textEditor = document.body.querySelector<HTMLElement>('#input-box')!
+    expect(textEditor).toBeTruthy()
+    // JSDOM 不识别 Mind Elixir 使用的 contentEditable="plaintext-only"，
+    // 测试中补成标准值以复现浏览器里的真实焦点切换。
+    textEditor.setAttribute('contenteditable', 'true')
+    act(() => textEditor.focus())
+    expect(document.activeElement).toBe(textEditor)
+
+    act(() => textEditor.dispatchEvent(pointer('pointerdown', 32)))
+
+    expect(textEditor.isConnected).toBe(true)
+    expect(document.activeElement).toBe(textEditor)
   })
 
   it('changes the live screen theme without rebuilding topics or changing mind-map data', async () => {

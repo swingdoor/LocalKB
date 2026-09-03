@@ -63,7 +63,7 @@ function Sidebar() {
   }
 
   return (
-    <aside className="flex h-full w-60 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
+    <aside className="flex h-full w-full min-w-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
       <div className="border-b border-sidebar-border p-3">
         <DropdownMenu modal={false} open={vaultMenuOpen} onOpenChange={setVaultMenuOpen}>
           <DropdownMenuTrigger asChild>

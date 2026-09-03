@@ -75,7 +75,7 @@ export default function EditorRootBlockControls({
       <EditorBlockDragHandle
         editor={editor}
         onNodeChange={handleNodeChange}
-        onContextMenu={openMenu}
+        onMenuRequest={openMenu}
       />
 
       {menu && phase.kind === 'idle' && (

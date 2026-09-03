@@ -9,7 +9,7 @@ import { isRootBlockNodeType } from '../editor/nodeCatalog'
 interface EditorBlockDragHandleProps {
   editor: Editor
   onNodeChange?: (target: { node: ProseMirrorNode; pos: number } | null) => void
-  onContextMenu?: MouseEventHandler<HTMLSpanElement>
+  onMenuRequest?: MouseEventHandler<HTMLSpanElement>
 }
 
 const ROOT_BLOCK_HANDLE_POSITION: ComputePositionConfig = {
@@ -38,14 +38,13 @@ class DragHandleErrorBoundary extends Component<{
 
 /**
  * Root-block grip only. Tiptap owns the complete native drag lifecycle.
- * Do not add click handlers or synchronous React state changes here: the
- * official plugin initializes DataTransfer, view.dragging and
- * NodeRangeSelection after onElementDragStart returns.
+ * A completed click may open block actions, while pointer movement continues
+ * through the official dragstart/DataTransfer/NodeRangeSelection pipeline.
  */
 export default function EditorBlockDragHandle({
   editor,
   onNodeChange,
-  onContextMenu,
+  onMenuRequest,
 }: EditorBlockDragHandleProps) {
   const handleNodeChange = useCallback(({ node, pos }: {
     node: ProseMirrorNode | null
@@ -70,9 +69,10 @@ export default function EditorBlockDragHandle({
         onNodeChange={handleNodeChange}
       >
         <span
-          aria-label="拖动根级块调整顺序，右键打开块操作"
-          title="拖动调整顺序，右键打开块操作"
-          onContextMenu={onContextMenu}
+          aria-label="拖动根级块调整顺序，单击打开块操作"
+          title="拖动调整顺序，单击或右键打开块操作"
+          onClick={onMenuRequest}
+          onContextMenu={onMenuRequest}
         >
           <GripVertical aria-hidden="true" size={16} />
         </span>

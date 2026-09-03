@@ -36,6 +36,7 @@ describe('content workspace state', () => {
     container = document.createElement('div')
     document.body.appendChild(container)
     root = createRoot(container)
+    localStorage.removeItem('workspace-sidebar-width')
     selectContent.mockClear()
     loadContents.mockClear()
     completeClose.mockClear()
@@ -87,6 +88,8 @@ describe('content workspace state', () => {
     expect(container.textContent).toContain('无法打开“项目产品架构图”')
     expect(container.textContent).toContain('TipTap 节点类型不受支持')
     expect(container.querySelector('aside')?.textContent).toBe('导航')
+    expect(container.querySelector<HTMLElement>('[data-resizable-pane]')?.style.width).toBe('240px')
+    expect(container.querySelector('[role="separator"][aria-label="调整侧边栏宽度"]')).toBeTruthy()
 
     await act(async () => {
       Array.from(container.querySelectorAll('button'))

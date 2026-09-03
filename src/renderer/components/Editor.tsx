@@ -59,6 +59,7 @@ import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
+import { ResizablePane } from './ui/resizable-pane'
 
 interface EditorProps {
   document: LoadedDocument
@@ -625,8 +626,8 @@ function Editor({ document, vaultId, onUpdate }: EditorProps) {
       </div>
 
       {/* 编辑器内容 */}
-      <div className="flex-1 flex overflow-hidden">
-        <div className={`flex-1 overflow-y-auto bg-background px-8 pb-8 ${showHeadingNumbers ? 'show-heading-numbers' : ''}`}>
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        <div className={`min-w-0 flex-1 overflow-y-auto bg-background px-8 pb-8 ${showHeadingNumbers ? 'show-heading-numbers' : ''}`}>
           {editor && (
             <>
               <EditorContextMenus
@@ -653,13 +654,23 @@ function Editor({ document, vaultId, onUpdate }: EditorProps) {
         </div>
 
         {/* 目录面板 */}
-        <TocPanel
-          toc={toc}
-          onNavigate={handleNavigate}
-          isVisible={isPanelVisible}
-          onToggle={togglePanel}
-          showNumbers={showHeadingNumbers}
-        />
+        {isPanelVisible && (
+          <ResizablePane
+            defaultWidth={260}
+            minWidth={200}
+            maxWidth={480}
+            resizeFrom="west"
+            storageKey="workspace-toc-width"
+            separatorLabel="调整目录宽度"
+          >
+            <TocPanel
+              toc={toc}
+              onNavigate={handleNavigate}
+              onToggle={togglePanel}
+              showNumbers={showHeadingNumbers}
+            />
+          </ResizablePane>
+        )}
       </div>
 
       {/* 命令菜单 */}

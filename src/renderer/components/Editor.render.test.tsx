@@ -15,6 +15,7 @@ describe('Editor runtime mounting', () => {
     document.body.appendChild(container)
     root = createRoot(container)
     localStorage.setItem('toc-panel-visible', 'true')
+    localStorage.removeItem('workspace-toc-width')
     useAppStore.setState({ hotkeys: [], contents: [], showHeadingNumbers: false })
     window.electronAPI = {
       knowledge: {
@@ -71,11 +72,12 @@ describe('Editor runtime mounting', () => {
     expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ title: '更新后的标题' }))
 
     const tocPanel = container.querySelector<HTMLElement>('[aria-label="文档目录"]')!
-    expect(tocPanel.style.width).toBe('260px')
+    expect(tocPanel.closest<HTMLElement>('[data-resizable-pane]')?.style.width).toBe('260px')
+    expect(container.querySelector('[role="separator"][aria-label="调整目录宽度"]')).toBeTruthy()
     act(() => Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
       .find((button) => button.textContent?.includes('目录'))!
       .click())
-    expect(tocPanel.style.width).toBe('0px')
+    expect(container.querySelector('[aria-label="文档目录"]')).toBeNull()
 
     act(() => Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
       .find((button) => button.textContent?.includes('序号'))!

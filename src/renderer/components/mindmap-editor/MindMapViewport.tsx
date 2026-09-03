@@ -120,7 +120,6 @@ export function MindMapViewport({
       return
     }
     if (event.button !== 0) return
-    instance.container.focus({ preventScroll: true })
 
     if (interaction.owner.type === 'workflow') {
       event.preventDefault()
@@ -135,6 +134,7 @@ export function MindMapViewport({
       onStartOwner({ type: 'engine-native', gesture, pointerId: event.pointerId })
       return
     }
+    instance.container.focus({ preventScroll: true })
     if (hit.kind === 'arrow-control-handle') {
       onStartOwner({ type: 'engine-native', gesture: 'arrow-reshape', pointerId: event.pointerId })
       return
